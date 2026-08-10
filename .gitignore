@@ -1,0 +1,37 @@
+# Credentials — never commit.
+# NOTE: a leading "./" makes a gitignore pattern match nothing. Do not reintroduce it.
+Secrets/
+*.env
+.env
+.env.*
+!.env.example
+
+# Generator run manifests / captured output
+run-manifests/
+*.manifest.json
+
+# Dependencies & build output
+node_modules/
+dist/
+build/
+out/
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+
+# Tooling caches
+.cache/
+coverage/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+playwright-report/
+test-results/
+
+# Editors / OS
+.vscode/
+.idea/
+Thumbs.db
+desktop.ini
+.DS_Store
