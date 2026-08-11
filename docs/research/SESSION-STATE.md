@@ -64,14 +64,49 @@ resuming.**
 - `tests/fixtures/customization-*.{json,xml,txt}` — redacted metadata fixtures from the sandbox.
 - `docs/prompts/fable-5-research-and-plan.md` — kickoff prompt (user-amended: 1 UI, images, OTA fallback).
 
-## In flight (6 relaunched background agents — persist each report to `_raw/` on arrival)
+## Research fan-out: COMPLETE
 
-1. **wave1-04 Test Plan API** (test-folders, tests, design-steps, parameters, test-configs, resources, copy) → save as `_raw/wave1-04-test-plan.md`
-2. **wave2-01 Requirements UI** → `_raw/wave2-01-requirements-ui.md`
-3. **wave2-02 Test Plan/Resources/BPT UI** → `_raw/wave2-02-testplan-bpt-ui.md`
-4. **wave2-03 Test Lab/Runs UI (Manual Runner deep-dive)** → `_raw/wave2-03-testlab-ui.md`
-5. **wave2-04 Defects/Dashboard UI** → `_raw/wave2-04-defects-dashboard-ui.md`
-6. **wave2-05 Management + cross-cutting UI** → `_raw/wave2-05-management-crosscutting-ui.md`
+**All 14 reports received and persisted to `_raw/` (wave 1: 9/9 API-domain, wave 2: 5/5 UI-module).
+No agents in flight.** Next work is probes + synthesis (see Next actions).
+
+### Late-arriving key findings (fold into synthesis)
+
+- **`test-configs` collection EXISTS** (`GET|POST .../test-configs`, Core-documented) — resolves the
+  earlier gap; config-level requirement coverage via `test-config-coverages`
+  (first-endpoint→requirement-coverages, second-endpoint→test-configs).
+- **`design-steps` collection is documented GET-only** (POST/PUT/DELETE "not applicable"). Either a
+  doc gap or writes go through a nested `POST /tests/{id}/design-steps` pattern —
+  **top write-probe: without a design-step write path the generator's test chain breaks** (OTA
+  DesignStep object is the fallback).
+- **No REST entity for test parameters at all** (hasTestParams never populated; community+staff
+  corroborated). Values live in `test-configs.data-obj` XML; `<<<param>>>` token syntax in step text
+  auto-registers in UI (REST behaviour unknown).
+- **Generic `copy` resource**: `POST .../{collection}/copy` with `{IDs, TargetParentId}`, gated by
+  per-entity `SupportsCopying`; copies subtrees + attachments, preserves co-copied links.
+- **`resources`/`resource-folders` collections exist, but resource FILE CONTENT was
+  staff-confirmed REST-unsupported (2017)** — re-check on 24.1+ Swagger.
+- Desktop "Subject" path field is not returned by REST — rebuild breadcrumbs by walking parent-id.
+- **Manual runner is REST-buildable**: POST /runs + POST/PUT runs/{id}/run-steps all confirmed →
+  OTA likely unnecessary for manual execution; reserve fallback for execution-flow/hosts/BPT.
+- **Convert-to-Tests wizard EXISTS in desktop UI** (auto-creates coverage) — contradicts wave-1
+  requirements agent's "no evidence"; treat as composite client-side op (create tests + coverage).
+- Web Client deltas: no Execution Flow / Automation / Analysis tabs; read-only under version
+  control (requirements); BPT + Test Resources absent from Web module list.
+- Dashboard: `reports/{ID}?alt={mime}` + `?authKey` shared-URL read path exist; graph/dashboard
+  authoring NOT-VIA-API (client-side rendering from raw queries is the fallback);
+  **standard Excel reports are raw-SQL → structurally out of scope by hard constraint**.
+- Pin-to-baseline **deletes all existing runs** on pin (UI fact for the matrix).
+- From wave2-05 (management/cross-cutting): PPT scope items/KPIs/milestones lean NOT-VIA-API
+  (matches wave-1); filter dialog grammar incl. Cross Filter tab and `"" / not ""` empty tests;
+  favorites capture filter+sort+view-type; **data-hiding trap: default Viewer group bypasses ALL
+  data-hiding rules** (permission mirroring must special-case it); history client-source column
+  means Alt-ALM's writes are visibly attributed by client type; four alert rules enumerated;
+  send-by-email is server-side UI-only (Alt-ALM sends its own); no one-click grid export exists in
+  classic ALM (Project Reports is the heavy path — Alt-ALM exports client-side); **ADR note: the
+  stock WEB client's grid (3 modules, no grouping/freeze/inline-edit/bulk) is thinner than
+  desktop — desktop parity claims need per-feature API verification, not web-parity inference**;
+  rich-text editor toolbar inventory remains unverified in docs → the sandbox round-trip probe is
+  the definitive source anyway.
 
 ## Next actions (in order, after reports land)
 
