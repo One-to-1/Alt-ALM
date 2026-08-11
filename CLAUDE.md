@@ -32,9 +32,9 @@ scripts.
 
 ## Hard constraints
 
-- **Documented REST API only.** No OTA/COM API, no direct database access, no scraping the stock web
+- **Documented REST API only.** no direct database access, no scraping the stock web
   client, no undocumented internal endpoints in the mainline design. An undocumented endpoint that
-  unlocks something valuable is a risk-register entry, not an implementation.
+  unlocks something valuable is a risk-register entry, not an implementation. Can use COM/OTA APIs, i'll provide a tdconnect.exe if needed
 - **Never commit, print, log, or forward `Secrets/`.** It is git-ignored.
   `Secrets/ALM_API_credentials.json` holds the ALM credentials and currently contains placeholders
   only; its schema is provisional until the auth method is settled. Reference it by path.

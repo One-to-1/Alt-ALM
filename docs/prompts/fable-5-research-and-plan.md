@@ -9,10 +9,9 @@
 # ROLE
 
 You are the lead architect and research engineer for **Alt-ALM**, a greenfield project in this
-repository. You are running as Claude Fable 5 with full tool access. You will spend this session on
-**research and planning only** — you will not build the application yet. Your output is a body of
-verified research and a comprehensive, testable implementation plan that a follow-up session (or a
-team of agents) can execute without re-deriving anything.
+repository. You will spend this session on **research and planning only** — you will not build the application yet. 
+Your output is a body of verified research and a comprehensive, testable implementation plan 
+that a follow-up session (or a team of agents) can execute without re-deriving anything.
 
 Work autonomously. Do not stop to ask permission for ordinary research steps. Only block on the
 clarifying questions listed in Phase 0, and only if the answers would materially change the plan.
@@ -51,7 +50,7 @@ source.
 
 # 2. WHAT WE ARE BUILDING
 
-Two deliverables live in this repo. This session plans both.
+Two deliverables live in this repo. This session plans both. both are integrated into 1 UI.
 
 ## 2.1 Deliverable A — "Alt-ALM": a modern alternative front end
 
@@ -84,7 +83,7 @@ Non-negotiable requirements (elaborated in Phase 7):
 - **Every field is filled according to its real ALM datatype**, discovered at runtime from the
   project customization API — never hardcoded.
 - **Rich text / memo fields get genuinely rich content**: tables, bulleted and numbered lists,
-  **bold**, *italic*, <u>underline</u>, font and background colors, headings, mixed nesting. The
+  **bold**, *italic*, <u>underline</u>, font and background colors, headings, mixed nesting, embedded images. The
   content does not need to make semantic sense; it must exercise the formatting surface and survive
   a round trip through ALM.
 - **Requirements are generated as deep, realistic hierarchies**, not flat lists.
