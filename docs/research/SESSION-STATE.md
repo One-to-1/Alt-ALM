@@ -1,4 +1,4 @@
-# Research Session State — updated 2026-08-12 (probe round 3 complete)
+# Research Session State — updated 2026-08-12 (feasibility matrix + plan set complete)
 
 Working state of the Fable 5 research-and-planning session (kickoff:
 [docs/prompts/fable-5-research-and-plan.md](../prompts/fable-5-research-and-plan.md)). Written
@@ -183,22 +183,35 @@ auto-copy VERIFIED; instance↔run status mirror VERIFIED; no eager step→run a
 §9 still lists multipart as an open failure — fix both during lead review; also fold Probe 6
 into it. Data-model agent corrections are authoritative where they cite r3-* fixtures.
 
+## Feasibility matrix + lead review + plan set — DONE 2026-08-12 (commits fc2270d…0c05039)
+
+1. **`docs/research/feasibility-matrix.md`** DONE (Sonnet draft, lead-spot-checked): 218 features ×
+   verified API; 58% achievable (FULL 53 / FULL* 22 / PARTIAL 51); OTA 23, NO 21, N/A 17,
+   UNVERIFIED 31; all 10 UI-inventory conflict rows resolved; generator-impact appendix (hard gap:
+   step-parameters).
+2. **Lead review pass** DONE: api-reference §6.1 false discrepancy corrected (fixture shows
+   parent-id=5), Probe 5/6 folded in (new §6.7b Test Lab / Fast_Run section), §9 split into
+   resolved-vs-open; data-model r3-narration + step-aggregation notes updated; probe-log open-items
+   list refreshed (item 10 = deferred probes).
+3. **Plan set** DONE (lead decision brief `docs/plan/_lead-decision-brief.md` D1–D7 → 3 Sonnet
+   drafting agents, lead-reviewed):
+   - `docs/plan/architecture.md` + ADRs 0001–0005 (BFF required; **Java 21 + Spring Boot** BFF +
+     React/TS SPA — scored 4-way comparison, user preference named as tiebreaker; OTA Windows-only
+     sidecar; service-account pooled sessions + app-level users, per-user-key evolution path;
+     metadata-driven rendering).
+   - `docs/plan/data-generator-spec.md` (normative safety model: dry-run default, allowlist hard
+     stop, ALTALM-GEN provenance incl. transitive provenance for name-less entities, manifest-replay
+     + prefix-sweep cleanup; seeded PRNG; DAG with parallel branches; 8-type strategy matrix).
+   - `docs/plan/implementation-plan.md` (P0–P6 + deferred-probe map), `test-strategy.md`
+     (4-level pyramid, probe-derived must-have cases), `risks-and-open-questions.md`
+     (16 risks R1–R16, 31 open questions Q1–Q31 each with experiment + phase).
+
 ## Next actions (in order)
 
-1. **`feasibility-matrix.md`** (UI inventory × API reference × probe log; probe log wins;
-   resolve the UI-inventory "conflict" rows — several already settled by probes 4–6).
-2. **Lead review pass** over the three synthesis docs (api-reference §6.1/§9 fixes, fold Probe 6,
-   spot-check provenance tags).
-3. **Plan set**: `docs/plan/architecture.md` + ADRs (BFF proxy; session model; stack comparison
-   Java vs TS vs Python vs .NET — user leans Java; OTA-fallback isolation given COM/Windows-only),
-   `implementation-plan.md`, `data-generator-spec.md`, `test-strategy.md`,
-   `risks-and-open-questions.md`.
-4. **Skills** under `.claude/skills/` (alm-api, alm-entity-model, alm-data-gen, alt-alm-ui,
-   alm-live-probe) with verified content.
-5. **Update CLAUDE.md** (durable verified facts) and commit.
-6. (Deferred probes: mail body shape; step-parameters OTA check when tdconnect.exe provided;
-   release-folder root; alm-web dialect; comments banner convention.)
-3. **Synthesis**: `docs/research/alm-api-reference.md`, `alm-ui-feature-inventory.md`, `alm-data-model.md`, `feasibility-matrix.md` (reconcile agents + probes; probe log wins conflicts).
-4. **Plan set**: `docs/plan/architecture.md` + ADRs (BFF proxy vs direct; session model — note licence finding weakens the seat-consumption concern; **stack comparison Java vs TS vs Python vs .NET, user leans Java**; OTA-fallback isolation strategy given Windows-only COM), `implementation-plan.md`, `data-generator-spec.md`, `test-strategy.md`, `risks-and-open-questions.md`.
-5. **Skills** under `.claude/skills/` (alm-api, alm-entity-model, alm-data-gen, alt-alm-ui, alm-live-probe) with verified content.
-6. **Update CLAUDE.md** (durable facts: auth flow, 8 field types, query cheat-sheet, gaps list, Swagger discovery, workflow-bypass) and commit.
+1. **Skills** under `.claude/skills/` (alm-api, alm-entity-model, alm-data-gen, alt-alm-ui,
+   alm-live-probe) with verified content only (probe log + api-reference + data-model are the
+   sources; feasibility matrix for scope).
+2. **Update CLAUDE.md** (durable verified facts: auth flow, 8 field types, query cheat-sheet,
+   write hazards, Fast_Run route, gaps list, Swagger discovery, workflow-bypass) and commit.
+3. (Deferred probes now tracked as Q1–Q31 in `docs/plan/risks-and-open-questions.md`, each mapped
+   to an implementation phase; also probe-log Open items #10.)
