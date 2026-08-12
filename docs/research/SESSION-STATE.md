@@ -124,12 +124,48 @@ requirement-coverages POST; test-config/test-criterion-coverages CRUD; req-trace
 Confirmed still absent: timeslots, libraries, baselines, alerts, follow-ups, purge-runs.
 Core `is-authenticated` is XML-only (406 on JSON) — use `v2/rest/is-authenticated` for JSON.
 
+## Probe 4 (write round 1) — DONE 2026-08-12 via Sonnet subagent (detail: `_raw/probe4-write-round-1.md`; log updated)
+
+User approved sandbox writes. All probe records deleted. **VERIFIED:** XSRF-missing → 401;
+requirement create `parent-id=1`; **entity-write JSON needs deterministic field order** (wrong
+order → NPE 500s); **HTTP 500 can still commit the write** (verify-by-query on 5xx);
+rich-text sanitizer strips `<script>`, adds `<tbody>`, reformats whitespace (font/style/href
+survive; `has-rich-content` auto-flips); root test-folder = "Subject" (id 2 here, discover at
+runtime); **design-steps POST 201 = write path CONFIRMED** (but `<<<param>>>` tokens sanitized to
+`<<>>`); **requirement-coverages POST 201** + auto test-config-coverages row; **req-traces POST
+201** (`from-req-id`/`to-req-id`); defect + defect-links (defect/requirement endpoints) 201;
+audits partial — only status changes logged, creates/memo-PUTs invisible.
+**FAILED/open: step-parameters POST** ("Test parameter does not exist"; fields: key,
+used-by-owner-type req, used-by-owner-id, parent-id, actual-value).
+
+## Offline mining — DONE 2026-08-12 (Sonnet + Haiku subagents)
+
+- `_raw/probe3-mining-swagger.md` (+ `_raw/probe3-resource-list-basepath-table.md`): **62 entity
+  collections share one generic contract** (attachments, `{id}/lock` w/ `version` param on 41,
+  `{id}/audits` w/ `readChunks` on 24, bulk `DELETE ?ids-to-delete=` on 58) — model once.
+  ~99% of the 1,111 ops have no formal schema anywhere. resource-list has false negatives (v2
+  Swagger ops missing from it). SA audits/permissions-metadata are SaaS-only-flagged.
+  `application/json;schema=alm-web` = separate narrow dialect (42 ops) — probe later. 17
+  deprecated ops = all the legacy bulk-attachment POST form (avoid). `list-items` entity ≠
+  `used-lists/{id}/items` (unrelated, confusable). Out-of-scope families noted (SCM/CI,
+  business-views, `/synchronization/*`).
+- `_raw/probe3-mining-fieldtypes.md`: **no Boolean type** — Y/N fields are LookupList (list id 1,
+  Y/N) or String/Number flags; 80 flag-like fields mostly read-only/virtual; only 2 multivalue
+  fields in the model (`requirement.target-rel`, `.target-rcyc`); 191 System+read-only fields;
+  unused-list delta = Activity Status, VC Status, Resource Type, TestType; memo Size=-1
+  (unlimited), virtual path fields 99999.
+
 ## Next actions (in order)
 
-1. ~~Probe round 3 (read-only)~~ **DONE** (above). Leftover offline bits folded into synthesis:
-   inspect fixtures for boolean-ish fields/List-Ids; mine the two OpenAPI fixtures +
-   `resource-list-site.json` for schemas/query-params.
-2. **Write-probe round (sandbox; announce to user first)**: rich-text round-trip torture test incl. image-embed syntax discovery (create defect/requirement via UI-less REST, read back, diff); requirement-coverages POST; defect-link second-endpoint-type matrix; run auto-copy + status aggregation + Fast_Run; XSRF-missing status code; cycle date validation; comments banner format; **new from round 3: design-steps POST, step-parameters CRUD, req-traces POST, milestones POST, one `/mail` POST, test-executions POST semantics**. Capture redacted fixtures.
+1. **Write-probe round 2 (sandbox writes still authorized)**: attachments + rich-text
+   **image embed** round-trip (`ref-subtype=1` multipart, `<img src>` syntax discovery — the
+   remaining #1 unknown); the Test Lab chain (test-set-folder → test-set → test-instance →
+   run POST w/ `status=Not Completed` then PUT status; design-step auto-copy into run-steps;
+   status propagation; Fast_Run behaviour); **step-parameters retry** (create param before
+   referencing; try `<<<param>>>` insertion AFTER param exists); milestones POST; one `/mail`
+   POST; `test-executions` POST semantics; comments append convention; cycle date validation.
+2. **Synthesis**: `docs/research/alm-api-reference.md`, `alm-ui-feature-inventory.md`,
+   `alm-data-model.md`, `feasibility-matrix.md` (reconcile agents + probes; probe log wins).
 3. **Synthesis**: `docs/research/alm-api-reference.md`, `alm-ui-feature-inventory.md`, `alm-data-model.md`, `feasibility-matrix.md` (reconcile agents + probes; probe log wins conflicts).
 4. **Plan set**: `docs/plan/architecture.md` + ADRs (BFF proxy vs direct; session model — note licence finding weakens the seat-consumption concern; **stack comparison Java vs TS vs Python vs .NET, user leans Java**; OTA-fallback isolation strategy given Windows-only COM), `implementation-plan.md`, `data-generator-spec.md`, `test-strategy.md`, `risks-and-open-questions.md`.
 5. **Skills** under `.claude/skills/` (alm-api, alm-entity-model, alm-data-gen, alt-alm-ui, alm-live-probe) with verified content.

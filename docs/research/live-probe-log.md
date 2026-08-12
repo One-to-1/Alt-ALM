@@ -140,6 +140,45 @@ deployment**.
 `Accept: application/json` → **406** — the Core variant is XML-only; use the v2 endpoint for JSON
 session checks.
 
+## Probe 4 — write round 1 (sandbox, user-approved 2026-08-12; full detail in `_raw/probe4-write-round-1.md`)
+
+Executed by a Sonnet subagent running `scripts/probe/probe-write-1.ps1`; all records carried the
+`ALTALM-PROBE` prefix and **all were deleted (every DELETE → 200, verified)**.
+
+**VERIFIED (observed on ALM 26.1):**
+
+- **XSRF:** POST without `X-XSRF-TOKEN` → **401**. With header → works.
+- **Requirement create:** 201 with `name` + `type-id=3` + **`parent-id=1`** (0 / -1 fail here).
+- **⚠️ Field order matters:** the JSON `Fields` array serialization ORDER changed server behaviour
+  on POST — wrong orders produced opaque NPE-style 500s. **Entity-write JSON must use a fixed,
+  deterministic field order** (client-design requirement).
+- **⚠️ HTTP 500 ≠ rollback:** one 500-response POST had silently committed a row server-side
+  (found via `father-name` cross-ref, deleted). Client must treat 5xx writes as
+  "unknown outcome — verify by query", not "failed".
+- **Rich-text round-trip (`description`, `req-rich-content`):** PUT 200 but readback DIFFERS:
+  `<script>` stripped entirely; `<table>` gains implicit `<tbody>`; whitespace re-pretty-printed;
+  `<font>`, inline `style=`, `href` survive. `has-rich-content` flips N→Y on write. Generator must
+  compare *canonicalized* HTML, not byte-for-byte.
+- **Test tree:** root test-folder is **id=2 ("Subject")** on this project — discover at runtime,
+  never hardcode. Test create 201 with `parent-id` + `name` + `subtype-id=MANUAL`.
+- **`design-steps` POST → 201. The write path EXISTS** (docs' "not applicable" disproved on-server).
+  But the `<<<param>>>` token in step text was **mangled by the sanitizer to `<<>>`** (name lost).
+- **`step-parameters` POST FAILED** (both informed attempts): real fields discovered
+  (`key`, `used-by-owner-type` [required], `used-by-owner-id`, `parent-id`, `actual-value`) but
+  server answers "Test parameter does not exist" — likely coupled to the mangled-token issue.
+  Open gap; needs a dedicated probe (create parameter FIRST, then reference in step text?).
+- **`requirement-coverages` POST → 201** (contested question resolved). Side effect confirmed:
+  one `test-config-coverages` row auto-created per link.
+- **`req-traces` POST → 201** with `from-req-id`/`to-req-id` — REST traceability CONFIRMED.
+- **Defect create 201** (`name`, `detected-by`, `creation-time`, `severity` e.g. `"1-Low"`);
+  **defect-links 201 for both** `second-endpoint-type=defect` and `=requirement`.
+- **Audits are partial:** `GET requirements/{id}/audits` → 200 but only the two `status` field
+  changes appeared; creates and rich-text PUTs produced no audit entries. History UI cannot assume
+  full coverage — follow-up item.
+
+Fixtures: `tests/fixtures/write-probe/` (15 files, redacted; masking verified programmatically
+against raw secret values — clean).
+
 ## Fixtures captured (redacted; under `tests/fixtures/`)
 
 - `customization-fields-<entity>.json` × 15

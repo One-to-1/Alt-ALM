@@ -1,0 +1,22 @@
+SENT:
+<html><body><b>bold</b> <i>italic</i> <u>under</u> <font color="#ff0000">red</font><ul><li>li-one</li><li>li-two</li></ul><table border="1"><tr><td>cell-a</td><td>cell-b</td></tr></table><a href="http://example.com/x">link-text</a> &amp;amp; escaped &amp;lt;tag&amp;gt; <span style="background-color:yellow">hl-span</span><div style="text-align:center">centered</div><script>alert(1)</script></body></html>
+
+GOT:
+<html><body>
+<b>bold</b> <i>italic</i> <u>under</u> <font color="#ff0000">red</font>
+<ul>
+<li>li-one</li>
+<li>li-two</li>
+</ul>
+<table border="1">
+<tbody>
+<tr>
+<td>cell-a</td>
+<td>cell-b</td>
+</tr>
+</tbody>
+</table><a href="http://example.com/x">link-text</a> &amp;amp; escaped &amp;lt;tag&amp;gt; <span style="background-color:yellow">hl-span</span>
+<div style="text-align:center">
+centered
+</div>
+</body></html>

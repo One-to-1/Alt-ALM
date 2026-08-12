@@ -1,0 +1,33 @@
+{"Audits": {
+  "Audit": [
+    {
+      "ParentId": 5,
+      "Action": "UPDATE",
+      "User": "REDACTED",
+      "ParentType": "requirement",
+      "Time": "2026-08-11 22:02:15",
+      "Id": 23,
+      "Properties": {"Property": {
+        "OldValue": "Not Covered",
+        "Label": "Direct Cover Status",
+        "NewValue": "No Run",
+        "Name": "status"
+      }}
+    },
+    {
+      "ParentId": 5,
+      "Action": "UPDATE",
+      "User": "REDACTED",
+      "ParentType": "requirement",
+      "Time": "2026-08-11 22:02:07",
+      "Id": 20,
+      "Properties": {"Property": {
+        "OldValue": "",
+        "Label": "Direct Cover Status",
+        "NewValue": "Not Covered",
+        "Name": "status"
+      }}
+    }
+  ],
+  "TotalResults": 2
+}}
