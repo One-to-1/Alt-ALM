@@ -265,14 +265,18 @@ entity data are not captured.
 
 1. ~~Map `SiteVersion 20.0 (20.00.0.143)` → marketing version~~ **DONE: ALM 26.1** (probe 3).
 2. Is `site-session` required after `oauth2/login`, or fully redundant? (Skip it, observe.)
-3. XSRF: confirm the `X-XSRF-TOKEN` header requirement on the first WRITE probe (sandbox write —
-   only after explicit user confirmation of the sandbox project).
-4. Rich-text round-trip fidelity (the big one) — needs a write probe.
+3. ~~XSRF header requirement~~ **DONE: 401 without header** (probe 4).
+4. ~~Rich-text round-trip fidelity~~ **DONE** (probes 4–5: sanitizer rules, img-src forms, token
+   encoding).
 5. Whether `Accept: application/json` works on every collection or only some (observed: yes on all
    probed so far; exception found: Core `is-authenticated` is 406/XML-only — use v2).
-6. Booleans: inspect saved field fixtures for how yes/no fields are typed.
-7. Write-probe every "inventory says yes" row above (design-steps POST, step-parameters,
-   req-traces, requirement-coverages POST, milestones, mail) — presence ≠ behaviour.
-8. `test-executions` semantics: what does POST actually do (dispatch? record?).
-9. Mine `api-doc-sa-v2-openapi.json` + `resource-list-site.json` fixtures further during synthesis
-   (request/response schemas, query params per endpoint — all offline, no probes needed).
+6. ~~Booleans~~ **DONE: no Boolean type; Y/N = LookupList list-id 1** (probe 3 offline mining).
+7. ~~Write-probe every "inventory says yes" row~~ **DONE** (probes 4–6) — outcomes: design-steps ✓,
+   req-traces ✓, requirement-coverages ✓, milestones ✓, runs ✗ (Fast_Run route instead),
+   step-parameters ✗ (OTA candidate), mail ✗ (body undocumented).
+8. ~~`test-executions` semantics~~ **DONE: dispatch, not ingest** (probe 5).
+9. ~~Offline fixture mining~~ **DONE** (probe 3 mining reports).
+10. **Deferred to post-planning**: mail body shape (capture stock-UI traffic); step-parameters via
+    OTA (needs tdconnect.exe); release-folder root id; `alm-web` dialect body shape; comments
+    append banner convention; audit coverage isolation (plain-field PUT vs memo PUT); versions
+    check-in/check-out write probe; `IMAGE_COMPRESSION_LEVEL` round-trip.

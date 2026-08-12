@@ -23,18 +23,14 @@ an already-captured file.
 
 ---
 
-## 0. A note on unnarrated `r3-*` fixtures
+## 0. A note on `r3-*` fixtures — narration now complete
 
-`tests/fixtures/write-probe/r3-fastrun-full-entity.json`, `r3-run-steps.json`,
-`r3-attach-multipart-refsubtype1.json`, and `r3-attachments-list.json` exist on disk but are **not
-narrated in `live-probe-log.md`, `SESSION-STATE.md`, or either `_raw/probe4`/`probe5` report** — a
-"round 3" clearly ran (per `SESSION-STATE.md`'s own "Next actions #1" queue: run-creation resolution,
-multipart retry) but its prose write-up was never committed. They are real, redacted, probe-captured
-response bodies (not documentation, not guesses) and they resolve three previously-`UNVERIFIED` gaps
-in `alm-api-reference.md` §9. Flagged `[probe]` throughout this document with an explicit
-"(unnarrated `r3-*` fixture)" note wherever cited — **the lead session should fold these into
-`live-probe-log.md` properly**, matching how the `r2-*` fixtures were provisionally cited in
-`alm-api-reference.md` before being fully narrated.
+This document was drafted in parallel with the write-round-3 write-up, so its `[probe]` citations of
+`r3-*` fixtures carry "(unnarrated `r3-*` fixture)" notes. **Those are now resolved**: round 3 is
+fully narrated as **Probe 6 in `live-probe-log.md`** (and `_raw/probe6-write-round-3.md`), which
+confirms every `r3-*`-based finding cited here (Fast_Run synthesis, run-step auto-copy, multipart
+`ref-subtype=1` success). Treat "(unnarrated `r3-*` fixture)" below as a plain pointer to
+live-probe-log.md Probe 6. [Lead review 2026-08-12.]
 
 ---
 
@@ -220,9 +216,10 @@ matching), and `status="Passed"`.
 those design-steps' content — **design-steps ARE copied into run-steps** when a run is created via this
 path. However both run-steps carry `status="No Run"` even though the **parent run's own `status` is
 `"Passed"`** — i.e., **no automatic status sync was observed in either direction** between a run and
-its run-steps in this synthesis; wave1-05 UNVERIFIED #9 (does setting a run-step to Failed change the
-parent run's aggregate status) remains genuinely open, since this evidence only shows the reverse case
-(run status set without touching step statuses) didn't cascade downward either.
+its run-steps in this synthesis. The forward case was also probed in round 3: flipping a run-step to
+`Failed` left the parent run's status unchanged — **no eager step→run aggregation** (caveat: the run
+had been force-set `Passed` first, so this shows no auto-recompute, not an exhaustive matrix)
+`[probe]` (live-probe-log.md Probe 6).
 
 **Practical implication for the generator**: until a direct `POST runs` shape is found (candidate:
 richer test-set field population before instance/run creation, per `probe5-write-round-2.md`'s own
@@ -471,7 +468,7 @@ unnarrated `r3-*` fixtures (§2.9, §6) are excluded here and stated as findings
 | defect-links | Which `second-endpoint-type` values beyond `defect`/`requirement` are valid (test? run? test-instance?) | POST with each candidate type, observe 201 vs. 400/500 |
 | run (direct POST) | Can a from-scratch `POST runs` ever succeed, or is Fast_Run synthesis the only path? What test-set field(s) does the stock UI populate that our minimal create doesn't? | Create a test-set via the stock web client (or one with a manually-run test already), diff its full field set against our minimal REST create, retry direct `POST runs` against the richer test-set |
 | run-step | Independent (non-synthesis) POST/PUT/DELETE never probed | Direct CRUD probe against an existing run |
-| run ↔ run-step status | Does setting a run-step to `Failed` change the parent run's aggregate `status`? (Fast_Run evidence only shows the *reverse* case not cascading) | PUT two run-steps to `Failed`; GET the parent run's `status` |
+| run ↔ run-step status | ~~Does setting a run-step to `Failed` change the parent run's `status`?~~ **Settled (Probe 6): no eager aggregation** — remaining nuance: was only tested on a run force-set `Passed`; a fresh not-completed run might behave differently | PUT run-steps to `Failed` on a freshly synthesized, never-status-set run |
 | step-parameters | Is there truly no REST path to define the underlying "Test parameter" object, or does it need to be UI/OTA-created first and only then referenced by REST? | Define a parameter via the stock web client or OTA `StepFactory`, then retry `step-parameters` POST referencing it by `key` |
 | milestone | Full field set beyond the 11 seen on create (`kpis-count`, `milestone-scopeitem-count` suggest KPI/scope-item sub-structures) | `GET customization/entities/milestone/fields` full dump (not yet captured as its own fixture — only inferred from the create-response) |
 | list-binding "used but not in used-lists" | Confirm the read-only/system-field-exclusion theory (§4) for why `resource.res-type`/`vc-status` bind to lists 285/82 yet those lists are absent from `used-lists` | Bind list 285 or 82 to an *editable* field via UI/admin, re-pull `used-lists`, check if the count changes |

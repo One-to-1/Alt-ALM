@@ -11,9 +11,12 @@ Focus official documentation, found by a wave-1 research subagent, not independe
 = no direct evidence, with the experiment that would settle it. Where sources conflict, the higher
 source in the priority order below wins and the conflict is stated explicitly.
 
-**Source priority**: (1) `live-probe-log.md` empirical findings, (2) `_raw/probe3-*`, `_raw/probe4-*`
+**Source priority**: (1) `live-probe-log.md` empirical findings, (2) `_raw/probe3-*` … `_raw/probe6-*`
 offline-mined/write-probe reports, (3) `_raw/wave1-*` documentation research, (4) `tests/fixtures/`
 spot-checks. Nothing in this document was invented; every claim is traceable to one of these.
+
+> Lead-reviewed 2026-08-12: folded in write rounds 2–3 (probe log Probes 5–6), corrected a false
+> §6.1 discrepancy note, and updated §9 for findings resolved since the first draft.
 
 ---
 
@@ -334,12 +337,12 @@ operations, probe3-mining-swagger §3b):
 |---|---|---|
 | `.../{parent_id}/attachments` (+ `/{name}`) | most collections; **17 carry a `[DEPRECATED]`** flag on the plain collection-POST form (see below) | file attach, incl. `ref-subtype=1` rich-content linking |
 | `.../{parent_id}/lock` (GET/POST/DELETE, `version` param) | 41 collections | optimistic-concurrency lock (not versioning) |
-| `.../{id}/audits` (`readChunks` param) | 24 collections + project-level `GET …/audits` | change history read (see §6.9 — partial coverage) |
+| `.../{id}/audits` (`readChunks` param) | 24 collections + project-level `GET …/audits` | change history read (⚠️ partial coverage — see §9) |
 | `.../{parent_id}/mail` (POST) | 19 collections | "email about this record" (not mail-server admin) |
 | `.../groups/{groupsFields}` (GET, `split-multi-value-groups` param) | 35 collections | group-by aggregation view; part of the `alm-web` dialect family |
 | `.../copy` (POST, body `{IDs:[…], TargetParentId}`) | gated by per-entity `SupportsCopying` | subtree duplication, preserves attachments + co-copied links |
 | Bulk `DELETE ?ids-to-delete=` | 58 collections | see §4.5 |
-| `.../versions` (+ check-in/check-out/undo-check-out) | requirements, tests, resources (+ favorites/favorite-folders) only | version control (see §6.10) |
+| `.../versions` (+ check-in/check-out/undo-check-out) | requirements, tests, resources (+ favorites/favorite-folders) only | version control (`[docs-research]` wave1-05; not yet write-probed) |
 
 **17 deprecated operations**, all of the exact form `POST
 .../{collection}/{parent_entity_id}/attachments` for 17 collections (bpm-folders, design-steps,
@@ -385,14 +388,16 @@ value was `parent-id=1`, but that run's id=1 was later discovered to be a **cont
 record** (a silently-committed 500, see §3.3) rather than the true root — the finding was flagged
 `⚠️ CONTAMINATED` and queued for re-verification on clean state `[probe]` (probe4-write-round-1.md).
 **Round 2, on clean state, confirms the true root is `parent-id=0`** ("Requirements" root, `father-name`
-returned as `"Requirements"` on create) `[probe]` (`tests/fixtures/write-probe/r2-req-create.json` —
-this fixture exists but is not yet narrated in `live-probe-log.md`; flagged here for traceability).
+returned as `"Requirements"` on create) `[probe]` (live-probe-log.md Probe 5;
+`tests/fixtures/write-probe/r2-req-create.json`).
 **User-provided defaults table** (prefer runtime discovery over hardcoding, per CLAUDE.md): requirement
 root = id 0 "Requirements"; test-plan folders: id 2 "Subject", id 1001 "Recycle Bin"; test-set
-folders: id 0 "Root", id 1 "Recycle Bin" (SESSION-STATE.md, 2026-08-12 user input) — note the round-2
-test-set create fixture shows a test-set created with `parent-id=2`, not the documented root id 0;
-this is a **discrepancy not adjudicated by this document** — always discover the root at runtime via
-`?query={parent-id[0]}` rather than trusting either hardcoded value.
+folders: id 0 "Root", id 1 "Recycle Bin" (SESSION-STATE.md, 2026-08-12 user input). Roots were
+probe-confirmed on this project (`requirements/0`, `test-folders/2`, `test-set-folders/0`) `[probe]`
+(Probe 5) — but always discover the root at runtime via `?query={parent-id[0]}` rather than
+hardcoding. (An earlier draft of this section claimed the round-2 test-set fixture contradicted the
+root table; it does not — `r2-test-set-create.json` shows `parent-id=5`, the probe's own freshly
+created test-set-folder, not a root value.)
 
 **Type-id table** (`GET .../customization/entities/requirement/types`, live, 8 types) `[probe]`
 (probe3-mining-fieldtypes.md §6):
@@ -503,9 +508,12 @@ readback: `&lt;&lt;&gt;&gt;`) `[probe]` (probe4-write-round-1.md §4, re-observe
 design-step's `has-params` flag still returns `"Y"`, suggesting server-side parameter registration
 happens on the raw pre-sanitized input, but the stored/readable description text loses the parameter
 name — **naive string concatenation of `<<<name>>>` tokens into a memo field via REST does not
-work as a parameter-authoring mechanism.** Whether the stock UI escapes this differently before
-submission (e.g. HTML-entity-encoding the angle brackets client-side) is `UNVERIFIED` — would need a
-captured stock-UI POST body.
+work as a parameter-authoring mechanism.**
+
+**RESOLVED (round 2): HTML-entity-pre-encode the token.** Sending
+`&lt;&lt;&lt;name&gt;&gt;&gt;` instead of the raw token passes the sanitizer intact — the token
+survives round-trip and flips `has-params=Y` `[probe]` (live-probe-log.md Probe 5). This is the
+required client-side authoring convention for parameter tokens in step text.
 
 **`step-parameters` — FAILED after 2 informed attempts, documented failure not a shape bug.** Real
 fields (from `customization/entities/step-parameter/fields`): `actual-value`(Memo),
@@ -514,12 +522,13 @@ fields (from `customization/entities/step-parameter/fields`): `actual-value`(Mem
 `vc-user-name`(UsersList). Both attempts (`used-by-owner-type=design-step` and `=test`) returned
 **HTTP 500** `{"Id":"qccore.general-error","Title":"Test parameter does not exist"}` `[probe]`
 (probe4-write-round-1.md §5). **Conclusion**: `step-parameters` is a "record a value against an
-already-registered parameter" endpoint, not a "define a new parameter" endpoint — and given the
-token-mangling finding above, no server-side parameter definition ever actually got registered under
-the literal name tried. **Genuine open gap**: there is no confirmed REST path to *define* a test
-parameter — full CRUD exists per resource-list `[resource-list]` (design-steps/{id}, runs/{id},
-test-configs/{id}, test-instances/{id} nested contexts), but presence ≠ working create. `UNVERIFIED`
-— see §9.
+already-registered parameter" endpoint, not a "define a new parameter" endpoint. **Round 2 confirmed
+this is a genuine gap, not a shape bug**: every attempted shape — including after entity-encoded
+tokens successfully flipped `has-params=Y` — fails with the same "Test parameter does not exist"
+`[probe]` (Probe 5). **There is no REST path to *define* a test parameter object** (full CRUD exists
+per resource-list `[resource-list]` in design-steps/{id}, runs/{id}, test-configs/{id},
+test-instances/{id} nested contexts, but presence ≠ working create). **OTA-fallback candidate**
+(OTA `TestParameterFactory`); see §9.
 
 ### 6.5 Defects & defect-links
 
@@ -580,12 +589,10 @@ linking from a `req-rich-content`-style field.**
 milestones, releases, release-cycles, release-folders, requirements, runs, run-steps, test-configs,
 tests, test-folders, test-instances, test-sets, test-set-folders `[resource-list]`.
 
-**Image-embed `<img src>` syntax — RESOLVED by a round-2 write probe** (fixtures exist under
-`tests/fixtures/write-probe/r2-imgsrc-*.txt`; **not yet narrated in `live-probe-log.md`/
-SESSION-STATE.md — flagged here for the lead session to fold back in**). An attachment was uploaded
-via octet-stream+`Slug` (`ref-subtype` therefore stayed at its default `0` — the multipart
-`ref-subtype=1` path itself was not separately re-tested this round). Four `<img src>` forms were then
-PUT into a requirement's rich-text field and read back:
+**Image-embed `<img src>` syntax — RESOLVED by write rounds 2–3** `[probe]` (live-probe-log.md
+Probes 5–6; fixtures `tests/fixtures/write-probe/r2-imgsrc-*.txt`, `r3-*`). In round 2 an attachment
+was uploaded via octet-stream+`Slug` (`ref-subtype=0`); four `<img src>` forms were then PUT into a
+requirement's rich-text field and read back:
 
 | `src=` form sent | Result on readback |
 |---|---|
@@ -597,13 +604,19 @@ PUT into a requirement's rich-text field and read back:
 `[probe]`. This is consistent with the sanitizer's documented protocol-allowlist behaviour (wave1-08
 §2 pitfall #4: "non-http(s) `img src` gets the attribute stripped, not the tag rejected") — a
 plain filename or relative path has no recognizable protocol and is treated as disallowed, so the
-`src` attribute is dropped outright while the `<img>` tag itself survives. **Actionable conclusion for
-the generator/UI**: to embed an image, PUT the memo HTML with `<img src>` set to either (a) the
-**full absolute REST attachment URL** of a previously-uploaded attachment, or (b) a `data:` URI.
-**Still open**: whether uploading with `ref-subtype=1` (multipart) changes this behaviour or is purely
-an organizational/metadata flag once the absolute-URL form already works with `ref-subtype=0`;
-whether `IMAGE_COMPRESSION_LEVEL` (new 25.1) re-encodes the bytes server-side; whether the stock UI's
-own generated `src` differs from either tested form. `UNVERIFIED`, see §9.
+`src` attribute is dropped outright while the `<img>` tag itself survives.
+
+**Multipart `ref-subtype=1` upload — WORKS (round 3)**: a hand-built multipart body (explicit
+boundary, CRLF discipline, text parts first, `file` part LAST with `Content-Type: image/png`) →
+**201, 3/3 sessions** `[probe]` (Probe 6). Round 2's failure was a PowerShell `-Form` constructor
+artifact, not a server limitation — some HTTP client libraries build multipart bodies this server
+rejects, so treat multipart construction as a compatibility risk to integration-test per stack.
+
+**Actionable conclusion for the generator/UI**: the full embedded-image flow is **end-to-end viable**
+— upload the image as a multipart attachment with `ref-subtype=1`, then PUT the memo HTML with
+`<img src>` set to either (a) the **full absolute REST attachment URL**, or (b) a `data:` URI.
+**Still open**: whether `IMAGE_COMPRESSION_LEVEL` (new 25.1) re-encodes the bytes server-side, and
+whether the stock UI's own generated `src` differs from either tested form. `UNVERIFIED`, see §9.
 
 **Size-limit site parameters** (not independently probed): `ATTACH_MAX_SIZE`/`ATTACH_TOTAL_MAX_SIZE`
 govern **emailed** attachments only, not uploads (do not conflate) `[docs-research]`;
@@ -624,13 +637,55 @@ and `end-date` confirmed literally (not `start_date`/`begin-date`/other guesses)
  "Type":"release"}
 ```
 → **HTTP 201**, response includes `req-count`, `scope-items-count`, `milestones-count` (all 0 on a
-fresh release), `has-attachments`, `ver-stamp` `[probe]` (`tests/fixtures/write-probe/
-r2-release-create.json` — same not-yet-narrated round-2 evidence as §6.6; flagged for lead
-reconciliation). `release-folders`/`releases`/`release-cycles` all follow the standard
-GET/POST-collection + GET/PUT/DELETE-member pattern with `force-delete-children=y|n` on folder deletes
-(default `n` relocates children to "Unattached") `[docs-research]` (wave1-06 §4–5). Whether cycle
-dates are validated against the parent release's window is **undocumented either way** —
-`UNVERIFIED`.
+fresh release), `has-attachments`, `ver-stamp` `[probe]` (Probe 5;
+`tests/fixtures/write-probe/r2-release-create.json`). `release-folders`/`releases`/`release-cycles`
+all follow the standard GET/POST-collection + GET/PUT/DELETE-member pattern with
+`force-delete-children=y|n` on folder deletes (default `n` relocates children to "Unattached")
+`[docs-research]` (wave1-06 §4–5).
+
+**Cycle date validation — VERIFIED**: a `release-cycle` whose dates fall outside the parent
+release's window is **rejected server-side** (500 with a well-formed message); an in-range cycle
+creates fine `[probe]` (Probe 5). The generator must derive cycle dates from the parent release's
+window, never independently.
+
+**Milestones — create VERIFIED**: `milestones` full CRUD is real, but the `parent-id` field's
+physical name is `MS_RELEASE_ID` — **a milestone is parented under a release**, not a folder
+`[probe]` (Probe 5; `r2-milestone-create.json`). This partially flips the earlier "PPT/milestones
+NOT-VIA-API" belief; PPT scope items and KPIs remain absent from REST.
+
+### 6.7b Test Lab: test-sets, test-instances, runs — write rounds 2–3 verified
+
+**Creation chain (all 201, VERIFIED)** `[probe]` (Probes 5–6): `test-set-folder` → `test-set`
+(`subtype-id=hp.qc.test-set.default`) → `test-instance` (initial `status` "No Run",
+`subtype-id=hp.qc.test-instance.MANUAL`). Legacy naming trap throughout: **`cycle-id` = test-set
+id, `testcycl-id` = test-instance id** (disambiguated live via the Fast_Run entity's name fields,
+fixture `r3-fastrun-full-entity.json`).
+
+**⚠️ Direct `POST runs` does NOT work on this server — definitive negative.** 8 attempts across
+rounds 2–3 (XML + 5 JSON field-set variants); failure is bimodal and reproducible: baseline
+variants → `"Fail to get a must number attribute 'TESTSET'"` (no run field maps to that physical
+name — 48-field dump checked); adding denormalized name fields (`test-name`/`testcycl-name`/
+`cycle-name`) → `"Failed to post step"` `[probe]` (Probes 5–6).
+
+**The working route is indirect (Fast_Run synthesis) — VERIFIED 3/3 sessions**: `PUT
+test-instances/{id}` with a `status` value makes the server synthesize a **`Fast_Run`** run record
+(`subtype-id=hp.qc.run.MANUAL`, name `Fast_Run_…`). Alt-ALM and the generator must create runs via
+this route. Verified properties of synthesized runs `[probe]` (Probe 6):
+
+- **Run-steps auto-copy from design steps** (count matches design-step count exactly).
+- **Instance status mirrors run status** (instance reads "Passed" after the run PUT).
+- **No eager run-step→run status aggregation**: flipping a run-step to Failed leaves the parent
+  run's status unchanged (caveat: observed after a force-set Passed — shows no auto-recompute, not
+  an exhaustive matrix).
+- Run-steps on the synthesized run are PUT-able (`runs/{id}/run-steps/{sid}`).
+
+**`test-executions` POST = DISPATCH, not ingest — VERIFIED**: the POST reaches execution scheduling
+logic and answers "There is no agent configured…" — it schedules execution against lab
+infrastructure; it does not create/ingest run records `[probe]` (Probe 5).
+
+**BPT is out of REST reach here**: `GET /components` → **403 `qccore.operation-forbidden`**
+(endpoint exists, license/permission-gated); `GET /business-components` → **404** `[probe]`
+(Probe 6). OTA-fallback candidate.
 
 ### 6.8 Customization/metadata endpoints
 
@@ -723,10 +778,10 @@ specific — no universal allowed-HTML-subset exists** `[docs-research]` (wave1-
 sanitization happens at write time, read time, or both is not distinguishable from a round-trip test
 alone — `UNVERIFIED`.
 
-**Image embed — see §6.6 for the full resolved answer.** Summary: `<img src>` must be either a full
-absolute REST attachment URL or a `data:` URI; a bare filename or relative path silently loses its
-`src` attribute (tag survives, attribute doesn't) `[probe]` (round-2 fixtures, not yet folded into
-live-probe-log.md).
+**Image embed — see §6.6 for the full resolved answer.** Summary: upload via hand-built multipart
+with `ref-subtype=1`; `<img src>` must be either a full absolute REST attachment URL or a `data:`
+URI; a bare filename or relative path silently loses its `src` attribute (tag survives, attribute
+doesn't) `[probe]` (live-probe-log.md Probes 5–6).
 
 ---
 
@@ -772,6 +827,24 @@ denormalized `*-name` fields on `run`) — the latter carry a distinctive **`Siz
 
 ## 9. Gaps & unverified table
 
+### Resolved since the first draft (write rounds 2–3, live-probe-log.md Probes 5–6)
+
+- **Run creation**: direct `POST runs` definitively fails; the Fast_Run synthesis route via
+  `PUT test-instances/{id}` is the working method → §6.7b.
+- **Run-step auto-copy**: VERIFIED (design steps copy into run-steps on run synthesis) → §6.7b.
+- **Run-status aggregation**: VERIFIED absent (no eager step→run recompute) → §6.7b.
+- **Fast_Run synthesis on instance-status PUT**: VERIFIED — and promoted from "pitfall to avoid"
+  to "the only run-creation route" → §6.7b.
+- **Milestones**: create VERIFIED, parented under a release (`MS_RELEASE_ID`) → §6.7.
+- **`test-executions` POST**: VERIFIED dispatch, not ingest → §6.7b.
+- **Multipart `ref-subtype=1` upload**: WORKS with a hand-built body; embedded-image flow
+  end-to-end viable → §6.6.
+- **Release-cycle date validation**: VERIFIED server-enforced against the parent release window → §6.7.
+- **`<<<param>>>` tokens in step text**: survive when HTML-entity-pre-encoded → §6.4.
+- **BPT**: `components` 403 license-gated, `business-components` 404 — OTA-only here → §6.7b.
+
+### Still open
+
 Everything still `UNVERIFIED` or confirmed **absent**, each with the experiment that would settle it.
 "Absent" rows are confirmed by zero hits across a 1,111-operation resource-list inventory — a strong
 but not airtight negative (the inventory has known false negatives elsewhere, §9 footnote).
@@ -783,19 +856,13 @@ but not airtight negative (the inventory has known false negatives elsewhere, §
 | **Alerts / alert rules** | Confirmed absent (`alerts.html`/`alert-rules.html` 404; zero resource-list hits) `[docs-research]` | Capture stock-UI network traffic while creating/triggering an alert rule |
 | **Follow-up flags** | No dedicated source located; may be UI decoration on alert state only | Same UI-traffic capture as alerts |
 | **Purge-runs** | Confirmed absent as a REST endpoint; only per-id `DELETE runs/{id}` exists | Re-check resource-list/Swagger; UI-only `PurgeRunsTask` background job has no documented trigger endpoint |
-| **`step-parameters` create** | **FAILED live** — `POST` returns 500 `"Test parameter does not exist"` even with correct field shape (`key`, `used-by-owner-type`, `used-by-owner-id`, `parent-id`, `actual-value`) `[probe]` | Determine how the stock UI actually registers a parameter (capture its POST body) and retry `step-parameters` POST against a test with a UI-defined parameter already present; separately, determine the correct escaping for `<<<name>>>` tokens in step text (plain concatenation is mangled, §6.4) |
+| **`step-parameters` create** | **FAILED live, twice (rounds 1–2)** — every shape returns 500 `"Test parameter does not exist"`, even after entity-encoded tokens registered `has-params=Y`; no REST path to define the parameter object exists `[probe]` (Probes 4–5) | **OTA fallback** (`TestParameterFactory`) once tdconnect.exe is available; optionally capture the stock UI's parameter-creation traffic to confirm no REST route was missed |
 | **Audit/history partial coverage** | **VERIFIED partial**: `GET requirements/{id}/audits` returned only 2 entries (both `status` field changes) for a requirement that had a create + 2 rich-text PUTs + a coverage link — creates and memo PUTs produced **no** audit entry `[probe]` (probe4-write-round-1.md §10) | Isolate per-field: PUT a plain (non-memo) editable field and check for an audit entry, to determine if the gap is memo-specific or coverage extends only to derived/computed fields like `status` |
 | **`alm-web` dialect body shape** | Media type identified on 42 ops (§3.5), never requested | `GET` one `groups/{groupsFields}` endpoint with `Accept: application/json;schema=alm-web` and diff against the plain-JSON response |
-| **`test-executions` semantics** | Full CRUD present per resource-list; dispatch-vs-ingest behaviour of POST unknown `[resource-list]` `[docs-research]` | POST against a real automated test set with hosts configured, then poll for execution state change vs. static record creation |
-| **Run-step auto-copy on run creation** | Unknown whether design-steps are auto-copied into `run-steps` on `POST runs` | POST a run for a test with 3 known design-steps; immediately `GET runs/{id}/run-steps` |
-| **Run-status aggregation from step statuses** | Not documented either way | PUT two run-steps to `Failed`; `GET` the parent run's `status` |
-| **POST-then-PUT necessity for run status** | Secondary-sourced only ("status set on create doesn't propagate") | POST a run with `status=Passed` directly; GET the test-instance status to see if it propagated |
-| **Fast_Run synthesis on direct instance-status PUT** | Secondary-sourced only | PUT a test-instance's `status` directly; `GET runs?query={testcycl-id[…]}` and look for a synthesized `Fast_Run_*` record |
-| **Milestones full CRUD** | Present per resource-list `[resource-list]`, **never write-probed** | POST a milestone with minimal fields; verify against `customization/entities/milestone/fields` first |
-| **`/mail` POST (19 entity types)** | Present per resource-list, **never probed** | POST to one entity's `/mail` sub-resource in the sandbox (verify no real email escapes the sandbox first) |
+| **`/mail` POST (19 entity types)** | **Probed, FAILED** — 3 JSON shapes → identical opaque NPE; 1 XML shape → different 400. Body format genuinely undocumented `[probe]` (Probe 5) | Capture the stock UI's send-by-email request body, or accept Alt-ALM sending its own mail (already the plan per wave2-05) |
 | **`test-config`/`test-criterion`-coverages full CRUD** | GET/POST-config-coverage side effect confirmed (§6.2); PUT/DELETE and criterion-level never probed | Direct CRUD probe |
 | **`bv-hosts`/`host-groups` CRUD** | Present per resource-list, zero probes | Direct CRUD probe; establishes whether host/lab management is REST-reachable at all despite timeslots being absent |
-| **Image `ref-subtype=1` (multipart) vs the already-working absolute-URL form** | Round-2 probe used octet-stream+Slug (`ref-subtype` stayed 0) and still got a working absolute-URL `<img src>` (§6.6) — whether the documented "rich content" flag changes anything is untested | Upload via multipart with `ref-subtype=1` explicitly, PUT the same absolute-URL `<img src>`, compare behaviour (rendering flag, `IMAGE_COMPRESSION_LEVEL` re-encoding) against the `ref-subtype=0` case |
+| **Image pipeline residuals** | Upload + embed both VERIFIED (§6.6); untested: server-side re-encoding via `IMAGE_COMPRESSION_LEVEL` (25.1+), and whether the stock UI generates a different `src` form | Round-trip a byte-comparable PNG with `IMAGE_COMPRESSION_LEVEL` set; capture a stock-UI image embed and diff its `src` |
 | **Cross-project / cross-instance consistency of every probe finding above** | Everything in this document is single-sandbox, single-version evidence | Re-run the write-probe script against a second ALM 26.1 project/instance if one becomes available, before hardening any probe-only finding into a permanent client assumption |
 
 **Footnote on resource-list reliability**: the 1,111-operation `resource-list` inventory has **known
