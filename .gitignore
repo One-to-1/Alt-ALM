@@ -35,3 +35,6 @@ test-results/
 Thumbs.db
 desktop.ini
 .DS_Store
+
+# TD clients (OTA/COM installers — large binaries, machine-local)
+TDConnect/
