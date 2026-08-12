@@ -1,4 +1,4 @@
-# Research Session State — 2026-08-11
+# Research Session State — updated 2026-08-12 (probe round 3 complete)
 
 Working state of the Fable 5 research-and-planning session (kickoff:
 [docs/prompts/fable-5-research-and-plan.md](../prompts/fable-5-research-and-plan.md)). Written
@@ -108,10 +108,28 @@ No agents in flight.** Next work is probes + synthesis (see Next actions).
   rich-text editor toolbar inventory remains unverified in docs → the sandbox round-trip probe is
   the definitive source anyway.
 
-## Next actions (in order, after reports land)
+## Probe round 3 — DONE 2026-08-12 (details in live-probe-log.md, which wins conflicts)
 
-1. **Probe round 3 (read-only)**: `GET /qcbin/api-doc/v2/` + `/qcbin/api-doc/sa/v2/` (harvest OpenAPI → authoritative endpoint list, esp. 24.1+ additions: list-item writes, purge-versioning, anything Test Lab/hosts); `GET /qcbin/rest/resource-list` (inventory, with the "undocumented = unsupported" caveat); inspect saved fixtures for boolean-ish fields/List-Ids; `/qcbin/v2/rest/is-authenticated`.
-2. **Write-probe round (sandbox; announce to user first)**: rich-text round-trip torture test incl. image-embed syntax discovery (create defect/requirement via UI-less REST, read back, diff); requirement-coverages POST; defect-link second-endpoint-type matrix; run auto-copy + status aggregation + Fast_Run; XSRF-missing status code; cycle date validation; comments banner format. Capture redacted fixtures.
+**Server = ALM 26.1** (`external-version` from `/qcbin/v2/sa/api/site-version`; internal 20.0).
+**API key = SA role `Customer Admin`** → full Site Admin API works (site-users/project-users CRUD →
+dummy-user creation automatable; site-params R/W; audits; run-query = raw SQL → risk-register only).
+Deployment is SaaS-flavored (`customers/*` family). Swagger harvested: `api-doc/v2/qc.json` (14 ops,
+24.1+ additions: list-item writes, versioningHistory DELETE) + `api-doc/sa/v2/qc.json` (178 ops).
+**`rest/resource-list` = per-instance inventory of 1,111 operations** (fixture
+`resource-list-site.json`). Gap-list flips (all UNVERIFIED-until-write-probe, but present in
+inventory): **design-steps POST/PUT/DELETE+copy; step-parameters full CRUD (4 contexts);
+requirement-coverages POST; test-config/test-criterion-coverages CRUD; req-traces CRUD
+(traceability!); milestones CRUD; bv-hosts+host-groups CRUD; per-entity `/audits` GET (24 types);
+`/mail` POST (19 types); test-executions CRUD; requirement-target-releases CRUD.**
+Confirmed still absent: timeslots, libraries, baselines, alerts, follow-ups, purge-runs.
+Core `is-authenticated` is XML-only (406 on JSON) — use `v2/rest/is-authenticated` for JSON.
+
+## Next actions (in order)
+
+1. ~~Probe round 3 (read-only)~~ **DONE** (above). Leftover offline bits folded into synthesis:
+   inspect fixtures for boolean-ish fields/List-Ids; mine the two OpenAPI fixtures +
+   `resource-list-site.json` for schemas/query-params.
+2. **Write-probe round (sandbox; announce to user first)**: rich-text round-trip torture test incl. image-embed syntax discovery (create defect/requirement via UI-less REST, read back, diff); requirement-coverages POST; defect-link second-endpoint-type matrix; run auto-copy + status aggregation + Fast_Run; XSRF-missing status code; cycle date validation; comments banner format; **new from round 3: design-steps POST, step-parameters CRUD, req-traces POST, milestones POST, one `/mail` POST, test-executions POST semantics**. Capture redacted fixtures.
 3. **Synthesis**: `docs/research/alm-api-reference.md`, `alm-ui-feature-inventory.md`, `alm-data-model.md`, `feasibility-matrix.md` (reconcile agents + probes; probe log wins conflicts).
 4. **Plan set**: `docs/plan/architecture.md` + ADRs (BFF proxy vs direct; session model — note licence finding weakens the seat-consumption concern; **stack comparison Java vs TS vs Python vs .NET, user leans Java**; OTA-fallback isolation strategy given Windows-only COM), `implementation-plan.md`, `data-generator-spec.md`, `test-strategy.md`, `risks-and-open-questions.md`.
 5. **Skills** under `.claude/skills/` (alm-api, alm-entity-model, alm-data-gen, alt-alm-ui, alm-live-probe) with verified content.

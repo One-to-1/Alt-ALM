@@ -1,0 +1,834 @@
+{
+  "openapi" : "3.0.1",
+  "info" : {
+    "title" : "ALM Project REST API Reference",
+    "description" : "This guide provides a portion of online reference for the Project REST-based API. Use the REST API to access and work with ALM data in Projects.\n\nConsider the following when working with the REST-based API:\n\n<ul><li>Ensure only authorized users can execute the automated script or job.</li><li>Do not include credentials as a part of the script or job.</li><li>Some responses might contain sensitive information. Ensure you store the received data in a secure way.</li><li>Limit access to data to authorized users.</li><li>Destroy output when the information is no longer needed.</li></ul><br /><h2>Authenticate</h2>\n\nTo call any ALM Site Administration REST API request, you should first get authenticated to provide the authentication token as a cookie in the request header.\n\nWe recommend you use the **alm-authenticate** or **login** methods to get authenticated.\n<h4>Get authenticated by alm-authenticate with username</h4>\n\n1. POST `/qcbin/authentication-point/alm-authenticate` to obtain an **LWSSO** token from `Set-Cookie`. For details, see [Non-Web Application Authentication](https://admhelp.microfocus.com/alm/api_refs/REST_core/Content/non-web-application-authen.html).\n\n2. POST `/qcbin/rest/site-session` to open a site session by using the LWSSO token you obtained. \n\n\tThis request returns `ALM_USER`, `QCSession`, and `XSRF-TOKEN` in `Set-Cookie`. For details, see [Session Management](https://admhelp.microfocus.com/alm/api_refs/REST_core/Content/REST_API_Core/General/Session_Management.html).\n3. Wait for the cookies from the previous step to be returned before calling subsequent REST APIs.\n\n\tIf you call subsequent APIs without waiting for the previous step, your application has multiple sessions open. Always pass the most recently returned cookies in the header of any requests.\n\n<h4>Get authenticated by login with API key</h4>\n\n1. Obtain your client ID and API key secret from your site administrator. For details about API keys, see [How to Manage API Keys](https://admhelp.microfocus.com/alm/en/latest/online_help/Content/api_keys_toc.htm). \n2. POST `/qcbin/rest/oauth2/login`.\n\n\tThis request returns `LWSSO_COOKIE_KEY`, `ALM_USER`, `QCSession`, and `XSRF-TOKEN` in `Set-Cookie`. For details, see [login](https://admhelp.microfocus.com/alm/api_refs/REST_core/Content/REST_API-shared/login.htm).\n\n\n<h2>Headers</h2>\n\nAPI headers are like an extra source of information for each API call you make. Their job is to represent the meta-data associated with an API request and response. Here are some of the most common API headers you encounter when using ALM SA REST API.\n\n<i><font size='+1'>Cookie</font></i>\n\nCookies are used to store small amounts of data. Except for the authenticate and session interfaces, you should set Cookie in all other interfaces to what you received from Set-Cookie. Pass Cookie for every other request in the request header. For example:\n\n<code>Cookie: LWSSO_COOKIE_KEY={}; ALM_USER={}; QCSession={}; XSRF-TOKEN={}; </code> \n\n\n\n<i><font size='+1'>Accept and Content-Type</font></i>\n\nThe `Accept` header is added to tell the server what types of response content your application accepts. You can refer to the `Media type` value of the response in the resource.\n\nThe `Content-Type` header is added to tell the server what the media type is in the message body so that the server can parse the request body. It is usually required in PUT and POST requests. The value provided is usually `application/json` or `application/xml`. You can refer to the request body in every resource for details.\n\n\n\n<i><font size='+1'>X-XSRF-TOKEN</font></i>\n\nALM checks whether the `X-XSRF-TOKEN` header is included in all requests, except the ones that use the GET HTTP method. If the header is missing, the REST API calls fail. After getting authenticated, the ALM server returns the value of `XSRF-TOKEN` cookie. In all your subsequent requests, except for the ones that use the HTTP GET method, you should include the `X-XSRF-TOKEN` header (that is the value of XSRF-TOKEN cookie) in the requests. More information can be found at [Send X-XSRF-TOKEN header with all requests](https://admhelp.microfocus.com/alm/api_refs/REST_core/Content/send_xsrf_header.htm?Highlight=site%20session#codeSample).\n\n\n\n<i><font size='+1'><a href=\"#linkcustomerId\" name=\"linkcustomerId\" aria-label=\"#linkcustomerId\">customer-id</a></font></i>\n\nThis header is required only when you make REST API calls for SaaS customers and projects. It should be the ID of the relevant customer you are working with. Use the <a href='#tag/Permissions/operation/getCurrentUserRole' target='_blank'>Get the permissions of the current user's role</a> API to retrieve the correct customer id. After retrieving the correct customer id, set it in the request header in each API. If this value is not set, the default will be the customer-id you belong to. \n\n<h2>SaaS Only tag</h2>\n\nThe SaaS Only tag is added to some REST APIs.This tag is added for the REST APIs that are available for ALM SaaS only. You cannot use them for on-premises environments. <br />\nFor on-premises, all the APIs without this tag are available for use.\n",
+    "version" : "26.1"
+  },
+  "tags" : [ {
+    "name" : "Authentication",
+    "description" : ""
+  }, {
+    "name" : "Authentication",
+    "description" : "Provide a set of interfaces for authentication, session management, and logout."
+  }, {
+    "name" : "UsedList",
+    "description" : "Provide CRUD functions for items of used-lists Collection."
+  }, {
+    "name" : "Purge",
+    "description" : "Purge versioning history on demand."
+  } ],
+  "paths" : {
+    "/qcbin/authentication-point/alm-authenticate" : {
+      "post" : {
+        "tags" : [ "Authentication" ],
+        "summary" : "Authenticate with username",
+        "description" : "Logs the user on to the ALM server using username. After the authentication, open a site session by POST /qcbin/rest/site-session.",
+        "operationId" : "alm-authenticate",
+        "requestBody" : {
+          "description" : "User and password are sent unencrypted in XML format. To encrypt, use HTTPS protocol.",
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/AuthenticationDataWrapper"
+              },
+              "examples" : {
+                "auth" : {
+                  "description" : "Example of login using username",
+                  "value" : {
+                    "alm-authentication" : {
+                      "user" : "user1",
+                      "password" : "xxxxxx"
+                    }
+                  }
+                }
+              }
+            },
+            "application/xml" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/AuthenticationData"
+              }
+            }
+          }
+        },
+        "responses" : {
+          "200" : {
+            "description" : "One of:\n\nHTTP code 200 and sets the LWSSO cookie (LWSSO_COOKIE_KEY).\n\nHTTP code 401 for non-authenticated request.",
+            "headers" : {
+              "Set-Cookie" : {
+                "description" : "LWSSO_COOKIE_KEY={}"
+              }
+            }
+          },
+          "401" : {
+            "description" : "Authentication failed"
+          }
+        }
+      }
+    },
+    "/qcbin/rest/oauth2/login" : {
+      "post" : {
+        "tags" : [ "Authentication" ],
+        "summary" : "Authenticate with API key",
+        "description" : "Logs the user on to the ALM server using API key. It automatically opens a site session after the authentication.",
+        "operationId" : "login",
+        "requestBody" : {
+          "description" : "Obtain a Client ID and API Key Secret from your ALM administrator and enter them in a POST message.",
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/AuthenticationApiKey"
+              },
+              "examples" : {
+                "api key" : {
+                  "description" : "Example of login using API key",
+                  "value" : {
+                    "clientId" : "apikey-xxxxxxxxxx",
+                    "secret" : "xxxxxxxxxx"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses" : {
+          "200" : {
+            "description" : "One of:\n\nHTTP code 200 and sets the LWSSO cookie (LWSSO_COOKIE_KEY).\n\nHTTP code 401 for non-authenticated request.",
+            "headers" : {
+              "Set-Cookie" : {
+                "description" : "LWSSO_COOKIE_KEY={}"
+              },
+              "Set-Cookie " : {
+                "description" : "ALM_USER={}"
+              },
+              "Set-Cookie  " : {
+                "description" : "QCSession={}"
+              },
+              "Set-Cookie   " : {
+                "description" : "XSRF-TOKEN={}"
+              }
+            }
+          },
+          "401" : {
+            "description" : "Authentication failed"
+          }
+        }
+      }
+    },
+    "/qcbin/v2/rest/is-authenticated" : {
+      "get" : {
+        "tags" : [ "Authentication" ],
+        "summary" : "Check whether the current user is authenticated (Recommended)",
+        "description" : "Checks whether the current user is authenticated. The response supports both JSON and XML formats. Requests to this resource do not open an ALM application session.",
+        "operationId" : "getAuthenticationInfo",
+        "parameters" : [ {
+          "name" : "Cookie",
+          "in" : "header",
+          "description" : "LWSSO_COOKIE_KEY={}; ALM_USER={}; QCSession={}; XSRF-TOKEN={};",
+          "schema" : {
+            "type" : "string"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "On success, the HTTP return value is 200.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/AuthenticationInfoWrapper"
+                }
+              },
+              "application/xml" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/AuthenticationInfo"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/qcbin/rest/is-authenticated" : {
+      "get" : {
+        "tags" : [ "Authentication" ],
+        "summary" : "Check whether the current user is authenticated(Legacy)",
+        "description" : "Checks whether the current user is authenticated. The response supports XML format. Requests to this resource do not open an ALM application session.",
+        "operationId" : "isAuthenticated",
+        "parameters" : [ {
+          "name" : "Cookie",
+          "in" : "header",
+          "schema" : {
+            "type" : "string"
+          },
+          "example" : "LWSSO_COOKIE_KEY={cookie}"
+        } ],
+        "requestBody" : {
+          "content" : {
+            "application/xml" : { }
+          }
+        },
+        "responses" : {
+          "200" : {
+            "description" : "On success, the HTTP return value is 200.",
+            "content" : {
+              "application/xml" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/AuthenticationInfo"
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "Unauthorized"
+          }
+        }
+      }
+    },
+    "/qcbin/rest/site-session" : {
+      "put" : {
+        "tags" : [ "Authentication" ],
+        "summary" : "Extend a session",
+        "description" : "Resets the session timer.",
+        "operationId" : "putExentdingSession",
+        "parameters" : [ {
+          "name" : "Cookie",
+          "in" : "header",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          },
+          "example" : "LWSSO_COOKIE_KEY={}; ALM_USER={}; QCSession={}; XSRF-TOKEN={};"
+        } ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : { },
+            "application/xml" : { }
+          }
+        },
+        "responses" : {
+          "200" : {
+            "description" : "On success, the HTTP return value is 200. Server resets the timer."
+          }
+        }
+      },
+      "post" : {
+        "tags" : [ "Authentication" ],
+        "summary" : "Open a session",
+        "description" : "After authentication, gets the site-session.",
+        "operationId" : "openSession",
+        "parameters" : [ {
+          "name" : "Cookie",
+          "in" : "header",
+          "description" : "The value of LWSSO_COOKIE_KEY which gets from ALM authentication",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          },
+          "example" : "LWSSO_COOKIE_KEY={cookie};"
+        } ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : { },
+            "application/xml" : { }
+          }
+        },
+        "responses" : {
+          "200" : {
+            "description" : "On success, the HTTP return value is 200. Server returns the new session cookie.",
+            "headers" : {
+              "Set-Cookie " : {
+                "description" : "ALM_USER={}"
+              },
+              "Set-Cookie  " : {
+                "description" : "QCSession={}"
+              },
+              "Set-Cookie   " : {
+                "description" : "XSRF-TOKEN={}"
+              }
+            }
+          },
+          "401" : {
+            "description" : "Authentication failed"
+          }
+        }
+      }
+    },
+    "/qcbin/authentication-point/logout" : {
+      "post" : {
+        "tags" : [ "Authentication" ],
+        "summary" : "Log the user out of ALM",
+        "description" : "Logs the user out of ALM. When work is completed, the user's authentication token is discarded.",
+        "operationId" : "logout",
+        "parameters" : [ {
+          "name" : "Cookie",
+          "in" : "header",
+          "schema" : {
+            "type" : "string"
+          },
+          "example" : "LWSSO_COOKIE_KEY={cookie}"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "On success, the HTTP return value is 200.",
+            "headers" : {
+              "Set-Cookie" : {
+                "description" : "LWSSO cookie key is to be empty"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/qcbin/v2/rest/domains/{domain}/projects/{project}/customization/used-lists" : {
+      "get" : {
+        "tags" : [ "UsedList" ],
+        "summary" : "Get a collection of project lists in use",
+        "description" : "This resource returns all the lists in the project that are connected to a field or used in a business rule. <br />The parameters that can be applied to lists are name and id. For example:<br />/used-lists?name=Status,Run State<br /> /used-lists?id=12,55",
+        "operationId" : "getLists",
+        "parameters" : [ {
+          "name" : "name",
+          "in" : "query",
+          "description" : "The names of the list to query.",
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "name" : "logical-name",
+          "in" : "query",
+          "description" : "The logic names of the list to query.",
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "name" : "id",
+          "in" : "query",
+          "description" : "The ids of the list to query.",
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "name" : "skip-children",
+          "in" : "query",
+          "description" : "Determine whether to skip sub items. The default value is false.",
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "name" : "limit",
+          "in" : "query",
+          "description" : "The maximum number of lists to return.",
+          "schema" : {
+            "type" : "integer",
+            "format" : "int32"
+          }
+        }, {
+          "name" : "offset",
+          "in" : "query",
+          "description" : "The number of lists to skip.",
+          "schema" : {
+            "type" : "integer",
+            "format" : "int32"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "On success, the HTTP return value is 200.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/CustomizationLists"
+                }
+              },
+              "application/xml" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/CustomizationLists"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/qcbin/v2/rest/domains/{domain}/projects/{project}/{entity-name}/versioningHistory" : {
+      "delete" : {
+        "tags" : [ "Purge" ],
+        "summary" : "Purge versioning history",
+        "description" : "Purges versioning history by date or version. You can see the task status from ALM Task Manager. On success, the HTTP return value is 201.",
+        "operationId" : "purgeVCHistories",
+        "parameters" : [ {
+          "name" : "entity-name",
+          "in" : "path",
+          "description" : "Entity type (currently only \"test\" is supported.)",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "name" : "project",
+          "in" : "path",
+          "description" : "Project name",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        } ],
+        "requestBody" : {
+          "description" : "Please provide parameters below.",
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/PurgeVCHistoriesEntity"
+              },
+              "examples" : {
+                "Request Body Example 1" : {
+                  "description" : "Request body sample in Json for 'date' mode.",
+                  "value" : {
+                    "purgeMode" : "date",
+                    "offSet" : "2023-12-05"
+                  }
+                },
+                "Request Body Example 2" : {
+                  "description" : "Request body sample in Json for 'version' mode.",
+                  "value" : {
+                    "purgeMode" : "version",
+                    "offSet" : "3"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses" : {
+          "201" : {
+            "description" : "On success,the HTTP return value is 201."
+          }
+        }
+      }
+    },
+    "/qcbin/v2/rest/domains/{domain}/projects/{project}/customization/used-lists/{list-id}" : {
+      "get" : {
+        "tags" : [ "UsedList" ],
+        "summary" : "Get list details by list ID",
+        "description" : "Gets list details by list ID. On success, the HTTP return value is 200 and returns the items of the specific list.",
+        "operationId" : "getList",
+        "parameters" : [ {
+          "name" : "list-id",
+          "in" : "path",
+          "description" : "List ID.",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "name" : "skip-children",
+          "in" : "query",
+          "description" : "Determine whether to skip sub items. The default value is false.",
+          "schema" : {
+            "type" : "string"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "On success, the HTTP return value is 200.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/CustomizationList"
+                }
+              },
+              "application/xml" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/CustomizationList"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/qcbin/v2/rest/domains/{domain}/projects/{project}/customization/used-lists/{list-id}/items" : {
+      "post" : {
+        "tags" : [ "UsedList" ],
+        "summary" : "Add an item to a list",
+        "description" : "Adds an item to a list and retrieves the item properties.",
+        "operationId" : "addItem",
+        "parameters" : [ {
+          "name" : "list-id",
+          "in" : "path",
+          "description" : "List ID.",
+          "required" : true,
+          "schema" : {
+            "type" : "integer",
+            "format" : "int32"
+          }
+        } ],
+        "requestBody" : {
+          "description" : "To add a new item, POST an XML/JSON string compliant with the Item schema.",
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/Item"
+              },
+              "examples" : {
+                "Request Example" : {
+                  "description" : "Example of adding a new item.",
+                  "value" : {
+                    "value" : "a new item"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses" : {
+          "201" : {
+            "description" : "On success, the HTTP return value is 201.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Item"
+                }
+              },
+              "application/xml" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Item"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/qcbin/v2/rest/domains/{domain}/projects/{project}/customization/used-lists/{list-id}/items/{item-id}" : {
+      "put" : {
+        "tags" : [ "UsedList" ],
+        "summary" : "Rename an item",
+        "description" : "Renames an item and retrieves all item properties. On success, the HTTP return value is 200. <br />On success, returns the full data of the updated item in an XML/JSON string compliant with the Item schema.",
+        "operationId" : "renameItem",
+        "parameters" : [ {
+          "name" : "list-id",
+          "in" : "path",
+          "description" : "List ID.",
+          "required" : true,
+          "schema" : {
+            "type" : "integer",
+            "format" : "int32"
+          }
+        }, {
+          "name" : "item-id",
+          "in" : "path",
+          "description" : "Item ID.",
+          "required" : true,
+          "schema" : {
+            "type" : "integer",
+            "format" : "int32"
+          }
+        } ],
+        "requestBody" : {
+          "description" : "To rename an item or sub item, PUT an XML/JSON string compliant with the Item schema.",
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/Item"
+              },
+              "examples" : {
+                "Request Example" : {
+                  "description" : "Example of renaming an item or sub item.",
+                  "value" : {
+                    "value" : "another item value"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses" : {
+          "200" : {
+            "description" : "On success, the HTTP return value is 200.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Item"
+                }
+              },
+              "application/xml" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Item"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post" : {
+        "tags" : [ "UsedList" ],
+        "summary" : "Add a sub-item to an item of a list",
+        "description" : "Adds a sub-item to an item and retrieves the item properties.",
+        "operationId" : "addSubItem",
+        "parameters" : [ {
+          "name" : "list-id",
+          "in" : "path",
+          "description" : "List ID.",
+          "required" : true,
+          "schema" : {
+            "type" : "integer",
+            "format" : "int32"
+          }
+        }, {
+          "name" : "item-id",
+          "in" : "path",
+          "description" : "Item ID.",
+          "required" : true,
+          "schema" : {
+            "type" : "integer",
+            "format" : "int32"
+          }
+        } ],
+        "requestBody" : {
+          "description" : "To add a new sub item, POST an XML/JSON string compliant with the Item schema.",
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/Item"
+              },
+              "examples" : {
+                "Request Example" : {
+                  "description" : "Example of adding a new sub item.",
+                  "value" : {
+                    "value" : "a sub item"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses" : {
+          "201" : {
+            "description" : "On success, the HTTP return value is 201.",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Item"
+                }
+              },
+              "application/xml" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Item"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete" : {
+        "tags" : [ "UsedList" ],
+        "summary" : "Delete an item by item ID",
+        "description" : "Deletes the specified item. On success, the HTTP return value is 200.",
+        "operationId" : "deleteItem",
+        "parameters" : [ {
+          "name" : "list-id",
+          "in" : "path",
+          "description" : "List ID.",
+          "required" : true,
+          "schema" : {
+            "type" : "integer",
+            "format" : "int32"
+          }
+        }, {
+          "name" : "item-id",
+          "in" : "path",
+          "description" : "Item ID.",
+          "required" : true,
+          "schema" : {
+            "type" : "integer",
+            "format" : "int32"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "On success, the HTTP return value is 200.",
+            "content" : {
+              "application/json" : { },
+              "application/xml" : { }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components" : {
+    "schemas" : {
+      "AuthenticationInfo" : {
+        "type" : "object",
+        "properties" : {
+          "username" : {
+            "type" : "string",
+            "xml" : {
+              "name" : "Username"
+            }
+          }
+        },
+        "xml" : {
+          "name" : "AuthenticationInfo"
+        }
+      },
+      "Captcha" : {
+        "type" : "object",
+        "properties" : {
+          "ck" : {
+            "type" : "string",
+            "description" : "Token for subsequent verification."
+          },
+          "captchaAnswer" : {
+            "type" : "string",
+            "xml" : {
+              "name" : "captcha-answer"
+            }
+          }
+        }
+      },
+      "Item" : {
+        "type" : "object",
+        "properties" : {
+          "id" : {
+            "type" : "integer",
+            "description" : "The item id.",
+            "format" : "int32"
+          },
+          "logicalName" : {
+            "type" : "string",
+            "description" : "The item logical name."
+          },
+          "value" : {
+            "type" : "string",
+            "description" : "The item value."
+          },
+          "items" : {
+            "type" : "array",
+            "description" : "An item can contain sub items (or values) that you can enter in a project entity field..",
+            "items" : {
+              "$ref" : "#/components/schemas/Item"
+            }
+          }
+        },
+        "description" : "A list contains items (or values) that you can enter in a project entity field.",
+        "xml" : {
+          "name" : "item"
+        }
+      },
+      "CustomizationList" : {
+        "type" : "object",
+        "properties" : {
+          "name" : {
+            "type" : "string",
+            "description" : "The list name."
+          },
+          "id" : {
+            "type" : "integer",
+            "description" : "The list id.",
+            "format" : "int32"
+          },
+          "logicalName" : {
+            "type" : "string",
+            "description" : "The list logical name."
+          },
+          "items" : {
+            "type" : "array",
+            "description" : "A list can contain several levels of sub-items.",
+            "items" : {
+              "$ref" : "#/components/schemas/Item"
+            }
+          }
+        },
+        "description" : "A field list contains values that users can enter in system fields or user-defined fields. ",
+        "xml" : {
+          "name" : "list"
+        }
+      },
+      "CustomizationLists" : {
+        "type" : "object",
+        "properties" : {
+          "lists" : {
+            "type" : "array",
+            "description" : "Customize field lists.",
+            "items" : {
+              "$ref" : "#/components/schemas/CustomizationList"
+            }
+          },
+          "totalCount" : {
+            "type" : "integer",
+            "description" : "The total count of Customize field lists.",
+            "format" : "int32"
+          }
+        },
+        "description" : "Customize field lists. ",
+        "xml" : {
+          "name" : "lists"
+        }
+      },
+      "PurgeVCHistoriesEntity" : {
+        "type" : "object",
+        "properties" : {
+          "purgeMode" : {
+            "type" : "string",
+            "description" : "Valid value is \"date\" or \"version\".<br/>\"date\" means versioning records that are earlier than the specified date are purged. It keeps at least one versioning record.<br/>\"version\" means the latest specified numbers of versions are kept, with all previous versioning records purged."
+          },
+          "offSet" : {
+            "type" : "string",
+            "description" : "If purge mode is \"date\", specify the date in the format of YYYY-MM-DD. For example, 2023-12-05.<br/>If purge mode is \"version\", specify the number of the latest versions you want to keep. For example, 3."
+          }
+        },
+        "description" : "The incoming parameters.",
+        "xml" : {
+          "name" : "PurgeVCHistory"
+        }
+      },
+      "AuthenticationInfoWrapper" : {
+        "type" : "object",
+        "properties" : {
+          "AuthenticationInfo" : {
+            "$ref" : "#/components/schemas/AuthenticationInfo"
+          }
+        }
+      },
+      "AuthenticationDataWrapper" : {
+        "type" : "object",
+        "properties" : {
+          "alm-authenticate" : {
+            "$ref" : "#/components/schemas/AuthenticationData"
+          }
+        }
+      },
+      "AuthenticationData" : {
+        "type" : "object",
+        "properties" : {
+          "user" : {
+            "type" : "string",
+            "description" : "user"
+          },
+          "password" : {
+            "type" : "string",
+            "description" : "password"
+          }
+        },
+        "description" : "Log in request",
+        "xml" : {
+          "name" : "alm-authenticate"
+        }
+      },
+      "AuthenticationApiKey" : {
+        "type" : "object",
+        "properties" : {
+          "Username" : {
+            "type" : "string",
+            "description" : "username"
+          }
+        },
+        "description" : "Authentication info",
+        "xml" : {
+          "name" : "AuthenticationInfo"
+        }
+      }
+    }
+  }
+}

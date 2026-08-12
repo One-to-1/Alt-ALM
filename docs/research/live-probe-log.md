@@ -80,22 +80,90 @@ to the sandbox.
 **Entity envelope (JSON):** `GET …/defects?page-size=1` → 200 with top-level keys
 `entities`, `TotalResults` (= 0; project empty).
 
+## Probe 3 — Swagger/OpenAPI discovery + resource inventory (`scripts/probe/probe-swagger.ps1`, 2026-08-12)
+
+**Server version SOLVED:** `GET /qcbin/v2/sa/api/site-version` → 200 with
+`{"site-version":{"full-version":"20.0 (Build 20.00.0.143)", "external-version":26.1, …}}`.
+**The sandbox is ALM 26.1** (marketing version; the current release, GA 2026-04). The `sa/version`
+"SiteVersion 20.0" seen in probe 2 is the internal numbering of the same thing.
+
+**Swagger/OpenAPI (24.1+ per-instance docs) — found:**
+
+- `GET /qcbin/api-doc/v2/` → 200 HTML shell referencing spec at **`/qcbin/api-doc/v2/qc.json`**
+  → 200, 32.8 KB, Swagger 2.0, **14 operations**. It documents only the *additions*: list-item
+  writes (`POST …/customization/used-lists/{list-id}/items`, `PUT`/`POST`/`DELETE` on
+  `…/items/{item-id}`), `DELETE …/{entity-name}/versioningHistory` (purge-versioning),
+  `GET /qcbin/v2/rest/is-authenticated`, and the canonical auth endpoints
+  (`alm-authenticate`, `oauth2/login`, `site-session` PUT/POST, `logout`).
+- `GET /qcbin/api-doc/sa/v2/qc.json` → 200, 564 KB, **178 operations** — the full Site Admin API
+  (`/qcbin/v2/sa/api/…`): site-users and project-users CRUD, group membership, site-params
+  GET/POST/PUT/DELETE, site audits, permissions/roles, extensions, license usage, project
+  create/copy/export/maintenance, site-connections, `run-query` (raw SQL — **risk-register only**,
+  out of mainline scope by hard constraint).
+- `GET /qcbin/api-doc/` (root) → 403.
+
+**`GET /qcbin/rest/resource-list` → 200 JSON — the authoritative per-instance endpoint inventory:
+319 resource groups, 1,111 operations**, each with path, HTTP method, deprecation flag, and
+media types (incl. an `application/json;schema=alm-web` variant). Fixture:
+`resource-list-site.json`. Project-scoped `…/projects/{p}/resource-list` → 404 (site-level only).
+
+**Gap-list findings from the inventory** (caveat: *presence in resource-list ≠ verified working
+writes* — official docs say undocumented = unsupported; each of these stays UNVERIFIED until the
+write-probe round):
+
+| Previously believed | Inventory says |
+|---|---|
+| `design-steps` documented GET-only | **POST/PUT/DELETE on collection + by-id, plus `design-steps/copy`** |
+| No REST surface for test parameters | **`step-parameters` full CRUD** — standalone and nested under `design-steps/{id}`, `runs/{id}`, `test-configs/{id}`, `test-instances/{id}` |
+| `requirement-coverages` POST contested | **POST/PUT/DELETE present** (+ `test-config-coverages`, `test-criterion-coverages` full CRUD) |
+| Requirement↔requirement traceability: no REST | **`req-traces` full CRUD** |
+| Milestones: no REST | **`milestones` full CRUD** (+ `/audits`, attachments, lock) |
+| Hosts: no REST | **`bv-hosts` + `host-groups` full CRUD**, `host-in-group` GET |
+| Entity history/audit read: no REST | **`GET …/{entity}/{id}/audits` on 24 entity types** (defects, requirements, tests, runs, test-instances, …) + project-level `GET …/audits` |
+| Send-by-email server-side UI-only | **`POST …/{entity}/{id}/mail` on 19 entity types** |
+| `test-executions` XML-only, unclear | **full CRUD present** (dispatch vs. ingest semantics still unknown) |
+| — | `requirement-target-releases` CRUD (req↔release assignment entity) |
+| Favorites REST exists | Confirmed: `favorites` + `favorite-folders` CRUD |
+
+**Still zero hits in the inventory (gaps confirmed):** `timeslot`, `librar*` (libraries),
+`baseline`, `alert`, follow-up flags, `purge` (runs). These remain OTA-fallback candidates.
+
+**Site Admin API access level:** all three SA probes returned 200 with our API key —
+`site-version`, `user-profile`, `permissions`. The key's user holds SA role
+**`Customer Admin` (role-id 2)** → SA API is fully usable, so **sandbox dummy-user creation is
+automatable** (`POST /qcbin/v2/sa/api/site-users`, `POST …/domains/{d}/projects/{p}/users`).
+The `customers/*` endpoint family and "Customer Admin" role naming indicate a **SaaS-flavored
+deployment**.
+
+**Misc:** `GET /qcbin/v2/rest/is-authenticated` → 200 JSON
+`{"AuthenticationInfo":{"Username":"…"}}`. Core `GET /qcbin/rest/is-authenticated` with
+`Accept: application/json` → **406** — the Core variant is XML-only; use the v2 endpoint for JSON
+session checks.
+
 ## Fixtures captured (redacted; under `tests/fixtures/`)
 
 - `customization-fields-<entity>.json` × 15
 - `customization-used-lists.json`, `customization-lists.json`
 - `customization-requirement-types.txt`
+- `api-doc-v2-openapi.json` + `api-doc-v2-paths.txt` (project-API Swagger, 24.1+ additions)
+- `api-doc-sa-v2-openapi.json` + `api-doc-sa-v2-paths.txt` (Site Admin Swagger, 178 ops)
+- `resource-list-site.json` (full endpoint inventory, 1,111 ops)
 
 Redaction = host/domain/project/key strings replaced with `REDACTED` before write. User data and
 entity data are not captured.
 
 ## Open items for the next probe round
 
-1. Map `SiteVersion 20.0 (20.00.0.143)` → marketing version via the lineage research.
+1. ~~Map `SiteVersion 20.0 (20.00.0.143)` → marketing version~~ **DONE: ALM 26.1** (probe 3).
 2. Is `site-session` required after `oauth2/login`, or fully redundant? (Skip it, observe.)
 3. XSRF: confirm the `X-XSRF-TOKEN` header requirement on the first WRITE probe (sandbox write —
    only after explicit user confirmation of the sandbox project).
 4. Rich-text round-trip fidelity (the big one) — needs a write probe.
 5. Whether `Accept: application/json` works on every collection or only some (observed: yes on all
-   probed so far).
+   probed so far; exception found: Core `is-authenticated` is 406/XML-only — use v2).
 6. Booleans: inspect saved field fixtures for how yes/no fields are typed.
+7. Write-probe every "inventory says yes" row above (design-steps POST, step-parameters,
+   req-traces, requirement-coverages POST, milestones, mail) — presence ≠ behaviour.
+8. `test-executions` semantics: what does POST actually do (dispatch? record?).
+9. Mine `api-doc-sa-v2-openapi.json` + `resource-list-site.json` fixtures further during synthesis
+   (request/response schemas, query params per endpoint — all offline, no probes needed).

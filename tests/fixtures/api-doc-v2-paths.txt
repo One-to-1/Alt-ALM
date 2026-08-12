@@ -1,0 +1,14 @@
+POST    /qcbin/authentication-point/alm-authenticate
+POST    /qcbin/authentication-point/logout
+GET     /qcbin/rest/is-authenticated
+POST    /qcbin/rest/oauth2/login
+PUT     /qcbin/rest/site-session
+POST    /qcbin/rest/site-session
+DELETE  /qcbin/v2/rest/domains/{domain}/projects/{project}/{entity-name}/versioningHistory
+GET     /qcbin/v2/rest/domains/{domain}/projects/{project}/customization/used-lists
+GET     /qcbin/v2/rest/domains/{domain}/projects/{project}/customization/used-lists/{list-id}
+POST    /qcbin/v2/rest/domains/{domain}/projects/{project}/customization/used-lists/{list-id}/items
+PUT     /qcbin/v2/rest/domains/{domain}/projects/{project}/customization/used-lists/{list-id}/items/{item-id}
+POST    /qcbin/v2/rest/domains/{domain}/projects/{project}/customization/used-lists/{list-id}/items/{item-id}
+DELETE  /qcbin/v2/rest/domains/{domain}/projects/{project}/customization/used-lists/{list-id}/items/{item-id}
+GET     /qcbin/v2/rest/is-authenticated
