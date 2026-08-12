@@ -1,7 +1,44 @@
 # ADR 0003 — OTA/COM fallback isolated in an optional Windows sidecar
 
-- Status: Accepted
+- Status: **Accepted — and validated by a live spike, with a material caveat (see addendum)**
 - Date: 2026-08-12
+
+## ⚠️ Addendum, 2026-08-12 (post-spike) — the sidecar has no reachable target today
+
+A live OTA spike ran after this ADR was accepted (`live-probe-log.md`, **Probe 7**). Outcome:
+
+> **OTA cannot connect to our ALM 26.1 SaaS instance.** The client half works — OTA is 32-bit only,
+> and the version-matched 26.1 client was registered *per-user without admin rights*, exposing
+> `InitConnectionWithApiKeyEx` and the cookie/token entry points. The blocker is the server: the OTA
+> transport endpoint `/qcbin/servlet/tdservlet/TdServlet` **302-redirects to the SaaS SSO front door**
+> (`/authentication-point/discovery.jsp`), and the OTA client cannot negotiate that redirect — it
+> reports "Invalid server response". The endpoint is alive (HTTP 200 to GET and POST from an
+> authenticated REST session), so OTA is not disabled; the client simply cannot carry a session
+> through SSO. Every documented bridge failed: `InitConnectionWithApiKeyEx`,
+> `InitConnectionWithCookies(Ex)` across four cookie encodings, `ApplyCookie` + `InitConnectionEx`,
+> and the authentication-token route.
+
+**This does not reverse the decision — it vindicates it.** Isolating OTA in an *optional,
+capability-flagged* sidecar rather than embedding it in the mainline is precisely why this discovery
+costs us nothing architecturally. The consequences are:
+
+1. **The capability-flag design is load-bearing, not theoretical.** The mainline MUST be fully
+   functional with the bridge absent, because that is the actual state of the current target.
+2. **Do not schedule bridge implementation.** The three gaps below (test-parameter definition, BPT,
+   similar defects) have **no working route on this deployment** — REST cannot do them and OTA cannot
+   be reached. They must be scoped out, not deferred to a bridge that has nothing to connect to.
+3. **The failure is deployment-specific, not universal.** An **on-prem** or non-SSO-fronted instance
+   would very likely work, since the client half is fully functional locally. Revisit this ADR if
+   such an instance becomes available.
+4. **Still `UNVERIFIED`**: whether a SaaS-side site parameter governs OTA access — `GET
+   /v2/sa/api/site-params` returned **403** even with our Customer Admin key, so it could not be
+   inspected.
+5. **Environment constraints confirmed for any future bridge**: it must run as a **32-bit host
+   process**, against a **version-matched** client, with the **type library registered separately**
+   (a stale typelib resolves names against the new DLL and fails `TYPE_E_ELEMENTNOTFOUND`).
+
+The language decision below (.NET vs Python + pywin32) remains **deferred** — there is now no
+reachable target against which to evaluate it.
 
 ## Context
 

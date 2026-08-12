@@ -106,9 +106,16 @@ every conflict**), [alm-api-reference.md](docs/research/alm-api-reference.md),
 - **Verified working**: design-steps CRUD, requirement-coverages, req-traces (requirement↔requirement
   traceability), defect-links, milestones (parented under a **release**), release-cycle date
   validation, Site Admin user seeding (the API key holds Customer Admin).
-- **Genuinely unreachable**: step-parameters *definition* (OTA candidate), BPT/components
-  (license-gated 403), timeslots, libraries/baselines, alerts, follow-up flags, purge-runs. Audit
-  history is **partial** — only some field changes are recorded.
+- **Genuinely unreachable**: step-parameters *definition*, BPT/components (license-gated 403),
+  timeslots, libraries/baselines, alerts, follow-up flags, purge-runs. Audit history is **partial** —
+  only some field changes are recorded.
+- **⚠️ OTA/COM does not work against this sandbox** (probe 7). The client side is fine — OTA is
+  **32-bit only**, and the 26.1 client is registered *per-user* on this machine
+  (`%LOCALAPPDATA%\AltALM\ota-client-26.1`) — but the SaaS server 302-redirects the OTA transport
+  endpoint to its SSO front door, which the OTA client cannot negotiate ("Invalid server response").
+  Every documented bridge (API-key, cookie, token) failed. **Consequence: the ~23 OTA-only features
+  and the test-parameter gap have no implementation path on this deployment — do not plan around an
+  OTA fallback here.** An on-prem/non-SSO instance would likely work; this is not a universal verdict.
 - **58% of the stock UI is reachable** via documented REST (feasibility matrix); 23 features are
   OTA-only, 21 are honest impossibilities.
 

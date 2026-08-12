@@ -249,6 +249,79 @@ Cleanup CLEAN (all DELETEs 200 incl. Fast_Runs; orphan sweep zero, all 3 session
   license/permission-gated); `GET /business-components` → **404** (absent). BPT remains
   effectively out of REST reach here → OTA-fallback candidate.
 
+## Probe 7 — OTA/COM spike, 2026-08-12 (`scripts/probe/probe-ota-{1,2,3}.ps1`; READ-ONLY, zero records created)
+
+Purpose: settle whether the OTA/COM fallback — on which **23 feasibility-matrix features and the
+step-parameter generator gap depend** — actually works against this instance. User supplied
+`TDConnect/` clients (24.1 / 25.1 / 26.1 CE SAAS, git-ignored).
+
+**HEADLINE: OTA is NOT usable against this SaaS instance.** The client works perfectly; the *server*
+front door refuses the OTA handshake. Details below, because the distinction matters for on-prem.
+
+**Client-side — everything VERIFIED WORKING:**
+
+- **OTA is 32-bit only.** `New-Object -ComObject TDApiOle80.TDConnection` from 64-bit PowerShell 7
+  fails `0x80040154 REGDB_E_CLASSNOTREG`; the same call from
+  `C:\Windows\SysWOW64\WindowsPowerShell\v1.0\powershell.exe` succeeds. Any OTA bridge must run in a
+  **32-bit host process**.
+- **The machine-wide registration was stale**: `HP ALM Platform 12.53 (2017)` at
+  `C:\Program Files (x86)\Common Files\Mercury Interactive\...\OTAClient.dll`. A 12.53 client against
+  a 26.1 server returns **"Invalid server response"** on `InitConnectionEx`.
+- **`TDConnect_26.1CE_SAAS.exe` needs elevation/GUI** — a silent install (`/s /v/qn`) was not
+  honoured; it extracted its payload and blocked on a `QCConnectivity` dialog. We are not admin.
+- **Workaround VERIFIED — the 26.1 client can be registered per-user with no admin rights:** copy the
+  extracted payload (`OTAClient.dll`, `tdclient.dll`, `tdclntui.dll`, `WebClient.dll`, v20.00.0.174)
+  to a user-writable folder and write the COM keys under `HKCU\Software\Classes`. **Two traps:**
+  (1) the keys **must be written from a 32-bit process** — WOW64 redirects them to
+  `HKCU\Software\Classes\Wow6432Node`, and keys written from a 64-bit process are invisible to the
+  32-bit COM host (this silently kept the old 12.53 DLL loading); (2) `regsvr32 /i:user` fails
+  (exit 4, no `DllInstall` export), and **the type library must be registered separately** via
+  `RegisterTypeLibForUser` — otherwise the stale 12.53 typelib resolves method names against the new
+  DLL and every call fails `0x8002802B TYPE_E_ELEMENTNOTFOUND`.
+- **The 26.1 client exposes modern auth entry points** (absent from 12.53), confirming the research
+  finding: `InitConnectionWithApiKey`, **`InitConnectionWithApiKeyEx`**, `InitConnectionWithCookies`,
+  `InitConnectionWithCookiesEx`, `ApplyCookie`, `GetAuthenticationToken`,
+  `LoginWithAuthenticationToken`, `LoginSessionId`.
+
+**Server-side — the blocker, ROOT-CAUSED:**
+
+- `GET /qcbin/servlet/tdservlet/TdServlet` **unauthenticated → 302** to
+  `/authentication-point/discovery.jsp?redirect_uri=...` (the SaaS SSO front door). The OTA client
+  performs its own HTTP handshake, receives an HTML redirect where it expects its binary protocol,
+  and reports **"Invalid server response"**.
+- **The endpoint itself is alive**: with an authenticated REST session the same URL returns
+  **HTTP 200 to both GET and POST**. So OTA transport is *not* disabled on this deployment — the
+  client simply cannot carry a session through the SSO redirect.
+- **Every documented bridge was tried and failed** (all with a valid REST session in hand):
+  `InitConnectionWithApiKeyEx(url, clientId, secret)` → "Invalid server response";
+  `InitConnectionWithCookies`/`...Ex` across 4 cookie encodings (LWSSO only, LWSSO+QCSession, all
+  five cookies, bare LWSSO value) → connection never establishes;
+  `ApplyCookie(...)` **is accepted** but a following `InitConnectionEx` still fails identically;
+  `GetAuthenticationToken` → `0x800403FD`. Subsequent `Connect()` always → "OTA server is not
+  connected."
+- `GET /v2/sa/api/site-params` → **403** with our Customer Admin key, so the OTA-related site
+  parameters (e.g. a reported `OTA_ACCESS_APIKEY_ONLY`) could **not** be inspected — `UNVERIFIED`
+  whether a server-side setting would change this.
+
+**Conclusions (decision-grade):**
+
+1. **On this SaaS instance, OTA is a dead end with the credentials we hold.** The 23 OTA-marked
+   features in the feasibility matrix have **no working fallback here**, and Q18 (defining a test
+   parameter) stays unresolved — REST cannot do it and OTA cannot connect.
+2. **This does NOT prove OTA is dead generally.** The failure is entirely in the SSO handshake; an
+   **on-prem** instance without the SSO front door would very likely work, since the client half is
+   fully functional locally. Anyone re-testing needs: a real interactive username/password, an
+   on-prem target, or a SaaS-admin site-parameter change.
+3. **ADR 0003's OTA sidecar has no reachable target on this deployment** — it must stay strictly
+   optional and capability-flagged, exactly as designed, and must not be scheduled as the answer to
+   any gap until a reachable instance exists.
+
+**Environment left behind (intentional, documented, reversible):** the 26.1 OTA client is registered
+**per-user** and now shadows the broken machine-wide 12.53 client for this user only. It is strictly
+newer than what it shadows and is required for any future OTA attempt. Files:
+`%LOCALAPPDATA%\AltALM\ota-client-26.1\`. To undo, from a **32-bit** PowerShell:
+`Remove-Item -Recurse 'HKCU:\Software\Classes\CLSID\{C5CBD7B2-490C-45F5-8C40-B8C3D108E6D7}','HKCU:\Software\Classes\TDApiOle80.TDConnection'`
+
 ## Fixtures captured (redacted; under `tests/fixtures/`)
 
 - `customization-fields-<entity>.json` × 15

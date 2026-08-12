@@ -213,9 +213,25 @@ All five skills authored under `.claude/skills/` (verified content only, provena
 `alm-data-gen` (192), `alt-alm-ui` (163, lead-authored). CLAUDE.md rewritten with the durable
 verified-facts section, the design decisions, the sandbox designation, and the TDConnect note.
 
-**TDConnect is now available** at `TDConnect/` (git-ignored): `TDConnect_26.1CE_SAAS.exe` matches
-the sandbox version, plus 24.1 and 25.1. This unblocks the OTA-dependent open questions (Q18
-step-parameter definition, BPT) whenever the OTA bridge work starts.
+**TDConnect is available** at `TDConnect/` (git-ignored): 24.1 / 25.1 / 26.1 CE SAAS.
+
+## OTA spike — DONE 2026-08-12, RESULT NEGATIVE (live-probe-log.md, Probe 7)
+
+**OTA/COM cannot connect to this SaaS sandbox.** Client side is fully working (32-bit only; the 26.1
+client is registered per-user at `%LOCALAPPDATA%\AltALM\ota-client-26.1` with no admin rights, and
+exposes `InitConnectionWithApiKeyEx` + cookie/token entry points). The server blocks it: the OTA
+transport endpoint 302-redirects to the SaaS SSO front door, which the OTA client cannot negotiate.
+Every documented bridge failed (API-key, 4 cookie encodings, ApplyCookie, auth-token). The endpoint
+is alive (HTTP 200 from an authenticated REST session), so OTA is not disabled — the client just
+cannot carry a session through SSO.
+
+**Consequences:** the ~23 OTA-marked features in the feasibility matrix and Q18 (test-parameter
+definition) have **no implementation path on this deployment**; scope them out rather than deferring
+them to a bridge with nothing to connect to. ADR 0003 carries a full addendum — the optional,
+capability-flagged sidecar design is *vindicated* (the mainline is unaffected), but bridge
+implementation must not be scheduled. **Not a universal verdict**: an on-prem/non-SSO instance would
+likely work. `UNVERIFIED`: whether a SaaS site parameter governs OTA access (`GET
+/v2/sa/api/site-params` → 403 even with Customer Admin).
 
 ## Next actions (in order)
 
@@ -225,9 +241,8 @@ skeleton (Java 21 + Spring Boot per ADR 0002), auth/session manager, metadata se
 fixture-based test harness over the existing redacted `tests/fixtures/`.
 
 Optional before/alongside P0:
-- **OTA spike** now that TDConnect is available — settle Q18 (is there any path to *define* a test
-  parameter?) and whether BPT is reachable via COM despite the REST 403. This is the single
-  highest-value deferred probe; it decides whether parameterized tests are ever in scope.
+- ~~OTA spike~~ **DONE — negative result, see above.** No further OTA work until a non-SSO instance
+  exists.
 - Remaining deferred probes are tracked as **Q1–Q31** in
   [../plan/risks-and-open-questions.md](../plan/risks-and-open-questions.md), each already mapped to
   the phase that needs its answer; risks are R1–R16 in the same file.

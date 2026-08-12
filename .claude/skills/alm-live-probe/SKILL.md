@@ -211,7 +211,38 @@ adds XML entity building and hand-built multipart).
 4. **Label anything not directly observed as `UNVERIFIED`**, with the specific experiment that would
    settle it. Never upgrade an inference to a verified claim without an actual probe run backing it.
 
-## 6. Currently open experiments
+## 6. OTA / COM probing (read this before attempting any OTA work)
+
+**On our SaaS sandbox, OTA does not connect — do not spend time re-discovering this** (probe 7).
+The server 302-redirects the OTA transport endpoint `/qcbin/servlet/tdservlet/TdServlet` to its SSO
+front door (`/authentication-point/discovery.jsp`); the OTA client cannot negotiate that and reports
+**"Invalid server response"**. Every documented bridge was tried and failed:
+`InitConnectionWithApiKeyEx`, `InitConnectionWithCookies(Ex)` across four cookie encodings,
+`ApplyCookie` + `InitConnectionEx`, and `GetAuthenticationToken`/`LoginWithAuthenticationToken`.
+The endpoint itself is alive (HTTP 200 to GET and POST from an authenticated REST session), so OTA
+is not disabled server-side — the client just cannot carry a session through SSO. An **on-prem /
+non-SSO** instance would likely work; retest there, not here.
+
+If you do get a reachable instance, the client-side setup is solved — reuse it:
+
+| Constraint | What to do |
+|---|---|
+| **OTA is 32-bit only** | 64-bit instantiation fails `0x80040154 REGDB_E_CLASSNOTREG`. Run `C:\Windows\SysWOW64\WindowsPowerShell\v1.0\powershell.exe`. |
+| **Client version must match the server** | A 12.53 client against a 26.1 server returns "Invalid server response". Check the registered DLL's `FileVersion` before blaming the server. |
+| **No admin? Register per-user** | Copy the client payload to a user-writable folder and write `HKCU\Software\Classes\CLSID\{clsid}\InprocServer32` (+ `ProgID`, + the `TDApiOle80.TDConnection\CLSID` mapping). |
+| **WOW64 registry trap** | Those keys **must be written from a 32-bit process** — they redirect to `Wow6432Node`. Keys written from 64-bit are invisible to the 32-bit COM host and the old DLL silently keeps loading. Verify with `(Get-Process -Id $PID).Modules`. |
+| **Type library must be registered too** | `regsvr32 /i:user` fails (no `DllInstall`). Use `LoadTypeLibEx(dll, REGKIND_NONE)` + `RegisterTypeLibForUser`. A stale typelib resolves names against the new DLL and every call fails `0x8002802B TYPE_E_ELEMENTNOTFOUND`. |
+| **Installer needs elevation** | `TDConnect_*.exe` ignores `/s /v/qn` and blocks on a GUI dialog. Extract its payload instead and register per-user. |
+
+Working scripts: `scripts/probe/probe-ota-{1,2,3}.ps1`. Undo the per-user registration from a 32-bit
+shell: `Remove-Item -Recurse 'HKCU:\Software\Classes\CLSID\{C5CBD7B2-490C-45F5-8C40-B8C3D108E6D7}','HKCU:\Software\Classes\TDApiOle80.TDConnection'`
+
+**Windows PowerShell 5.1 encoding trap** (the 32-bit host is 5.1, not PS7): it reads UTF-8-without-BOM
+as ANSI, so any non-ASCII character (em dashes especially) becomes mojibake that unbalances string
+literals and produces a cascade of nonsense parse errors. Write probe scripts **ASCII-only and save
+with a BOM**.
+
+## 7. Currently open experiments
 
 See `docs/plan/risks-and-open-questions.md` (Q1–Q31) for the live list of open questions and their
 priority — don't restate them here; that file is the source of truth for what's still unresolved.

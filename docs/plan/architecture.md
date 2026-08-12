@@ -163,6 +163,20 @@ in data-model §2.11 and are restated in the phasing skeleton (`_lead-decision-b
 Detailed in ADR 0003. Owns exactly three verified-genuine REST gaps (test-parameter *definition*,
 BPT components, similar-defects) and nothing else — it is not a general escape hatch for convenience.
 
+> **⚠️ UPDATE 2026-08-12 — sidecar has no reachable target on this deployment.** The OTA/COM spike
+> (`live-probe-log.md` Probe 7) confirmed the sidecar's downstream target — `/qcbin/servlet/tdservlet/
+> TdServlet` — cannot be reached from this SaaS instance: the server's SSO front door 302-redirects the
+> OTA handshake and every documented bridge (`InitConnectionWithApiKeyEx`, `InitConnectionWithCookies
+> (Ex)`, `ApplyCookie`+`InitConnectionEx`, the auth-token route) failed, even though the OTA client
+> itself works correctly (32-bit, per-user-registered 26.1 client — probe 7). This makes the
+> capability-flag design above (`otaBridgeAvailable`) **load-bearing rather than theoretical**: the
+> mainline BFF and SPA MUST be fully functional with the bridge absent, exactly as already designed —
+> today that is not a hypothetical degraded state but the actual, only-working state of this
+> deployment. Building the OTA bridge sidecar should **not be scheduled** until a reachable instance
+> (on-prem or non-SSO) exists to build and test it against; the client-side registration work (per-user
+> COM keys, type-library registration) is proven feasible and documented in probe 7 for whenever that
+> becomes relevant.
+
 ---
 
 ## 3. Data flow walkthroughs
@@ -298,9 +312,10 @@ failure.
 | Timeslots, host/lab scheduling beyond `bv-hosts`/`host-groups` CRUD | Timeslot resources confirmed absent from the 1,111-op resource-list inventory; no REST surface found (api-ref §9) |
 | Libraries and baselines (create/compare/pin) | No REST surface found across two research waves and the write-probe rounds; UI-inventory marks every library/baseline operation NOT-VIA-API (alm-ui-feature-inventory.md; api-ref §9) |
 | Alert rules and follow-up flags | Confirmed absent from the resource-list inventory; zero REST hits (api-ref §9) |
-| Full BPT (Business Process Testing) authoring | `GET /components` → 403 (license/permission-gated) or 404 depending on target; `GET /business-components` → 404. Effectively out of REST reach; the OTA bridge does not cover BPT authoring either — it is scoped to the three named gaps in ADR 0003, not a general BPT client (data-model §2.9, `_lead-decision-brief.md` D3) |
+| Full BPT (Business Process Testing) authoring | `GET /components` → 403 (license/permission-gated) or 404 depending on target; `GET /business-components` → 404. Effectively out of REST reach; the OTA bridge does not cover BPT authoring either — it is scoped to the three named gaps in ADR 0003, not a general BPT client (data-model §2.9, `_lead-decision-brief.md` D3). **As of 2026-08-12, the BPT-authoring OTA candidate is additionally blocked: OTA itself cannot reach this SaaS deployment (`live-probe-log.md` Probe 7)** |
 | Dashboard/graph **authoring** (Alt-ALM will read existing dashboards) | Report/graph design is desktop-UI/client-side only; no REST creation surface. Alt-ALM's fallback is rendering its own charts client-side from raw entity queries, which is a different feature, not dashboard-authoring parity (alm-ui-feature-inventory.md) |
-| Test-parameter *definition* without the OTA bridge | Every REST shape fails with `"Test parameter does not exist"` — the underlying "Test parameter" object has no REST creation path; genuinely OTA-only (api-ref §9, data-model §6). With the bridge absent, the generator skips parameter definition per its capability flag (D6) |
+| Test-parameter *definition* without the OTA bridge | Every REST shape fails with `"Test parameter does not exist"` — the underlying "Test parameter" object has no REST creation path; genuinely OTA-only (api-ref §9, data-model §6). With the bridge absent, the generator skips parameter definition per its capability flag (D6). **As of 2026-08-12, the OTA fallback itself is confirmed unreachable on this SaaS deployment (`live-probe-log.md` Probe 7)** — this is not merely OTA-dependent, it is currently a hard gap with no fallback until an on-prem or non-SSO instance is available |
+| All 23 `OTA`-verdict features in the feasibility matrix (Baselines, Libraries, Alerts, Timeslots, Follow-up flags, Purge-runs, etc. — see `feasibility-matrix.md`) | As of 2026-08-12, the OTA fallback these verdicts rest on is confirmed unreachable on this SaaS deployment: the server's SSO front door blocks the OTA handshake even though the client half works correctly (`live-probe-log.md` Probe 7). None of these have a working implementation path today; they remain reachable only if an on-prem or non-SSO instance becomes available |
 | PPT scope items, KPIs, Scorecard | No REST surface found; UI-inventory marks these NOT-VIA-API (alm-ui-feature-inventory.md) |
 | Send-by-email (matching ALM's own templated send) | `POST .../{entity}/{id}/mail` body shape is undocumented and failed every probed shape (3 JSON + 1 XML, api-ref §9); Alt-ALM sends its own mail instead of replicating ALM's send-by-email feature |
 | Arbitrary VBScript workflow-script behaviour | REST writes bypass workflow scripts by default (`CLIENT_TYPES_BYPASS_REST_WF`, api-ref §6.8); Alt-ALM's validation layer (§2.2) re-derives metadata-declared constraints only, not custom script logic, which is fundamentally unreachable over REST |

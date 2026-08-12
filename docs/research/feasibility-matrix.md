@@ -29,10 +29,29 @@ the source document was skipped.**
 | `FULL` | Achievable with documented REST, probe-verified or unambiguous docs |
 | `FULL*` | Achievable via REST, but by an indirect/non-obvious route — footnote required |
 | `PARTIAL` | Core works, identified gaps (stated in Notes) |
-| `OTA` | REST-impossible, OTA/COM fallback candidate (OTA support itself often unconfirmed — noted where so) |
+| `OTA` | REST-impossible, OTA/COM fallback candidate — **see callout below: currently unreachable on this deployment [probe7]** |
 | `NO` | Not achievable via any allowed API (documented REST or OTA) — honest gap |
 | `N/A` | Desktop-client concept that doesn't map to Alt-ALM, or a documentation/architectural note rather than a buildable feature |
 | `UNVERIFIED` | Plausible per docs but not probed; the confirming experiment is named |
+
+> **⚠️ UPDATE 2026-08-12 — OTA fallback confirmed unreachable on this deployment [probe7]**
+>
+> The OTA/COM spike (`live-probe-log.md`, Probe 7) settled the question every `OTA`-verdict row below
+> was resting on. Result: **`OTA` now means "REST-impossible; OTA is the only candidate route — but
+> OTA is unreachable on our SaaS sandbox" [probe7]**. The OTA client side works perfectly (32-bit,
+> per-user-registered 26.1 client), but `/qcbin/servlet/tdservlet/TdServlet` 302-redirects
+> unauthenticated requests to the SaaS SSO front door and the OTA client cannot negotiate that
+> redirect — every documented bridge (`InitConnectionWithApiKeyEx`, `InitConnectionWithCookies(Ex)`
+> across 4 cookie encodings, `ApplyCookie`+`InitConnectionEx`, the auth-token route) failed [probe7].
+> The endpoint itself is alive (HTTP 200 via an authenticated REST session), so OTA is not disabled —
+> the client simply cannot carry a session through SSO [probe7].
+>
+> **Practical effect: the 23 rows marked `OTA` below currently have no working implementation path on
+> this deployment.** They remain reachable only if an on-prem or non-SSO instance becomes available —
+> the failure is specific to the SSO-fronted SaaS deployment, and the client half is fully functional
+> locally, so an on-prem instance would very likely work [probe7]. `UNVERIFIED` whether a SaaS-side
+> site parameter would change this (`GET /v2/sa/api/site-params` → 403, could not be inspected)
+> [probe7]. Do not read this as "OTA is impossible" in general.
 
 Evidence citation shorthand: `[probeN]` = `live-probe-log.md` Probe *N*; `[api-ref §x]` =
 `alm-api-reference.md` section *x*; `[data-model §x]` = `alm-data-model.md` section *x*.
@@ -447,6 +466,14 @@ correct in `alm-api-reference.md`:
 
 **"Achievable" (FULL + FULL* + PARTIAL) = 126 of 218 rows (58%).**
 
+**Practical impact of the OTA spike (2026-08-12, `live-probe-log.md` Probe 7):** of the 218 features,
+the 23 `OTA`-verdict rows are currently unimplementable on this deployment (see callout above) — OTA
+is unreachable through the SaaS SSO front door with the credentials and client we hold. The
+genuinely-achievable count on *this instance*, today, is therefore **FULL + FULL* + PARTIAL only —
+the same 126 of 218 rows (58%)** — the `OTA` rows were never counted in "achievable" to begin with, but
+they can no longer be treated as a deferred-but-open path either; they are closed pending an on-prem
+or non-SSO instance [probe7].
+
 ### By module
 
 | Module | Rows | FULL | FULL* | PARTIAL | UNVERIFIED | NO | OTA | N/A |
@@ -509,7 +536,7 @@ test-sets → instances → runs (Fast_Run) → defects → links** — maps to 
 | Test create | FULL | #33 | Root test-folder is project-specific — discover via `parent-id[0]` query at runtime, never hardcode |
 | Design-step create | FULL | #39 | Works, but any free text the generator did not author as deliberate markup should be HTML-entity-encoded before write (sanitizer risk, see below) |
 | `<<<param>>>` tokens in step text | PARTIAL | #45 | **Must be HTML-entity-pre-encoded** (`&lt;&lt;&lt;name&gt;&gt;&gt;`) or the sanitizer mangles them to `<<>>` |
-| `step-parameters` (parameter value records) | **OTA / NO** | #45 note | **Genuine REST-unreachable gap** — no confirmed way to create the underlying "Test parameter" object via REST after 5 attempts. The generator's parameterized-step feature is blocked unless OTA/COM `StepFactory` is used, or the feature is scoped out |
+| `step-parameters` (parameter value records) | **OTA / NO** | #45 note | **Genuine REST-unreachable gap, and the named OTA fallback is now confirmed unavailable on this deployment** [probe7] — no confirmed way to create the underlying "Test parameter" object via REST after 5 attempts, and OTA/COM `StepFactory` cannot connect through this SaaS instance's SSO front door. Parameterized-test data generation is **out of scope for v1 with no fallback** (not merely "OTA-dependent") unless an on-prem/non-SSO instance becomes available |
 | Requirement-coverage links | FULL | #15/#16 | One `test-config-coverages` row auto-creates per link — do not also POST it directly |
 | Test-set / test-set-folder create | FULL | #60 | Root = id 0 "Root" |
 | Test-instance create | FULL | #68 | `cycle-id` = **test-set** id (legacy-naming trap, not a release cycle) |
@@ -524,6 +551,7 @@ test-sets → instances → runs (Fast_Run) → defects → links** — maps to 
 
 **Bottom line for the generator spec**: the full happy-path chain (requirement → release/cycle → test →
 design-step → test-set → instance → Fast_Run → defect → links) is achievable end-to-end via documented
-REST, with one hard, permanent gap (`step-parameters`, i.e. parameterized-test data generation) that
-should be either scoped out of the generator's v1 or explicitly flagged as an OTA-dependent stretch
-feature.
+REST, with one hard gap (`step-parameters`, i.e. parameterized-test data generation) whose named OTA
+fallback is now confirmed unreachable on this deployment [probe7] — it should be scoped out of the
+generator's v1 entirely, not flagged as an OTA-dependent stretch feature, unless an on-prem or
+non-SSO instance becomes available.
