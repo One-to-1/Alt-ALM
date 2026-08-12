@@ -34,13 +34,19 @@ scripts.
 
 - **Documented REST API only.** no direct database access, no scraping the stock web
   client, no undocumented internal endpoints in the mainline design. An undocumented endpoint that
-  unlocks something valuable is a risk-register entry, not an implementation. Can use COM/OTA APIs, i'll provide a tdconnect.exe if needed
+  unlocks something valuable is a risk-register entry, not an implementation. COM/OTA is an allowed
+  fallback: **TDConnect clients are now in `TDConnect/`** (git-ignored) — `TDConnect_26.1CE_SAAS.exe`
+  matches the sandbox; 24.1 and 25.1 also present. OTA is COM/Windows-only and isolated in a sidecar
+  (ADR 0003).
 - **Never commit, print, log, or forward `Secrets/`.** It is git-ignored.
-  `Secrets/ALM_API_credentials.json` holds the ALM credentials and currently contains placeholders
-  only; its schema is provisional until the auth method is settled. Reference it by path.
+  `Secrets/ALM_API_credentials.json` holds **live working credentials** (keys: `alm_adress`,
+  `api_key`, `api_secret`, `domain`, `project`). Reference it by path; read at runtime only; mask
+  host/domain/project/keys/usernames in every output and fixture.
 - **Never write to a live ALM project** unless the user has explicitly designated it a sandbox.
-  Default to read-only probing. The record generator is dry-run by default and must refuse any
-  target not on an explicit allowlist.
+  The project in `Secrets/ALM_API_credentials.json` **was designated a disposable sandbox by the
+  user on 2026-08-12** — writes allowed there, with `ALTALM-*` name prefixes and mandatory cleanup.
+  No other project. The record generator is dry-run by default and must refuse any target not on an
+  explicit allowlist.
 - **Never invent API behaviour.** Unverified claims get labelled `UNVERIFIED` with the experiment
   that would confirm them. A marked unknown is fine; a confident fabrication is not.
 
@@ -58,44 +64,87 @@ scripts.
 
 ## Current status
 
-**Phase: research and planning — not started.**
+**Phase: research and planning — COMPLETE (2026-08-12). Implementation not started; no application
+code exists.**
 
-The research and planning session is driven by
-[docs/prompts/fable-5-research-and-plan.md](docs/prompts/fable-5-research-and-plan.md) — a kickoff
-prompt for a Claude Fable 5 session. It directs that session to research the ALM REST API and stock
-UI exhaustively (fanning out to Sonnet subagents), produce a feature→API feasibility matrix, and
-write the architecture, phased implementation plan, record-generator specification, and test
-strategy. It also directs that session to author the skills listed below and to extend this file
-with what it verifies.
+Six live probe rounds against the sandbox plus 20 subagent research reports produced the research
+corpus; the plan set and ADRs are written. **`docs/research/SESSION-STATE.md` is the resume
+point — read it first.** Next work is phase **P0** of
+[docs/plan/implementation-plan.md](docs/plan/implementation-plan.md).
 
-Nothing below the planning artifacts exists yet. There is no application code.
+Key artifacts: [live-probe-log.md](docs/research/live-probe-log.md) (empirical ground truth — **wins
+every conflict**), [alm-api-reference.md](docs/research/alm-api-reference.md),
+[alm-data-model.md](docs/research/alm-data-model.md),
+[feasibility-matrix.md](docs/research/feasibility-matrix.md) (218 features scored),
+[architecture.md](docs/plan/architecture.md) + `docs/adr/0001–0005`,
+[data-generator-spec.md](docs/plan/data-generator-spec.md),
+[risks-and-open-questions.md](docs/plan/risks-and-open-questions.md) (R1–R16, Q1–Q31).
 
-## Skills (to be authored during the planning session)
+## Verified facts (sandbox = ALM 26.1, SaaS-flavored; depth in `docs/research/`)
 
-- `alm-api` — auth handshake, session/XSRF handling, request envelopes, query syntax, error codes,
-  call recipes. Load this first in any session that touches ALM.
-- `alm-entity-model` — entity relationships, field types, required/read-only rules, creation order,
-  runtime customization discovery.
-- `alm-data-gen` — generator conventions: field-type→strategy matrix, rich-text block grammar and
-  accepted markup subset, distribution defaults, provenance marking, pre-write safety checklist.
-- `alt-alm-ui` — front-end conventions: design tokens, density, metadata-driven form/grid patterns,
-  accessibility.
-- `alm-live-probe` — safe live-instance probing (read-only default, sandbox-only writes, capturing
-  redacted fixtures).
+**Load the `alm-api` skill before any ALM work — these are the headlines only.**
 
-## Known design problems to solve, not assume away
+- **Auth**: `POST /qcbin/rest/oauth2/login` with `{clientId, secret}` sets the full cookie set in one
+  call. `X-XSRF-TOKEN` header required on every non-GET (missing → 401). REST sessions consume **no
+  licence seat**. Use `/qcbin/v2/rest/is-authenticated` for JSON (the Core path is XML-only, 406).
+- **Write hazards (cause real bugs)**: entity-write JSON **field order is load-bearing** — wrong
+  order yields opaque NPE-style 500s, so serialize deterministically. **An HTTP 5xx may still have
+  committed the row** — treat every 5xx write as "unknown outcome, verify by query", never "failed".
+- **Field-type system**: exactly 8 types (String, Memo, Number, Date, DateTime, LookupList,
+  UsersList, Reference). **No Boolean** — Y/N is a LookupList bound to list-id 1. Only 2 multivalue
+  fields exist in the whole model. Metadata is per project — discover roots, lists, and subtypes at
+  runtime, never hardcode.
+- **Runs cannot be created directly.** `POST runs` fails definitively (8 attempts). The only working
+  route is `PUT test-instances/{id}` with a status, which makes the server synthesize a `Fast_Run`
+  (run-steps auto-copy from design steps; the run name is server-generated and not overridable).
+- **Workflow scripts are bypassed on REST writes** by default (`CLIENT_TYPES_BYPASS_REST_WF`) — no
+  server-side validation or auto-population; our BFF must supply both.
+- **Rich text**: memo fields store a full `<html><body>` document and are sanitized/re-formatted —
+  compare canonicalized HTML, never bytes. Embedded images work: hand-built multipart upload with
+  `ref-subtype=1`, then an absolute REST URL or `data:` URI as `<img src>` (bare/relative src is
+  silently stripped). Parameter tokens must be entity-pre-encoded (`&lt;&lt;&lt;name&gt;&gt;&gt;`).
+- **Verified working**: design-steps CRUD, requirement-coverages, req-traces (requirement↔requirement
+  traceability), defect-links, milestones (parented under a **release**), release-cycle date
+  validation, Site Admin user seeding (the API key holds Customer Admin).
+- **Genuinely unreachable**: step-parameters *definition* (OTA candidate), BPT/components
+  (license-gated 403), timeslots, libraries/baselines, alerts, follow-up flags, purge-runs. Audit
+  history is **partial** — only some field changes are recorded.
+- **58% of the stock UI is reachable** via documented REST (feasibility matrix); 23 features are
+  OTA-only, 21 are honest impossibilities.
 
-- A browser almost certainly cannot call `/qcbin` directly — expect CORS plus cookie-based session
-  auth plus XSRF on writes. A backend-for-frontend proxy that owns the ALM session is the likely
-  answer; it needs an ADR either way.
-- ALM field metadata is **per project and customizable**. Forms and grids must render from metadata
-  fetched at runtime, never from hardcoded schemas.
-- Workflow scripts (VBScript) change field behaviour in the stock client in ways the REST API does
-  not expose. Some stock-UI behaviour is genuinely unreachable; record those gaps honestly.
-- Sessions consume licence seats. The session model (shared vs. per-user, pooling, keepalive) is a
-  real architectural decision.
-- Rich-text/memo fidelity through the API is load-bearing for the generator and must be verified by
-  round-trip against a real instance.
+## Skills — authored, in `.claude/skills/`
+
+- `alm-api` — auth, session/XSRF, envelopes, query grammar, error codes, call recipes.
+  **Load first in any session that touches ALM.**
+- `alm-entity-model` — entities, field types, required/read-only rules, creation-order DAG,
+  naming traps, runtime customization discovery.
+- `alm-data-gen` — generator conventions: safety checklist, field-type→strategy matrix, rich-text
+  grammar, provenance marking.
+- `alt-alm-ui` — front-end conventions: metadata-driven form/grid patterns, renderer registry,
+  design tokens, density, accessibility.
+- `alm-live-probe` — safe live probing: read-only default, sandbox-only writes, masking, cleanup.
+
+## Design decisions (see `docs/adr/`)
+
+- **BFF is required**, not optional — browsers cannot call `/qcbin` (CORS + cookie session + XSRF).
+  The BFF is the single enforcement point for the write hazards above (ADR 0001).
+- **Stack: Java 21 + Spring Boot** (BFF) and **React + TypeScript** (SPA); probe scripts stay
+  PowerShell (ADR 0002).
+- **OTA/COM is isolated in an optional Windows-only sidecar** — mainline never touches COM; features
+  degrade behind capability flags when the bridge is absent (ADR 0003).
+- **One service-account API key with pooled sessions**, plus Alt-ALM's own app-level user model; the
+  licence finding retires the seat-consumption concern (ADR 0004).
+- **Metadata-driven rendering** — no hardcoded schemas, list values, or root IDs anywhere (ADR 0005).
+
+## Standing problems (not solved, just honestly scoped)
+
+- Workflow-script bypass means Alt-ALM's own validation layer is the *only* validation — necessarily
+  incomplete against arbitrary VBScript. Permanent, documented limitation.
+- The whole evidence base is **one sandbox, one version**. Re-verify before trusting any probe
+  finding on a different instance, especially on-prem.
+- The sanitizer's allowed-HTML set is deployment-specific — re-verify per target.
+- Fast_Run is a side effect, not a designed API; a future ALM release could change it. Isolate it
+  behind one component.
 
 ## graphify
 

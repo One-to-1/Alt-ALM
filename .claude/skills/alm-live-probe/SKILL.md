@@ -1,0 +1,217 @@
+---
+name: alm-live-probe
+description: Safe, read-only-by-default probing of a live ALM/QC instance — safety rules, masking discipline, the working PowerShell probe-script skeleton, and hard-won gotchas. Load before touching a live ALM instance.
+---
+
+Load `alm-api` first for API behaviour. This skill covers *how to safely talk to the live sandbox*.
+
+## 1. Safety rules (non-negotiable)
+
+- **Read-only by default.** Writes are permitted ONLY against a project the user has explicitly
+  designated a sandbox — currently confirmed for the project referenced in
+  `Secrets/ALM_API_credentials.json` (confirmed 2026-08-12). Never assume any other project/instance is
+  writable. CLAUDE.md hard constraint: the record generator refuses any target not on an explicit
+  allowlist; the same discipline applies to ad-hoc probe scripts.
+- **Never print, log, or commit the contents of `Secrets/`.** Load credentials at runtime; reference the
+  file by path in docs/code, never its values.
+- **Every created record carries an `ALTALM-PROBE-<timestamp>` name prefix**, e.g.
+  `'ALTALM-PROBE-' + (Get-Date -Format 'yyyyMMdd-HHmmss')` — makes orphans identifiable and greppable.
+- **Cleanup runs in a `finally` block, in reverse creation order.** Track every created `{rel; id}` pair
+  in a list as you go; delete last-created-first so parent/child dependencies unwind cleanly.
+- **Orphan sweep after cleanup**: query `?query={name[ALTALM-PROBE*]}` across every collection touched
+  in the session (requirements, test-folders, tests, design-steps, test-set-folders, test-sets,
+  test-instances, runs, milestones, releases, release-cycles, test-executions, defects, …) and delete
+  anything that matches. **Verify the sweep returned zero orphans before declaring the probe done** — a
+  500 that silently committed a row (see `alm-api` §1.2) is exactly the failure mode this catches.
+
+## 2. Masking discipline
+
+Every probe script builds a `maskTerms` list at startup — host, domain, project, API key, API secret,
+and (once discovered) the resolved username — and a `Mask()` helper that regex-replaces each term with
+`REDACTED`:
+
+```powershell
+$maskHost = ([Uri]$base).Host
+$script:maskTerms = [System.Collections.Generic.List[string]]::new()
+foreach ($m in @($maskHost, $c.api_key, $c.api_secret, $c.domain, $c.project)) {
+    if ($m) { $script:maskTerms.Add([string]$m) }
+}
+function Mask([string]$s) {
+    if (-not $s) { return $s }
+    foreach ($m in $script:maskTerms) { $s = $s -replace [regex]::Escape($m), 'REDACTED' }
+    return $s
+}
+```
+
+Add the resolved username to `maskTerms` too, as soon as it's known (it's PII, and appears in
+`detected-by`/`owner` fields on created records):
+
+```powershell
+$me = (($r.Content | ConvertFrom-Json).AuthenticationInfo.Username)
+if ($me) { $script:maskTerms.Add([string]$me) }
+```
+
+- **Mask ALL output** — every `Write-Host` status line, every saved fixture, error bodies included.
+- Before committing any new fixture, **verify programmatically that no raw secret string appears in it**
+  (e.g. grep the saved file for the unmasked host/key/secret strings) — don't rely on Mask() having been
+  called correctly everywhere by eye.
+- Entity/user *data* (real project user lists, etc.) is not captured into fixtures at all — count only.
+
+## 3. Reusable script skeleton
+
+Credentials load at runtime from `Secrets/ALM_API_credentials.json`, keys: `alm_adress`, `api_key`,
+`api_secret`, `domain`, `project`.
+
+```powershell
+$c = Get-Content $secretsPath -Raw | ConvertFrom-Json
+$base = ([string]$c.alm_adress).Trim().TrimEnd('/')
+if ($base -notmatch '/qcbin$') { $base = "$base/qcbin" }
+
+$iwr = @{ TimeoutSec = 60; SkipHttpErrorCheck = $true; MaximumRedirection = 0; AllowInsecureRedirect = $true }
+
+# sign in
+$jsonBody = @{ clientId = $c.api_key; secret = $c.api_secret } | ConvertTo-Json -Compress
+$r = Invoke-WebRequest @iwr -Uri "$base/rest/oauth2/login" -Method Post -ContentType 'application/json' -Body $jsonBody -SessionVariable session
+$null = Invoke-WebRequest @iwr -Uri "$base/rest/site-session" -Method Post -WebSession $session
+$xsrf = ($session.Cookies.GetCookies([Uri]$base) | Where-Object Name -eq 'XSRF-TOKEN').Value
+$proj = "$base/rest/domains/$($c.domain)/projects/$($c.project)"
+```
+
+**`Invoke-Alm`** — centralizes the XSRF header on every non-GET, masked status logging:
+
+```powershell
+function Invoke-Alm {
+    param([string]$Method, [string]$Rel, [string]$BodyJson, [switch]$NoXsrf, [string]$Accept = 'application/json')
+    $h = @{ Accept = $Accept }
+    if (-not $NoXsrf -and $Method -ne 'GET') { $h['X-XSRF-TOKEN'] = $xsrf }
+    $args = @{ Uri = "$proj/$Rel"; Method = $Method; Headers = $h; WebSession = $session }
+    if ($BodyJson) { $args.ContentType = 'application/json'; $args.Body = $BodyJson }
+    $r = Invoke-WebRequest @iwr @args
+    Write-Host (Mask ('{0,-6} /{1,-58} HTTP {2}' -f $Method, $Rel, $r.StatusCode))
+    return $r
+}
+```
+
+**`Build-Entity`** — **must** use `[ordered]@{}`, never a plain Hashtable, because plain-Hashtable key
+enumeration order is randomized per process (string-hash-seed randomization) and the server's write
+behaviour is order-sensitive (`alm-api` §1.1 — wrong order → opaque NPE 500s that differ run to run):
+
+```powershell
+function Build-Entity([string]$Type, $Fields) {
+    $fa = foreach ($k in $Fields.Keys) { [ordered]@{ Name = $k; values = @(@{ value = [string]$Fields[$k] }) } }
+    return ([ordered]@{ Fields = @($fa); Type = $Type } | ConvertTo-Json -Depth 6 -Compress)
+}
+```
+Call sites pass `$Fields` as `[ordered]@{ name = …; 'parent-id' = …; 'type-id' = … }` in the fixed
+convention: name → relational ids → type/subtype fields last.
+
+**`Get-FieldValue`** — pull a field's value out of a parsed entity response:
+```powershell
+function Get-FieldValue($EntityJson, [string]$Name) {
+    $f = ($EntityJson.Fields | Where-Object Name -eq $Name)
+    if ($f -and $f.values) { return [string]$f.values[0].value }
+    return $null
+}
+```
+
+**`Save-Fixture`** — always through `Mask()`:
+```powershell
+function Save-Fixture([string]$Name, [string]$Content) {
+    Set-Content -Path (Join-Path $fixtureDir $Name) -Value (Mask $Content) -Encoding utf8
+}
+```
+
+**`New-AlmEntity`** — POST + track id for cleanup + optional fixture save:
+```powershell
+$created = [System.Collections.Generic.List[hashtable]]::new()
+function New-AlmEntity {
+    param([string]$Collection, [string]$Type, $Fields, [string]$FixtureName)
+    $body = Build-Entity $Type $Fields
+    $r = Invoke-Alm POST $Collection $body
+    if ($r.StatusCode -in 200, 201) {
+        $j = $r.Content | ConvertFrom-Json
+        $id = Get-FieldValue $j 'id'
+        if ($id) { $created.Add(@{ rel = $Collection; id = $id }) }
+        if ($FixtureName) { Save-Fixture $FixtureName ([string]$r.Content) }
+        return $j
+    }
+    Write-Host ('  -> FAILED body: ' + (Mask (([string]$r.Content) -replace '\s+', ' ').Substring(0, [Math]::Min(400, ([string]$r.Content).Length))))
+    return $null
+}
+```
+
+**Cleanup + orphan sweep** (in `finally`):
+```powershell
+finally {
+    for ($i = $created.Count - 1; $i -ge 0; $i--) {
+        $e = $created[$i]
+        try { $null = Invoke-Alm DELETE "$($e.rel)/$($e.id)" } catch { Write-Host ("  DELETE $($e.rel)/$($e.id) threw: " + (Mask $_.Exception.Message)) }
+    }
+    foreach ($col in @('requirements','test-folders','tests','design-steps','test-set-folders','test-sets','test-instances','runs','milestones','releases','release-cycles','test-executions','defects')) {
+        $r = Invoke-Alm GET "$col`?query={name[ALTALM-PROBE*]}&fields=id,name&page-size=50"
+        if ($r.StatusCode -eq 200) {
+            $j = $r.Content | ConvertFrom-Json
+            foreach ($e2 in @($j.entities)) {
+                $oid = ([string](($e2.Fields | Where-Object Name -eq 'id').values[0].value))
+                $null = Invoke-Alm DELETE "$col/$oid"
+            }
+        }
+    }
+    $null = Invoke-WebRequest @iwr -Uri "$base/authentication-point/logout" -WebSession $session
+}
+```
+Reference implementations: `scripts/probe/probe-write-1.ps1` (round 1), `probe-write-3.ps1` (round 3,
+adds XML entity building and hand-built multipart).
+
+## 4. PowerShell gotchas found the hard way
+
+- **`$pid` is a reserved automatic variable** (current process id) — using it for a parent/folder id
+  silently reads garbage. Use `$parentId` or similar, never `$pid`.
+- **Function return values get polluted by pipeline output.** Any unassigned expression inside a
+  function (a bare string, a cmdlet call whose output isn't captured) becomes part of that function's
+  return value in PowerShell. Use `Write-Host` for status/progress lines inside helper functions —
+  never bare string literals or `Write-Output` — or the caller's `$result = Get-Foo` silently captures
+  your debug text too.
+- **PS7's `-Form` parameter on `Invoke-WebRequest` builds a multipart body this server rejects.** Round
+  2's `ref-subtype=1` multipart upload failed with an opaque parse error using `-Form`; round 3's
+  hand-built body (explicit boundary, CRLF line endings, text parts first, `file` part **last** with
+  its own `Content-Type: image/png`) succeeded 3/3. Treat multipart construction as a
+  compatibility risk to verify per HTTP client/stack, not just per server:
+  ```powershell
+  $boundary = '----AltAlmProbe' + [Guid]::NewGuid().ToString('N')
+  $CRLF = "`r`n"
+  $ms = [IO.MemoryStream]::new()
+  $w = [IO.StreamWriter]::new($ms, [Text.UTF8Encoding]::new($false))
+  $w.NewLine = $CRLF
+  # ... write text parts (filename, description, ref-subtype) as
+  #     --boundary CRLF Content-Disposition: form-data; name="X" CRLF CRLF value CRLF
+  # then the file part LAST:
+  $w.Write("--$boundary$CRLF")
+  $w.Write("Content-Disposition: form-data; name=`"file`"; filename=`"x.png`"$CRLF")
+  $w.Write("Content-Type: image/png$CRLF$CRLF")
+  $w.Flush(); $ms.Write($pngBytes, 0, $pngBytes.Length)
+  $w.Write("$CRLF--$boundary--$CRLF"); $w.Flush()
+  Invoke-Alm POST "requirements/$id/attachments" -BodyBytes $ms.ToArray() -ContentType "multipart/form-data; boundary=$boundary"
+  ```
+- **`AllowInsecureRedirect`** (in the shared `$iwr` splat) is needed where a redirect crosses http/https
+  or otherwise would be blocked by default `Invoke-WebRequest` redirect security — set
+  `MaximumRedirection = 0` and inspect `Location` manually instead of following redirects blind, since
+  ALM's own redirect chains have been a source of confusion.
+
+## 5. Probe protocol
+
+1. **State the hypothesis and what observation would confirm or refute it, before running anything.**
+   e.g. "Hypothesis: direct `POST runs` accepts `test-id`+`testcycl-id`+`cycle-id`. Refuting observation:
+   any non-201 response citing a missing/invalid field."
+2. **Treat a 5xx as "unknown outcome — verify by query," never as "failed."** Follow every 5xx write
+   with a GET to check whether the row committed anyway (`alm-api` §1.2 has the exact case that burned
+   us).
+3. **Record results in `docs/research/live-probe-log.md`** — this file is ground truth and wins all
+   conflicts with static documentation. Save fixtures (masked) under `tests/fixtures/`.
+4. **Label anything not directly observed as `UNVERIFIED`**, with the specific experiment that would
+   settle it. Never upgrade an inference to a verified claim without an actual probe run backing it.
+
+## 6. Currently open experiments
+
+See `docs/plan/risks-and-open-questions.md` (Q1–Q31) for the live list of open questions and their
+priority — don't restate them here; that file is the source of truth for what's still unresolved.

@@ -1,4 +1,4 @@
-# Research Session State — updated 2026-08-12 (feasibility matrix + plan set complete)
+# Research Session State — updated 2026-08-12 (PLANNING PHASE COMPLETE)
 
 Working state of the Fable 5 research-and-planning session (kickoff:
 [docs/prompts/fable-5-research-and-plan.md](../prompts/fable-5-research-and-plan.md)). Written
@@ -206,12 +206,28 @@ into it. Data-model agent corrections are authoritative where they cite r3-* fix
      (4-level pyramid, probe-derived must-have cases), `risks-and-open-questions.md`
      (16 risks R1–R16, 31 open questions Q1–Q31 each with experiment + phase).
 
+## Skills + CLAUDE.md — DONE 2026-08-12
+
+All five skills authored under `.claude/skills/` (verified content only, provenance-cited):
+`alm-api` (258 lines, load first), `alm-entity-model` (215), `alm-live-probe` (217),
+`alm-data-gen` (192), `alt-alm-ui` (163, lead-authored). CLAUDE.md rewritten with the durable
+verified-facts section, the design decisions, the sandbox designation, and the TDConnect note.
+
+**TDConnect is now available** at `TDConnect/` (git-ignored): `TDConnect_26.1CE_SAAS.exe` matches
+the sandbox version, plus 24.1 and 25.1. This unblocks the OTA-dependent open questions (Q18
+step-parameter definition, BPT) whenever the OTA bridge work starts.
+
 ## Next actions (in order)
 
-1. **Skills** under `.claude/skills/` (alm-api, alm-entity-model, alm-data-gen, alt-alm-ui,
-   alm-live-probe) with verified content only (probe log + api-reference + data-model are the
-   sources; feasibility matrix for scope).
-2. **Update CLAUDE.md** (durable verified facts: auth flow, 8 field types, query cheat-sheet,
-   write hazards, Fast_Run route, gaps list, Swagger discovery, workflow-bypass) and commit.
-3. (Deferred probes now tracked as Q1–Q31 in `docs/plan/risks-and-open-questions.md`, each mapped
-   to an implementation phase; also probe-log Open items #10.)
+**Planning is closed. Next work is implementation phase P0** —
+see [../plan/implementation-plan.md](../plan/implementation-plan.md): repo scaffolding, CI, BFF
+skeleton (Java 21 + Spring Boot per ADR 0002), auth/session manager, metadata service, and the
+fixture-based test harness over the existing redacted `tests/fixtures/`.
+
+Optional before/alongside P0:
+- **OTA spike** now that TDConnect is available — settle Q18 (is there any path to *define* a test
+  parameter?) and whether BPT is reachable via COM despite the REST 403. This is the single
+  highest-value deferred probe; it decides whether parameterized tests are ever in scope.
+- Remaining deferred probes are tracked as **Q1–Q31** in
+  [../plan/risks-and-open-questions.md](../plan/risks-and-open-questions.md), each already mapped to
+  the phase that needs its answer; risks are R1–R16 in the same file.
