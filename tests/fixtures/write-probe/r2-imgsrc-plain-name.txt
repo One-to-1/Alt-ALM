@@ -1,0 +1,8 @@
+SENT:
+<html><body><p>before</p><img src="probe-img-multi.png"><p>after</p></body></html>
+
+GOT:
+<html><body>
+<p>before</p><img />
+<p>after</p>
+</body></html>

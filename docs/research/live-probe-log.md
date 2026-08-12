@@ -148,7 +148,12 @@ Executed by a Sonnet subagent running `scripts/probe/probe-write-1.ps1`; all rec
 **VERIFIED (observed on ALM 26.1):**
 
 - **XSRF:** POST without `X-XSRF-TOKEN` → **401**. With header → works.
-- **Requirement create:** 201 with `name` + `type-id=3` + **`parent-id=1`** (0 / -1 fail here).
+- **Requirement create:** 201 with `name` + `type-id=3` + `parent-id=1` — **⚠️ CONTAMINATED
+  FINDING**: the silently-committed orphan record (below) had id 1, so `parent-id=1` almost
+  certainly parented to the orphan, not a root. User-provided default roots (2026-08-12, prefer
+  runtime discovery over hardcoding): requirement root = **id 0 "Requirements"**; test-plan
+  folders: **id 2 "Subject"**, id 1001 "Recycle Bin"; test-set folders: **id 0 "Root"**,
+  id 1 "Recycle Bin". Re-verify requirement `parent-id=0` in write round 2 on clean state.
 - **⚠️ Field order matters:** the JSON `Fields` array serialization ORDER changed server behaviour
   on POST — wrong orders produced opaque NPE-style 500s. **Entity-write JSON must use a fixed,
   deterministic field order** (client-design requirement).
@@ -178,6 +183,44 @@ Executed by a Sonnet subagent running `scripts/probe/probe-write-1.ps1`; all rec
 
 Fixtures: `tests/fixtures/write-probe/` (15 files, redacted; masking verified programmatically
 against raw secret values — clean).
+
+## Probe 5 — write round 2 (sandbox; detail in `_raw/probe5-write-round-2.md`; fixtures `write-probe/r2-*`)
+
+Cleanup CLEAN (all DELETEs 200; orphan sweep zero across all 4 runs). **VERIFIED:**
+
+- **Roots (user defaults confirmed):** `requirements/0`="Requirements", `test-folders/2`="Subject",
+  `test-set-folders/0`="Root". **Requirement create `parent-id=0` → 201** (round-1 `parent-id=1`
+  finding corrected — it was the orphan).
+- **Image-embed sanitizer rules:** bare/relative `<img src>` → src STRIPPED (`<img />`);
+  **absolute `https://` URL and `data:` URI both survive intact.** Attachment upload via
+  octet-stream+`Slug` → 201 (`ref-subtype=0`). **Multipart `ref-subtype=1` (embedded-image
+  subtype) FAILED** with an opaque parse error — client-vs-server cause undetermined; retry with
+  hand-built multipart in round 3. Full UI-style embed flow therefore still not proven end-to-end.
+- **`<<<param>>>` tokens CAN survive**: HTML-entity-pre-encoding the token
+  (`&lt;&lt;&lt;name&gt;&gt;&gt;`) passes the sanitizer intact and flips `has-params=Y`.
+  Raw tokens get mangled to `<<>>` (round-1 confirmed twice).
+- **step-parameters POST: genuine gap.** All shapes fail with "Test parameter does not exist" —
+  there appears to be **no REST way to create the underlying test-parameter object** (only
+  reference/value rows). OTA-fallback candidate.
+- **Test Lab chain:** test-set-folder / test-set (`subtype-id=hp.qc.test-set.default`) /
+  test-instance creates VERIFIED (instance initial status "No Run").
+  **`run` POST FAILS: `"Fail to get a must number attribute 'TESTSET'"`** — no run field maps to
+  that physical name (48-field dump checked). **Run creation shape unresolved**; run-steps
+  auto-copy / status mirror / Fast_Run / aggregation all blocked on it. Round-3 idea: trigger a
+  synthetic Fast_Run via instance-status PUT and read the server-created run's fields.
+- **Milestones:** create VERIFIED once parented correctly — `parent-id` physical name is
+  `MS_RELEASE_ID`: **milestones live under a release**, not a folder.
+- **Mail:** `POST …/{id}/mail` FAILED across 3 JSON shapes (identical opaque NPE) + 1 XML shape
+  (different 400) — body format genuinely undocumented; unresolved.
+- **test-executions POST = DISPATCH** (verified): reaches execution logic and answers
+  "There is no agent configured…" — it schedules execution, it does not ingest results.
+- **Release-cycle date validation:** cycle outside release range **rejected** (500 with
+  well-formed message); in-range cycle created fine. Release create field names
+  `start-date`/`end-date` confirmed.
+- **BPT (offline inventory check):** no `components` collection in resource-list — only
+  `components/{id}/snapshot` (GET/POST/DELETE) and GET-only `businessmodels`/`businessviews`.
+  Inventory has known false negatives → one read-only `GET /components?page-size=1` queued;
+  otherwise BPT = OTA-only candidate.
 
 ## Fixtures captured (redacted; under `tests/fixtures/`)
 

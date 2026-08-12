@@ -1,0 +1,7 @@
+SENT (JSON string, pre-encoded):
+Uses &lt;&lt;&lt;probe_param&gt;&gt;&gt; here
+
+GOT:
+<html><body>
+Uses &lt;&lt;&lt;probe_param&gt;&gt;&gt; here
+</body></html>

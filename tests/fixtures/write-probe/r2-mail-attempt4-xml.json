@@ -1,0 +1,5 @@
+SENT:
+<Mail><To>REDACTED</To><Subject>ALTALM-PROBE-20260812-105948 mail probe</Subject><Body>probe body</Body></Mail>
+
+GOT HTTP 400:
+{"Id":"qccore.general-error","Title":"Bad Request","ExceptionProperties":null,"StackTrace":null}

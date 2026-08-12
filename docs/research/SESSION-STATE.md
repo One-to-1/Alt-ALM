@@ -155,17 +155,36 @@ used-by-owner-type req, used-by-owner-id, parent-id, actual-value).
   unused-list delta = Activity Status, VC Status, Resource Type, TestType; memo Size=-1
   (unlimited), virtual path fields 99999.
 
+## Write round 2 + first synthesis — DONE 2026-08-12 (3 subagents; log Probe 5 section has detail)
+
+Round 2 verified: roots (req parent-id=0 fixed), img-src sanitizer rules (bare→stripped;
+https:// and data: URIs survive), entity-encoded `<<<param>>>` tokens survive (raw ones mangled),
+milestones parent under RELEASE (MS_RELEASE_ID), test-set/test-instance creates, test-executions
+POST = dispatch, cycle date validation enforced. **Open failures:** run POST ("must number
+attribute 'TESTSET'" — blocks run-steps/mirror/Fast_Run/aggregation questions), multipart
+`ref-subtype=1` upload (opaque parse error), mail POST (undocumented body), step-parameters
+(no REST create for the parameter object — OTA candidate). BPT: no `components` collection in
+inventory (only `{id}/snapshot`); GET-probe queued; likely OTA-only.
+**Synthesis docs now exist (drafted by subagents, NOT yet lead-reviewed):**
+`docs/research/alm-api-reference.md` (provenance-tagged) and
+`docs/research/alm-ui-feature-inventory.md` (231 features; its "conflicts" partly superseded by
+probes — reconcile in feasibility matrix).
+
 ## Next actions (in order)
 
-1. **Write-probe round 2 (sandbox writes still authorized)**: attachments + rich-text
-   **image embed** round-trip (`ref-subtype=1` multipart, `<img src>` syntax discovery — the
-   remaining #1 unknown); the Test Lab chain (test-set-folder → test-set → test-instance →
-   run POST w/ `status=Not Completed` then PUT status; design-step auto-copy into run-steps;
-   status propagation; Fast_Run behaviour); **step-parameters retry** (create param before
-   referencing; try `<<<param>>>` insertion AFTER param exists); milestones POST; one `/mail`
-   POST; `test-executions` POST semantics; comments append convention; cycle date validation.
-2. **Synthesis**: `docs/research/alm-api-reference.md`, `alm-ui-feature-inventory.md`,
-   `alm-data-model.md`, `feasibility-matrix.md` (reconcile agents + probes; probe log wins).
+1. **Write-probe round 3 (small, targeted)**: run-creation resolution (try XML body; read a
+   server-created Fast_Run's fields via instance-status PUT; check test-instances returned
+   binding fields); multipart `ref-subtype=1` retry with hand-built multipart body; read-only
+   `GET /components?page-size=1`; optional mail retry with `SendMailRequest`-style XML.
+2. **Synthesis completion**: `alm-data-model.md` + `feasibility-matrix.md` (UI inventory ×
+   API reference × probe log; probe log wins; resolve the UI-inventory "conflict" rows).
+3. **Plan set**: `docs/plan/architecture.md` + ADRs (BFF proxy; session model; stack comparison
+   Java vs TS vs Python vs .NET — user leans Java; OTA-fallback isolation given COM/Windows-only),
+   `implementation-plan.md`, `data-generator-spec.md`, `test-strategy.md`,
+   `risks-and-open-questions.md`.
+4. **Skills** under `.claude/skills/` (alm-api, alm-entity-model, alm-data-gen, alt-alm-ui,
+   alm-live-probe) with verified content.
+5. **Update CLAUDE.md** (durable verified facts) and commit.
 3. **Synthesis**: `docs/research/alm-api-reference.md`, `alm-ui-feature-inventory.md`, `alm-data-model.md`, `feasibility-matrix.md` (reconcile agents + probes; probe log wins conflicts).
 4. **Plan set**: `docs/plan/architecture.md` + ADRs (BFF proxy vs direct; session model — note licence finding weakens the seat-consumption concern; **stack comparison Java vs TS vs Python vs .NET, user leans Java**; OTA-fallback isolation strategy given Windows-only COM), `implementation-plan.md`, `data-generator-spec.md`, `test-strategy.md`, `risks-and-open-questions.md`.
 5. **Skills** under `.claude/skills/` (alm-api, alm-entity-model, alm-data-gen, alt-alm-ui, alm-live-probe) with verified content.

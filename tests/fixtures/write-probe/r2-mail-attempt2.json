@@ -1,0 +1,5 @@
+SENT:
+{"Mail":{"Recipients":{"Recipient":["REDACTED"]},"Subject":"ALTALM-PROBE-20260812-105948 mail probe","Body":"probe body"}}
+
+GOT HTTP 500:
+{"Id":"qccore.general-error","Title":"Cannot invoke \"com.fasterxml.jackson.databind.JsonNode.has(String)\" because \"node\" is null","ExceptionProperties":null,"StackTrace":null}
