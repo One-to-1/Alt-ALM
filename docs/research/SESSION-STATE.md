@@ -170,14 +170,25 @@ inventory (only `{id}/snapshot`); GET-probe queued; likely OTA-only.
 `docs/research/alm-ui-feature-inventory.md` (231 features; its "conflicts" partly superseded by
 probes — reconcile in feasibility matrix).
 
+## Write round 3 + data model — DONE 2026-08-12 (log Probe 6 section has detail)
+
+**Direct `POST runs` does not work (8 attempts, bimodal errors); runs must be created via
+`PUT test-instances/{id}` status → server-synthesized Fast_Run (3/3 reliable).** Run-steps
+auto-copy VERIFIED; instance↔run status mirror VERIFIED; no eager step→run aggregation.
+**Multipart `ref-subtype=1` WORKS** (hand-built body; round-2 failure was a PS `-Form` artifact)
+→ embedded-image flow end-to-end viable. `GET /components` 403 (license-gated),
+`business-components` 404 → BPT = OTA candidate. `docs/research/alm-data-model.md` drafted
+(entity catalog, relationship map, creation-order DAG, per-entity notes, conflicts adjudicated).
+⚠️ Review debt: `alm-api-reference.md` §6.1 has a corrected-by-data-model discrepancy note and
+§9 still lists multipart as an open failure — fix both during lead review; also fold Probe 6
+into it. Data-model agent corrections are authoritative where they cite r3-* fixtures.
+
 ## Next actions (in order)
 
-1. **Write-probe round 3 (small, targeted)**: run-creation resolution (try XML body; read a
-   server-created Fast_Run's fields via instance-status PUT; check test-instances returned
-   binding fields); multipart `ref-subtype=1` retry with hand-built multipart body; read-only
-   `GET /components?page-size=1`; optional mail retry with `SendMailRequest`-style XML.
-2. **Synthesis completion**: `alm-data-model.md` + `feasibility-matrix.md` (UI inventory ×
-   API reference × probe log; probe log wins; resolve the UI-inventory "conflict" rows).
+1. **`feasibility-matrix.md`** (UI inventory × API reference × probe log; probe log wins;
+   resolve the UI-inventory "conflict" rows — several already settled by probes 4–6).
+2. **Lead review pass** over the three synthesis docs (api-reference §6.1/§9 fixes, fold Probe 6,
+   spot-check provenance tags).
 3. **Plan set**: `docs/plan/architecture.md` + ADRs (BFF proxy; session model; stack comparison
    Java vs TS vs Python vs .NET — user leans Java; OTA-fallback isolation given COM/Windows-only),
    `implementation-plan.md`, `data-generator-spec.md`, `test-strategy.md`,
@@ -185,6 +196,8 @@ probes — reconcile in feasibility matrix).
 4. **Skills** under `.claude/skills/` (alm-api, alm-entity-model, alm-data-gen, alt-alm-ui,
    alm-live-probe) with verified content.
 5. **Update CLAUDE.md** (durable verified facts) and commit.
+6. (Deferred probes: mail body shape; step-parameters OTA check when tdconnect.exe provided;
+   release-folder root; alm-web dialect; comments banner convention.)
 3. **Synthesis**: `docs/research/alm-api-reference.md`, `alm-ui-feature-inventory.md`, `alm-data-model.md`, `feasibility-matrix.md` (reconcile agents + probes; probe log wins conflicts).
 4. **Plan set**: `docs/plan/architecture.md` + ADRs (BFF proxy vs direct; session model — note licence finding weakens the seat-consumption concern; **stack comparison Java vs TS vs Python vs .NET, user leans Java**; OTA-fallback isolation strategy given Windows-only COM), `implementation-plan.md`, `data-generator-spec.md`, `test-strategy.md`, `risks-and-open-questions.md`.
 5. **Skills** under `.claude/skills/` (alm-api, alm-entity-model, alm-data-gen, alt-alm-ui, alm-live-probe) with verified content.

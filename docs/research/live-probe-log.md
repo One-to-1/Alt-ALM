@@ -222,6 +222,33 @@ Cleanup CLEAN (all DELETEs 200; orphan sweep zero across all 4 runs). **VERIFIED
   Inventory has known false negatives → one read-only `GET /components?page-size=1` queued;
   otherwise BPT = OTA-only candidate.
 
+## Probe 6 — write round 3, targeted (detail in `_raw/probe6-write-round-3.md`; fixtures `write-probe/r3-*`)
+
+Cleanup CLEAN (all DELETEs 200 incl. Fast_Runs; orphan sweep zero, all 3 sessions). **VERIFIED:**
+
+- **Direct `POST runs` does NOT work on this server** — 8 attempts across rounds 2–3 (XML + 5
+  JSON field-set variants). Failure is bimodal and reproducible: baseline variants →
+  `"Fail to get a must number attribute 'TESTSET'"`; adding denormalized name fields
+  (`test-name`/`testcycl-name`/`cycle-name`) → `"Failed to post step"`.
+  **The working route is indirect: `PUT test-instances/{id}` with a status triggers a
+  server-synthesized `Fast_Run` — reliably, 3/3 sessions.** Generator/Alt-ALM must create runs
+  via this route. Full Fast_Run field dump: `r3-fastrun-full-entity.json` (also disambiguates
+  `cycle-id`=test-set id, `testcycl-id`=test-instance id via the name fields).
+- **Run-steps auto-copy from design steps: VERIFIED** on synthesized runs (count matches
+  design-step count exactly — 2↔2, 1↔1).
+- **Instance status mirrors run status: VERIFIED** (instance reads "Passed" after run PUT).
+- **No eager run-step→run status aggregation**: flipping a run-step to Failed leaves the parent
+  run's status unchanged (caveat: run had been force-set Passed first — shows no auto-recompute,
+  not an exhaustive matrix).
+- **Multipart `ref-subtype=1` upload WORKS** — hand-built multipart body (explicit boundary,
+  CRLF discipline, text parts first, file part LAST with `Content-Type: image/png`) → 201, 3/3.
+  Round-2's failure was a PowerShell `-Form` constructor artifact, not a server limitation.
+  **The full embedded-image flow (upload subtype-1 attachment + `data:`/absolute-URL `img src`)
+  is end-to-end viable.**
+- **BPT:** `GET /components` → **403 `qccore.operation-forbidden`** (endpoint exists,
+  license/permission-gated); `GET /business-components` → **404** (absent). BPT remains
+  effectively out of REST reach here → OTA-fallback candidate.
+
 ## Fixtures captured (redacted; under `tests/fixtures/`)
 
 - `customization-fields-<entity>.json` × 15
