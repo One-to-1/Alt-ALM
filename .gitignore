@@ -38,3 +38,6 @@ desktop.ini
 
 # TD clients (OTA/COM installers — large binaries, machine-local)
 TDConnect/
+
+# graphify derived output (regenerate with: graphify update .)
+graphify-out/
