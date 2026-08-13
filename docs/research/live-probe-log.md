@@ -644,6 +644,75 @@ The sandbox contains no attachment to test against, so `attachments/{id}/audits`
 The offline resource-list has no `attachments/.../audits` path, but that inventory has known false
 negatives. Re-run after P2 creates an attachment.
 
+## Probe 12 — OTA re-check of the `NO` verdicts, 2026-08-13 (`scripts/probe/probe-ota-8.ps1`, `-9.ps1`)
+
+**READ-ONLY — created and modified nothing.** Phase 1 acquired and enumerated the candidate COM
+objects; phase 2 read real values out of them. Several `NO` verdicts fall.
+
+### 12.1 #18 "Analyze" — SOLVED. The Testing Policy matrix is fully readable
+
+`TDConnection.Customization.RBT` exposes the entire risk model. Read from the sandbox:
+
+| Property | Value |
+|---|---|
+| `TestingPolicyMatrix[risk][complexity]` | rows `1 1 1` / `2 2 2` / `3 3 3` |
+| `RiskCalculationMatrix[BI][FP]` | rows `1 1 2` / `1 2 3` / `2 3 3` |
+| `TestingLevelPercentage[1..4]` | `100, 66, 33, 0` (Full / Partial / Basic / None) |
+| `TestingEffortForFCLevel[1..3]` | `18, 15, 12` |
+| `DisplayedTimeUnits` | `Hours` |
+| `BIQuestions` / `FCQuestions` / `FPQuestions` | 4 / 4 / 4 |
+
+Note this project's `TestingPolicyMatrix` is **risk-only** — the testing level tracks the row index
+and ignores functional complexity — whereas `RiskCalculationMatrix` genuinely combines both axes.
+Do not hardcode either; they are per-project admin config, and this is exactly one project's values.
+
+Also present: `CalcBILevelByAnswersWeight`, `CalcFCLevelByAnswersWeight`, `CalcFPLevelByAnswersWeight`,
+`Translate*Level`, and full question CRUD (`AddBIQuestion` / `DeleteFCQuestion` / …).
+
+**Verdict: `NO` → `FULL*` (client-side).** The web research was right that Analyze is a documented
+lookup, not a hidden algorithm — and the lookup table itself is now readable. The `rbt-*` fields are
+already REST-writable, so Alt-ALM reads these matrices once per project (they are admin config and
+change rarely) and computes Testing Level / Testing Time itself, exactly like Impact Analysis (#13)
+and Traceability Matrix (#14). **Reading the matrix needs OTA**; the arithmetic and the writes do not.
+
+⚠️ **Accessor shape**: these are *parameterized properties*. A plain read throws
+`"Number of parameters specified does not match the expected number"` — the matrices need two
+indices, `TestingLevelPercentage`/`TestingEffortForFCLevel` need one, and `AlertList` needs one. That
+error means "you passed the wrong arity", **not** "unsupported".
+
+### 12.2 Other rows that fall
+
+| Row | Finding | New verdict |
+|---|---|---|
+| **#145** Scorecard/KPI | `Customization.KPITypes.KPITypes` → **11 types** readable by name (Automated Tests, Covered Requirements, Defects Fixed per Day, Passed Requirements, Passed Tests, …); `AddKPIType`/`RemoveKPIType` present; `KPIFactory.NewList('')` works (0 items — none defined here) | `NO` → **OTA** |
+| **#132/#133** Report authoring | `Customization.ReportProjectTemplates` → **79 templates** enumerable, with Add/Get/Remove | `NO` → **OTA** (authoring new SQL still out of scope by hard constraint) |
+| **#129** Business View graphs | `Customization.BusinessViews` → **37 views** enumerable (Components, Defects, Defects_Assigned_to_me, …); `GraphBuilder` exposes `BuildGraph`, `BuildMultipleGraphs`, `CreateGraphDefinition`, `GetGraphResultFromString` | `NO` → **OTA** |
+| **#166/#109/#196/#197** Alerts | `AlertManager.AlertList(<filter>)` → OK, count 0 (none exist in the sandbox); `GetFilterText()` returns a real filter over `TableName:ALERT, ColumnName:AT_ALERT_TYPE`; `DeleteAlert`, `DeleteAlertsByFilter`, `CleanAllAlerts` present | `NO` → **OTA** |
+| **#205** Data-hiding | `Customization.Modules` → 11 modules with `IsVisibleForGroup`/`VisibleForGroups`; `Customization.Permissions` exposes `CanModifyField`, `CanAddItem`, `CanRemoveItem`, `TransitionRules`; `Customization.UsersGroups` acquired | `NO` → **OTA** (per-module enumeration detail still `UNVERIFIED` — the per-item read needs the right accessor arity) |
+
+### 12.3 A verdict that SURVIVES — #209/#210 workflow scripts
+
+`Customization.Workflow` exposes **only two members**: `ProjectScriptsUpdated` and
+`TemplateScriptsUpdated` — dirty flags, not script content. There is no route to read or evaluate the
+VBScript, so Alt-ALM still cannot reproduce workflow-driven field visibility or dynamic `Required`
+rendering. **`CONFIRMED NO` stands**, now on direct evidence rather than inference. The standing
+limitation in `CLAUDE.md` is unchanged and correctly stated.
+
+### 12.4 `OtaReport80.Reporter` is not registered
+
+All three ProgIDs (`OtaReport80.Reporter`, `OtaReport80.ReportConfig`, `TDApiOle80.Reporter`) fail
+`REGDB_E_CLASSNOTREG`. That component ships in a separate DLL not deployed by the ALM Client
+Launcher. Report *templates* are reachable through `Customization.ReportProjectTemplates` regardless,
+so the forum-sourced `Reporter` recipe is **not required** and is `UNVERIFIED` on this deployment.
+
+### 12.5 Method note for future OTA work
+
+Phase 1's first run reported `String` members (`PadLeft`, `Substring`, …) for every COM object. Cause:
+the helper used `Write-Output` for status lines, so each function returned
+`[status-string, real-object]` and the caller silently got an array. This is the trap already
+documented in the `alm-live-probe` skill §4 — **use `Write-Host` in any helper that also returns a
+value.** Worth flagging because the corrupted output was plausible enough to have been believed.
+
 ## Fixtures captured (redacted; under `tests/fixtures/`)
 
 - `customization-fields-<entity>.json` × 15
