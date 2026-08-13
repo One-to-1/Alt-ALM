@@ -541,6 +541,50 @@ test) is verified.
 - **A second metadata-doesn't-describe-writes hazard** (§9.3) belongs in the write-safety component
   alongside the field-order rule.
 
+## Probe 10 — API-key session concurrency, 2026-08-13 (`scripts/probe/probe-sessions.ps1`)
+
+**Question**: a username/password login to ALM is constrained by concurrent-user licensing — in
+practice one active client at a time on a single-seat licence. Does the same limit apply to an
+**API key over REST**?
+
+**Answer: no. One API key held 50 simultaneous sessions with zero eviction.** Read-only with
+respect to project data — sessions only, no records created.
+
+| Measurement | Result |
+|---|---|
+| Sessions opened on one API key | **50 / 50** |
+| Still alive after all 50 were opened (eviction check) | **50 / 50** |
+| Simultaneous in-flight authenticated requests | **50 / 50 → HTTP 200** |
+| Sessions evicted / logins refused | **0** |
+
+Tested at 12 first, then 50. **No cap was reached** — 50 is a floor, not a ceiling. Each session was
+an independent cookie jar (that is what makes them distinct sessions rather than one shared one).
+
+**Cookie identity** (corrects an initial misread from a 6-char sample): of the five cookies,
+`JSESSIONID`, `LWSSO_COOKIE_KEY`, `QCSession` and `XSRF-TOKEN` are **all unique per session**;
+only `ALM_USER` is shared across sessions (it is the resolved username, not a session id). So there
+is no evidence here of a shared node/affinity token, and no session-affinity requirement was
+observed.
+
+**This corroborates the no-licence-seat finding empirically.** Doc research had established that REST
+sessions consume no licence; 50 concurrent sessions succeeding is strong independent confirmation,
+since on a seat-consuming model that would require 50+ free seats.
+
+**Not tested / `UNVERIFIED`:** all 50 sessions originated from **one machine and one IP**. This
+measures the server's per-key session cap, not any per-IP or per-machine binding. Nothing observed
+suggests ALM binds a session to a client IP, but multi-machine behaviour is not directly evidenced.
+Experiment that would settle it: run the same probe simultaneously from two hosts on different IPs.
+
+**Site Admin session visibility is not reachable on this deployment**: `v2/sa/api/site-params` → 403
+(despite the key holding Customer Admin), `v2/sa/api/connections` and `v2/sa/api/site-sessions` →
+500, `rest/site-session/connections` → 404. So no server-side cap could be read from configuration
+to corroborate the empirical result — the 50-session observation stands on its own.
+
+**Consequence for ADR 0004**: the single-service-account pooled-session design is safe. Pool sizing
+is bounded by politeness and `REST_SESSION_MAX_IDLE_TIME` (60 min default) keepalive cost, not by a
+licence or session cap. Multiple Alt-ALM instances, multiple developer machines, and CI can all use
+the same key concurrently.
+
 ## Fixtures captured (redacted; under `tests/fixtures/`)
 
 - `customization-fields-<entity>.json` × 15

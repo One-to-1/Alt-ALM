@@ -90,6 +90,11 @@ every conflict**), [alm-api-reference.md](docs/research/alm-api-reference.md),
 - **Auth**: `POST /qcbin/rest/oauth2/login` with `{clientId, secret}` sets the full cookie set in one
   call. `X-XSRF-TOKEN` header required on every non-GET (missing → 401). REST sessions consume **no
   licence seat**. Use `/qcbin/v2/rest/is-authenticated` for JSON (the Core path is XML-only, 406).
+- **One API key holds many concurrent sessions** — **50/50 opened, zero evicted, all usable
+  simultaneously** (probe 10); no cap was reached, so 50 is a floor. Unlike a username/password
+  login, there is **no one-machine-at-a-time constraint**. `JSESSIONID`, `LWSSO_COOKIE_KEY`,
+  `QCSession`, `XSRF-TOKEN` are each unique per session; only `ALM_USER` is shared. Multi-machine
+  (different IP) behaviour is `UNVERIFIED` — all 50 came from one host.
 - **Write hazards (cause real bugs)**: entity-write JSON **field order is load-bearing** — wrong
   order yields opaque NPE-style 500s, so serialize deterministically. **An HTTP 5xx may still have
   committed the row** — treat every 5xx write as "unknown outcome, verify by query", never "failed".
