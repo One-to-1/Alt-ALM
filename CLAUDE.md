@@ -74,14 +74,21 @@ Twelve live probe rounds against the sandbox plus 20 subagent research reports p
 corpus; the plan set and ADRs are written. **`docs/research/SESSION-STATE.md` is the resume
 point — read it first.**
 
-**P0 in the repo now** (commit `19fb41f`): `bff/` builds and tests green (Spring Boot 4.1.0 on JDK 25,
-Maven wrapper — `./mvnw test`, no local Maven needed), `spa/` builds (Vite + React/TS), CI runs both
-halves and fails if `Secrets/` is ever tracked, and `bff/.../alm/write/` holds the write-safety core
-(`AlmEntityBody` deterministic field order, `AlmWriteOutcome` 5xx→UNKNOWN, `AlmWriteRetry`
-missing-required-field single retry) with 11 passing tests.
+**P0 in the repo now — 38 tests green** (`./mvnw test` in `bff/`; no local Maven needed):
 
-**P0 still to do**: pooled session/auth manager, metadata service with caching, fixture-based harness
-over `tests/fixtures/`. Then P1. See
+- `bff/.../alm/write/` — `AlmEntityBody` (deterministic field order), `AlmWriteOutcome`
+  (5xx→UNKNOWN, never REJECTED), `AlmWriteRetry` (single missing-required-field retry)
+- `bff/.../alm/metadata/` — `AlmFieldType` (the 8 types), `FieldDescriptor`, `AlmMetadataParser`
+  (**no HTTP dependency** — parses fixtures offline)
+- `bff/.../alm/session/` — `AlmCredentials` (runtime-only; `toString` refuses to render itself),
+  `AlmSession`, `AlmSessionPool` (bounded, idle-eviction, keepalive scheduling), `AlmAuthClient`
+- `spa/` builds; CI runs both halves and **fails if `Secrets/` is ever tracked**
+- Fixture harness parses **all 15** captured entities with no server and no credentials
+
+**P0 remaining**: ⚠️ `AlmAuthClient` has **not been run against the live sandbox** — that contract
+test stays out of CI by design (needs `Secrets/`); run it before P1. Plus Spring bean wiring
+(`@ConfigurationProperties`) and the metadata **cache** layer with explicit invalidation (ADR 0005) —
+the parser exists, the cache around it does not. Then P1. See
 [docs/plan/implementation-plan.md](docs/plan/implementation-plan.md).
 
 ✅ **Toolchain ready**: Node 24.13.1, git 2.54, **JDK 25.0.4 Temurin** (machine-level `JAVA_HOME`

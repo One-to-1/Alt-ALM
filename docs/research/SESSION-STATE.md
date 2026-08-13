@@ -329,6 +329,15 @@ Monorepo, Maven — both chosen by the user.
 | `spa/` | **Builds.** Vite + React + TypeScript |
 | `.github/workflows/ci.yml` | Both halves + a check that fails if `Secrets/` is ever tracked |
 | `bff/.../alm/write/` | Write-safety core: `AlmEntityBody` (deterministic field order), `AlmWriteOutcome` (5xx→UNKNOWN), `AlmWriteRetry` (single missing-required-field retry) |
+| `bff/.../alm/metadata/` | `AlmFieldType` (the 8 verified types, no Boolean), `FieldDescriptor`, `AlmMetadataParser` (no HTTP dependency — parses offline) |
+| `bff/.../alm/session/` | `AlmCredentials` (runtime-only load, refuses to render itself), `AlmSession`, `AlmSessionPool` (bounded, idle-eviction, keepalive scheduling), `AlmAuthClient` (one-step login, XSRF, keepalive, logout) |
+
+**38 tests green.** 20 of them are the fixture harness: it parses **all 15** captured
+`customization-fields-*.json` entities with **no server and no credentials**, and asserts the model
+facts in executable form (exactly 8 field types, no Boolean, `rbt-*` family present on requirement,
+multivalue is rare, memo size −1, malformed payload fails loudly rather than looking like an empty
+entity). 7 more cover pool behaviour (reuse, bound, idle-eviction, failed-login slot release,
+logout-on-close, keepalive timing, and that `toString` never leaks cookie values).
 
 **Boot 4 gotchas already paid for** (all found by building): starter is `spring-boot-starter-webmvc`
 not `-web`; test deps are **per-starter**; **Jackson is not transitive** (add
@@ -341,9 +350,15 @@ folder**: it locks `bff/target` and breaks `mvnw clean`. Run without `clean`.
 
 ## Next actions (in order)
 
-1. **Finish P0**: pooled session/auth manager (ADR 0004; keepalive vs `REST_SESSION_MAX_IDLE_TIME`
-   60 min), metadata service with per-project caching + explicit invalidation (ADR 0005), and the
-   fixture-based harness over the redacted `tests/fixtures/`.
+1. ~~**Finish P0**~~ **DONE 2026-08-13** — session/auth manager, metadata parser, and the
+   fixture harness are in and green (see the P0 table above).
+   ⚠️ **One exit criterion is NOT yet met**: "BFF authenticates against the sandbox and holds a
+   keepalive session." `AlmAuthClient` implements the handshake and compiles, but it has **not been
+   run against the live sandbox** — that is a contract test, which by design stays out of CI (it
+   needs `Secrets/` and the designated sandbox project). **Run it before starting P1.**
+   Also still open from P0's scope: wiring the pool + metadata cache as Spring beans with
+   `@ConfigurationProperties`, and the per-project metadata cache's explicit invalidation (ADR 0005)
+   — the parser is done, the caching layer around it is not.
 2. **Then P1** (read-only Alt-ALM) per [../plan/implementation-plan.md](../plan/implementation-plan.md).
 
 Worth doing soon, cheap now that the harness exists:

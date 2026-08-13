@@ -1,0 +1,70 @@
+package ai.surgeone.altalm.bff.alm.metadata;
+
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
+
+import java.util.ArrayList;
+import java.util.List;
+
+/**
+ * Parses {@code customization/entities/{entity}/fields} responses.
+ *
+ * <p>Deliberately has <strong>no</strong> HTTP dependency, so the whole parse path is testable
+ * against the redacted fixtures in {@code tests/fixtures/} with no server and no credentials —
+ * which is the P0 test-harness requirement.
+ *
+ * <p>The response nests one level deeper than the collection endpoints do:
+ * {@code {"Fields":{"Field":[ ... ]}}}, and its property names are lowerCamel
+ * ({@code physicalName}, {@code supportsMultivalue}) rather than the PascalCase used by entity
+ * payloads. Both are easy to get wrong from documentation alone.
+ */
+public final class AlmMetadataParser {
+
+    private static final ObjectMapper MAPPER = new ObjectMapper();
+
+    private AlmMetadataParser() {
+    }
+
+    /**
+     * @param json raw response body
+     * @return descriptors in server order
+     * @throws IllegalArgumentException if the payload is not the expected shape — better to fail
+     *         loudly than to return an empty list that looks like "this entity has no fields"
+     */
+    public static List<FieldDescriptor> parseFields(String json) {
+        if (json == null || json.isBlank()) {
+            throw new IllegalArgumentException("empty metadata payload");
+        }
+        JsonNode root = MAPPER.readTree(json);
+        JsonNode fieldArray = root.path("Fields").path("Field");
+        if (!fieldArray.isArray()) {
+            throw new IllegalArgumentException(
+                    "unexpected metadata shape: expected {\"Fields\":{\"Field\":[...]}}");
+        }
+
+        List<FieldDescriptor> out = new ArrayList<>(fieldArray.size());
+        for (JsonNode f : fieldArray) {
+            String name = f.path("name").asString();
+            String wireType = f.path("type").asString();
+            AlmFieldType type = AlmFieldType.fromWireName(wireType).orElseThrow(() ->
+                    new IllegalStateException(
+                            "unknown ALM field type '" + wireType + "' on field '" + name
+                                    + "'. The verified type system has exactly 8 members; a new one "
+                                    + "means this deployment differs and must be re-probed."));
+
+            out.add(new FieldDescriptor(
+                    name,
+                    f.path("physicalName").asString(),
+                    type,
+                    f.path("label").asString(),
+                    f.path("required").asBoolean(false),
+                    f.path("editable").asBoolean(false),
+                    f.path("system").asBoolean(false),
+                    f.path("virtual").asBoolean(false),
+                    f.path("supportsMultivalue").asBoolean(false),
+                    f.path("List-Id").asInt(f.path("listId").asInt(0)),
+                    f.path("size").asInt(0)));
+        }
+        return List.copyOf(out);
+    }
+}
