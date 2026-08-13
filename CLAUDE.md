@@ -67,19 +67,23 @@ scripts.
 
 ## Current status
 
-**Phase: research and planning COMPLETE (2026-08-12). Implementation STARTED 2026-08-13 — phase P0
-is partly in.**
+**Phase: research and planning COMPLETE (2026-08-12). Implementation STARTED 2026-08-13 — P0 is
+COMPLETE; P1 (read-only Alt-ALM) is next.**
 
 Twelve live probe rounds against the sandbox plus 20 subagent research reports produced the research
 corpus; the plan set and ADRs are written. **`docs/research/SESSION-STATE.md` is the resume
 point — read it first.**
 
-**P0 in the repo now — 43 tests green** (`./mvnw test` in `bff/`; no local Maven needed):
+**P0 in the repo now — 57 tests green** (`./mvnw test` in `bff/`; no local Maven needed;
+**69 with `-Pcontract`**):
 
 - `bff/.../alm/write/` — `AlmEntityBody` (deterministic field order), `AlmWriteOutcome`
   (5xx→UNKNOWN, never REJECTED), `AlmWriteRetry` (single missing-required-field retry)
 - `bff/.../alm/metadata/` — `AlmFieldType` (the 8 types), `FieldDescriptor`, `AlmMetadataParser`
-  (**no HTTP dependency** — parses fixtures offline)
+  (**no HTTP dependency** — parses fixtures offline), `AlmMetadataClient` (the HTTP half),
+  `AlmMetadataCache` (project-scoped, explicit invalidation, single-flight)
+- `bff/.../config/` — `AlmProperties` (`alt-alm.alm.*`), `AlmConfiguration` (beans + keepalive
+  schedule; no ALM contact at startup)
 - `bff/.../alm/session/` — `AlmCredentials` (runtime-only; `toString` refuses to render itself),
   `AlmSession`, `AlmSessionPool` (bounded, idle-eviction, keepalive scheduling), `AlmAuthClient`
 - `bff/src/test/.../alm/contract/` — `AlmSandbox` (credential discovery, the `@EnabledIf` gate, the
@@ -99,8 +103,20 @@ and scans the tracked tree for literal credential values. **43 tests default, 52
 `login()` discarded the cookies `POST site-session` sets. Both fixed; see probe 13. This is the first
 finding in the project surfaced by product code under test rather than a hand-written probe.
 
-**P0 remaining**: Spring bean wiring (`@ConfigurationProperties`) and the metadata **cache** layer
-with explicit invalidation (ADR 0005) — the parser exists, the cache around it does not. Then P1. See
+✅ **P0 IS COMPLETE** (2026-08-13) — all five exit criteria met. The last two landed together:
+
+- **`AlmMetadataCache`** — project-scoped, **explicit invalidation only** (no TTL: ADR 0005 wants an
+  operator lever, not luck), single-flight so N concurrent callers cause one fetch, and a failed load
+  is **not** cached. Over `AlmMetadataClient`, which keeps the parser HTTP-free. Verified live:
+  **15 entities, 432 fields, all 8 types, no unknown type** — independently reproducing the original
+  probe's 432.
+- **Spring wiring** — `AlmProperties` (`alt-alm.alm.*`) + `AlmConfiguration`. Credentials come from a
+  file **or** inline properties, file wins, missing config fails fast naming the *property* never a
+  value. The context starts with **zero ALM contact**: the pool logs in lazily on first borrow, which
+  is what lets CI start it with no credentials. Actuator exposes **health only** — `/env` and
+  `/configprops` would render the API secret.
+
+**Next: P1** (read-only Alt-ALM — the first real screens). See
 [docs/plan/implementation-plan.md](docs/plan/implementation-plan.md).
 
 ✅ **Toolchain ready**: Node 24.13.1, git 2.54, **JDK 25.0.4 Temurin** (machine-level `JAVA_HOME`

@@ -50,15 +50,18 @@ here even though no entity CRUD exists yet.
 
 **Dependencies**: none.
 
-**Exit criteria**:
+**Exit criteria — ALL MET (2026-08-13). P0 is complete.**
 
-- ✅ **BFF authenticates against the sandbox and holds a keepalive session** — met 2026-08-13,
-  `AlmAuthClientContractTest` green against the live sandbox (probe 13).
-- ⬜ Metadata service returns **cached** field descriptors for all 15 probe-known entity types
-  (`data-model §1`) — the parser is done and fixture-tested; **the cache is not built yet**.
+- ✅ **BFF authenticates against the sandbox and holds a keepalive session** — `AlmAuthClientContractTest`
+  green against the live sandbox (probe 13).
+- ✅ **Metadata service returns cached field descriptors for all 15 probe-known entity types**
+  (`data-model §1`) — `AlmMetadataCache` (project-scoped, explicit invalidation, single-flight, no TTL)
+  over `AlmMetadataClient`. Verified live: **15 entities, 432 fields, all 8 types, no unknown type** —
+  the 432 independently reproduces the original probe's count.
 - ✅ Fixture test suite green in CI (20 cases over all 15 entities, no server, no credentials).
 - ✅ Write-safety unit tests (field-order regression) green.
-- ⬜ Spring bean wiring via `@ConfigurationProperties`.
+- ✅ Spring bean wiring via `@ConfigurationProperties` (`AlmProperties` + `AlmConfiguration`);
+  the context starts with **no ALM contact** — the pool logs in lazily on first borrow.
 
 **Sandbox contract-test gate**: ✅ **done** — session lifecycle contract test (login →
 is-authenticated → project reach → keepalive → pool → teardown). No entity writes, so

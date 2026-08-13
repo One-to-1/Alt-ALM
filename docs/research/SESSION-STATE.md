@@ -1,4 +1,4 @@
-# Research Session State — updated 2026-08-13 (P0 auth criterion MET; contract test live and green)
+# Research Session State — updated 2026-08-13 (**P0 COMPLETE**; P1 is next)
 
 Working state of the Fable 5 research-and-planning session (kickoff:
 [docs/prompts/fable-5-research-and-plan.md](../prompts/fable-5-research-and-plan.md)). Written
@@ -319,7 +319,7 @@ probe (12). **`NO` dropped 21 → 13; eight rows were wrong.**
 Matrix now: FULL 54 / FULL* 23 / PARTIAL 50 / UNVERIFIED 32 / NO 13 / OTA 29 / N/A 17 = 218;
 achievable **127/218 (58.3%)**.
 
-## P0 — STARTED and partly in (2026-08-13, commit `19fb41f`)
+## P0 — ✅ COMPLETE (2026-08-13), all five exit criteria met
 
 Monorepo, Maven — both chosen by the user.
 
@@ -331,9 +331,12 @@ Monorepo, Maven — both chosen by the user.
 | `bff/.../alm/write/` | Write-safety core: `AlmEntityBody` (deterministic field order), `AlmWriteOutcome` (5xx→UNKNOWN), `AlmWriteRetry` (single missing-required-field retry) |
 | `bff/.../alm/metadata/` | `AlmFieldType` (the 8 verified types, no Boolean), `FieldDescriptor`, `AlmMetadataParser` (no HTTP dependency — parses offline) |
 | `bff/.../alm/session/` | `AlmCredentials` (runtime-only load, refuses to render itself), `AlmSession`, `AlmSessionPool` (bounded, idle-eviction, keepalive scheduling), `AlmAuthClient` (one-step login, XSRF, keepalive, two-call logout) |
-| `bff/src/test/.../alm/contract/` | `AlmSandbox` (credential discovery, `@EnabledIf` gate, masker), `AlmAuthClientContractTest` (**live**, tagged `contract`), `CredentialMaskingTest` (runs on every build) |
+| `bff/.../alm/metadata/` (cont.) | `AlmMetadataClient` (the HTTP half), `AlmMetadataCache` (**project-scoped, explicit invalidation only, single-flight, failures not cached** — ADR 0005) |
+| `bff/.../config/` | `AlmProperties` (`alt-alm.alm.*`), `AlmConfiguration` (beans + keepalive schedule). **No ALM contact at startup** — the pool logs in lazily on first borrow, which is what lets CI start the context with no credentials |
+| `bff/src/test/.../alm/contract/` | `AlmSandbox` (credential discovery, `@EnabledIf` gate, masker), `AlmAuthClientContractTest` + `AlmMetadataContractTest` (**live**, tagged `contract`), `CredentialMaskingTest` (runs on every build) |
 
-**43 tests green by default; 52 with `-Pcontract`.** 20 of them are the fixture harness: it parses **all 15** captured
+**57 tests green by default; 69 with `-Pcontract`; 12 skipped and green with no credentials.**
+20 of them are the fixture harness: it parses **all 15** captured
 `customization-fields-*.json` entities with **no server and no credentials**, and asserts the model
 facts in executable form (exactly 8 field types, no Boolean, `rbt-*` family present on requirement,
 multivalue is rare, memo size −1, malformed payload fails loudly rather than looking like an empty
@@ -366,14 +369,22 @@ folder**: it locks `bff/target` and breaks `mvnw clean`. Run without `clean`.
 
 ## Next actions (in order)
 
-1. ~~**Finish P0**~~ — session/auth manager, metadata parser, and the fixture harness are in and
-   green (see the P0 table above). ✅ **The auth exit criterion — "BFF authenticates against the
-   sandbox and holds a keepalive session" — is now MET** (2026-08-13): the contract test ran green
-   against the live sandbox, and fixed two bugs on the way (probe 13).
-   **Still open from P0's scope**: wiring the pool + metadata cache as Spring beans with
-   `@ConfigurationProperties`, and the per-project metadata cache's explicit invalidation (ADR 0005)
-   — the parser is done, the caching layer around it is not.
-2. **Then P1** (read-only Alt-ALM) per [../plan/implementation-plan.md](../plan/implementation-plan.md).
+1. ~~**Finish P0**~~ ✅ **DONE 2026-08-13 — nothing outstanding.** All five exit criteria met:
+   live auth + keepalive (probe 13), the metadata cache (verified live: **15 entities, 432 fields,
+   all 8 types**, independently reproducing the original probe's count), the fixture suite,
+   write-safety unit tests, and `@ConfigurationProperties` bean wiring.
+2. **START HERE — P1** (read-only Alt-ALM) per
+   [../plan/implementation-plan.md](../plan/implementation-plan.md). This is the first phase with
+   **visible output**: metadata-driven grids for requirements/tests/defects, the Core query builder,
+   tree navigation with runtime root discovery.
+   **Suggested shape** (raised with the user, not yet decided): take a **thin vertical slice first**
+   — one entity, one grid, live data end-to-end through BFF → SPA — before building out the query
+   builder, tree nav, and the other two entities. It de-risks the BFF↔SPA seam early and puts a real
+   screen up far sooner, since nothing has been visible for the whole of P0.
+   Two known traps waiting in P1: the `page-size` **2000 silent cap** (the grid must detect it and
+   surface "more results than shown", never trust `TotalResults` against a capped page), and the
+   Core query grammar's **undocumented null-test/escaping rules** — flag as a risk, do not silently
+   "handle" them.
 
 Worth doing soon, cheap now that the harness exists:
 - **OTA write probes** for the six newly-flipped rows — converts `UNVERIFIED` writes into fact and

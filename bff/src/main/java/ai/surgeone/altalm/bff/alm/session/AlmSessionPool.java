@@ -105,6 +105,23 @@ public final class AlmSessionPool implements AutoCloseable {
         }
     }
 
+    /**
+     * Drops a session already known to be dead — normally one that failed its keepalive.
+     *
+     * <p>Only acts if the session is still sitting idle here. A session that has since been borrowed
+     * is the borrower's to return, and freeing its slot from underneath them would let the pool
+     * exceed its bound.
+     *
+     * @return true if it was removed
+     */
+    public boolean evict(AlmSession session) {
+        if (idle.remove(session)) {
+            discard(session);
+            return true;
+        }
+        return false;
+    }
+
     /** Drops a session and its slot, logging it out best-effort. */
     private void discard(AlmSession session) {
         live.decrementAndGet();
