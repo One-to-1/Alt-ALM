@@ -276,26 +276,90 @@ passed the owner id, so `"Test parameter does not exist"` was literally true.
   delete children first, or delete the parent test — is verified).
 
 **Consequences:** the only *generator-blocking* gap is gone; ADR 0003's sidecar drops from **three
-gaps to two** (BPT components, similar-defects) and no longer blocks the generator, so P6 is
-genuinely optional.
+gaps to two** (BPT components, similar-defects) and no longer blocks the generator.
+⚠️ **"so P6 is genuinely optional" was written here and is now WRONG** — probes 11–12 grew the
+sidecar back to **eight named surfaces** the same day. It remains off the *generator's* critical
+path, but it is load-bearing for the product's feature surface. See ADR 0003 Addendum 3.
+
+## Probe 10 — API-key session concurrency (2026-08-13)
+
+**One API key held 50 simultaneous sessions, zero evicted, all usable at the same instant.** Tested
+at 12 then 50; **no cap reached — 50 is a floor.** Unlike a username/password login (bound by
+concurrent-user licensing, in practice one active client per seat), an API key over REST has **no
+one-machine-at-a-time constraint**. This also corroborates the no-licence-seat finding empirically.
+`JSESSIONID`, `LWSSO_COOKIE_KEY`, `QCSession`, `XSRF-TOKEN` are each unique per session; only
+`ALM_USER` is shared. **ADR 0004's pooled-session design is safe** — pool size is bounded by
+politeness and keepalive cost, not a cap. `UNVERIFIED`: all 50 came from one machine/IP, so per-IP
+binding is untested.
+
+## Probes 11–12 — the 21 `NO` verdicts re-audited (2026-08-13)
+
+Web research (`_raw/no-verdict-recheck.md`) plus a read-only REST probe (11) and read-only OTA
+probe (12). **`NO` dropped 21 → 13; eight rows were wrong.**
+
+- **#18 "Analyze" SOLVED → `FULL*`.** `Customization.RBT` exposes `TestingPolicyMatrix`,
+  `RiskCalculationMatrix`, `TestingLevelPercentage`, `TestingEffortForFCLevel`. It is a documented
+  lookup table, not a hidden algorithm. Read once per project over OTA, compute client-side; the
+  `rbt-*` writes are already REST. **Per-project admin config — never hardcode.**
+- **Six rows `NO` → `OTA`**: #129 BusinessViews + `GraphBuilder`, #132/#133
+  `ReportProjectTemplates` (79), #145 `KPITypes` (11), #166 (+#109/#196/#197) `AlertManager`,
+  #205 `Modules.IsVisibleForGroup` / `Permissions`.
+- ⚠️ **Probe 12 was READ-ONLY.** It verified the objects exist, are readable, and carry Add/Remove
+  methods — it never called one. **Write capability on all six is `UNVERIFIED`.**
+- **#209/#210 workflow scripts survive as `CONFIRMED NO`** — `Customization.Workflow` has only
+  `ProjectScriptsUpdated`/`TemplateScriptsUpdated`, no script content.
+- **RETRACTED probe 10's claim** that SA session visibility was unreachable:
+  `GET /qcbin/v2/sa/api/site-connections` → 200. I had guessed three non-existent paths while the
+  real one sat in `tests/fixtures/api-doc-sa-v2-paths.txt`. ⚠️ It returns **third-party identities** —
+  mask structurally by JSON key.
+- **ADR 0003 Addendum 3**: sidecar scope went three gaps → two (probe 9) → **eight named surfaces**
+  the same day. It is now **load-bearing for the feature surface**, though still off the generator's
+  critical path. **Settle .NET vs Python + pywin32 at P6 kickoff**, not during.
+
+Matrix now: FULL 54 / FULL* 23 / PARTIAL 50 / UNVERIFIED 32 / NO 13 / OTA 29 / N/A 17 = 218;
+achievable **127/218 (58.3%)**.
+
+## P0 — STARTED and partly in (2026-08-13, commit `19fb41f`)
+
+Monorepo, Maven — both chosen by the user.
+
+| Path | State |
+|---|---|
+| `bff/` | **Builds, 11 tests green.** Spring Boot 4.1.0, JDK 25, Maven **wrapper** (`./mvnw test` — no local Maven) |
+| `spa/` | **Builds.** Vite + React + TypeScript |
+| `.github/workflows/ci.yml` | Both halves + a check that fails if `Secrets/` is ever tracked |
+| `bff/.../alm/write/` | Write-safety core: `AlmEntityBody` (deterministic field order), `AlmWriteOutcome` (5xx→UNKNOWN), `AlmWriteRetry` (single missing-required-field retry) |
+
+**Boot 4 gotchas already paid for** (all found by building): starter is `spring-boot-starter-webmvc`
+not `-web`; test deps are **per-starter**; **Jackson is not transitive** (add
+`spring-boot-starter-json`); it is **Jackson 3** — package **`tools.jackson.*`**, unchecked
+exceptions; Initializr metadata says `4.1.0.RELEASE` but the real artifact is **`4.1.0`**.
+
+**Environment**: JDK 25.0.4 Temurin, machine-level `JAVA_HOME` set by its installer — **do not add
+user-level Java env vars, they shadow it** (this bit us once). ⚠️ Repo is in a **OneDrive-synced
+folder**: it locks `bff/target` and breaks `mvnw clean`. Run without `clean`.
 
 ## Next actions (in order)
 
-**Planning is closed. Next work is implementation phase P0** —
-see [../plan/implementation-plan.md](../plan/implementation-plan.md): repo scaffolding, CI, BFF
-skeleton (**Java 25 + Spring Boot 4.x** per ADR 0002), auth/session manager, metadata service, and
-the fixture-based test harness over the existing redacted `tests/fixtures/`.
+1. **Finish P0**: pooled session/auth manager (ADR 0004; keepalive vs `REST_SESSION_MAX_IDLE_TIME`
+   60 min), metadata service with per-project caching + explicit invalidation (ADR 0005), and the
+   fixture-based harness over the redacted `tests/fixtures/`.
+2. **Then P1** (read-only Alt-ALM) per [../plan/implementation-plan.md](../plan/implementation-plan.md).
 
-**Toolchain**: Node 24.13.1 and git 2.54 present. **JDK 25 (LTS) is being installed by the user**
-(2026-08-13) — it was absent at session start. ADR 0002's baseline was revised 21 → 25 to match:
-Spring Framework 7 fully tests JDK 17/21/25 and **recommends 25+ for production**, and Spring Boot
-4.0 supports up to Java 25 (4.1 up to 26). **Pin Spring Boot 4.0.x or later** — Boot 3.x predates
-JDK 25. Do not enable preview features.
+Worth doing soon, cheap now that the harness exists:
+- **OTA write probes** for the six newly-flipped rows — converts `UNVERIFIED` writes into fact and
+  de-risks P6's scope *before* the sidecar language is chosen.
+- Re-probe `attachments/{id}/audits` (#186) once P2 creates an attachment — currently inconclusive,
+  not negative.
+- Remaining open items are **Q**-numbers in
+  [../plan/risks-and-open-questions.md](../plan/risks-and-open-questions.md); risks are **R**-numbers.
 
-Optional before/alongside P0:
-- ~~OTA spike~~ **DONE — POSITIVE (Probe 8).** OTA works via API key; sidecar deferred to P6 and now
-  scoped to just BPT + similar-defects.
-- ~~Q34 / step-parameters~~ **DONE — closed over REST (Probe 9).**
-- Remaining deferred probes are tracked as **Q**-numbers in
-  [../plan/risks-and-open-questions.md](../plan/risks-and-open-questions.md), each already mapped to
-  the phase that needs its answer; risks are **R**-numbers in the same file.
+## ⚠️ Standing lesson — read before writing any "X is impossible"
+
+**Four confident negative verdicts have been overturned in three days**: OTA unreachable (stale
+client); no REST path defines a test parameter (wrong `parent-id` + an unprobed sibling collection);
+SA session visibility absent (three guessed paths); and six `NO` rows that simply never had OTA's
+`Customization` subtree enumerated. **None failed for too few attempts — every one failed on an
+unexamined assumption about the shape of the question.** Before recording an impossibility: grep the
+per-instance `resource-list` and the on-disk Swagger fixtures for sibling collections, confirm every
+id in a body means what you assume, and check whether an error is about *arity* rather than support.

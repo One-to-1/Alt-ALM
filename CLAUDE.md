@@ -67,24 +67,37 @@ scripts.
 
 ## Current status
 
-**Phase: research and planning — COMPLETE (2026-08-12). Implementation not started; no application
-code exists.**
+**Phase: research and planning COMPLETE (2026-08-12). Implementation STARTED 2026-08-13 — phase P0
+is partly in.**
 
-Nine live probe rounds against the sandbox plus 20 subagent research reports produced the research
+Twelve live probe rounds against the sandbox plus 20 subagent research reports produced the research
 corpus; the plan set and ADRs are written. **`docs/research/SESSION-STATE.md` is the resume
-point — read it first.** Next work is phase **P0** of
+point — read it first.**
+
+**P0 in the repo now** (commit `19fb41f`): `bff/` builds and tests green (Spring Boot 4.1.0 on JDK 25,
+Maven wrapper — `./mvnw test`, no local Maven needed), `spa/` builds (Vite + React/TS), CI runs both
+halves and fails if `Secrets/` is ever tracked, and `bff/.../alm/write/` holds the write-safety core
+(`AlmEntityBody` deterministic field order, `AlmWriteOutcome` 5xx→UNKNOWN, `AlmWriteRetry`
+missing-required-field single retry) with 11 passing tests.
+
+**P0 still to do**: pooled session/auth manager, metadata service with caching, fixture-based harness
+over `tests/fixtures/`. Then P1. See
 [docs/plan/implementation-plan.md](docs/plan/implementation-plan.md).
 
-⚠️ **Toolchain**: Node 24 and git are present. **JDK 25 (LTS)** is being installed by the user
-(2026-08-13) — required before the Spring Boot BFF can be built or run.
+✅ **Toolchain ready**: Node 24.13.1, git 2.54, **JDK 25.0.4 Temurin** (machine-level `JAVA_HOME`
+set by its installer — do NOT add user-level Java env vars, they shadow it). No local Maven/Gradle
+needed; the wrapper handles it. ⚠️ The repo sits in a **OneDrive-synced folder**, which locks
+`bff/target` and breaks `mvnw clean` — run without `clean`, or exclude `bff/target` and
+`spa/node_modules` from sync.
 
 Key artifacts: [live-probe-log.md](docs/research/live-probe-log.md) (empirical ground truth — **wins
-every conflict**), [alm-api-reference.md](docs/research/alm-api-reference.md),
+every conflict**; probes 1–12), [alm-api-reference.md](docs/research/alm-api-reference.md),
 [alm-data-model.md](docs/research/alm-data-model.md),
 [feasibility-matrix.md](docs/research/feasibility-matrix.md) (218 features scored),
 [architecture.md](docs/plan/architecture.md) + `docs/adr/0001–0005`,
 [data-generator-spec.md](docs/plan/data-generator-spec.md),
-[risks-and-open-questions.md](docs/plan/risks-and-open-questions.md) (R1–R16, Q1–Q31).
+[risks-and-open-questions.md](docs/plan/risks-and-open-questions.md) (risk + open-question register),
+[_raw/no-verdict-recheck.md](docs/research/_raw/no-verdict-recheck.md) (the NO-verdict re-audit).
 
 ## Verified facts (sandbox = ALM 26.1, SaaS-flavored; depth in `docs/research/`)
 
@@ -145,8 +158,24 @@ every conflict**), [alm-api-reference.md](docs/research/alm-api-reference.md),
   a default value raise `Invalid field type definition`. **Use REST for parameters, not OTA.**
 - ⚠️ **OTA folder deletes do not cascade to tests** — sweep by name prefix across `tests` *and*
   `test-folders` after any OTA cleanup (5 orphans were left behind during probing).
-- **58% of the stock UI is reachable** via documented REST (feasibility matrix); 23 features are
-  OTA-only, 21 are honest impossibilities.
+- **58% of the stock UI is achievable** (feasibility matrix: FULL 54 / FULL* 23 / PARTIAL 50 =
+  **127 of 218**). After the 2026-08-13 NO-verdict re-audit (probes 11–12): **OTA 29, NO 13,
+  UNVERIFIED 32, N/A 17**. `NO` dropped 21→13 — eight rows were wrong.
+- **The Testing Policy matrix is readable** (`Customization.RBT`): `TestingPolicyMatrix`,
+  `RiskCalculationMatrix`, `TestingLevelPercentage`, `TestingEffortForFCLevel`. "Analyze" is a
+  documented lookup table, not a hidden algorithm — read it once per project over OTA and compute
+  client-side; the `rbt-*` writes are pure REST. **Per-project admin config — never hardcode.**
+- Also OTA-readable (probe 12, **reads only — writes UNVERIFIED**): `Customization.KPITypes` (11),
+  `ReportProjectTemplates` (79), `BusinessViews` (37) + `GraphBuilder`, `AlertManager.AlertList`,
+  `Customization.Modules/Permissions/UsersGroups` (data-hiding).
+- ⚠️ **OTA parameterized properties**: `"Number of parameters specified does not match the expected
+  number"` means **wrong arity**, NOT unsupported. The matrices take 2 indices, `AlertList` takes 1.
+- **Workflow scripts stay genuinely unreachable**: `Customization.Workflow` exposes only
+  `ProjectScriptsUpdated`/`TemplateScriptsUpdated` — dirty flags, no script content. Confirmed by
+  direct evidence, not inference.
+- **Site Admin session visibility**: `GET /qcbin/v2/sa/api/site-connections` → 200 (session ids,
+  host, username, `client-type` — shows `OTAClient` for COM sessions). ⚠️ It returns **third-party
+  identities from other tenant projects** — mask structurally by JSON key, not by credential terms.
 
 ## Skills — authored, in `.claude/skills/`
 
