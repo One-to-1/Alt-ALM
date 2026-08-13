@@ -19,7 +19,7 @@ enforcement point for every probe-derived client hazard:
 - bulk 409 per-item result parsing; page-size caps (2000 silent cap)
 - runtime root discovery + per-project metadata caching (never hardcode roots or List-Ids)
 
-## D2 — Stack: Java 21 + Spring Boot BFF; React + TypeScript SPA
+## D2 — Stack: Java 25 (LTS) + Spring Boot 4.x BFF; React + TypeScript SPA
 
 ADR must compare Java vs TS/Node vs Python vs .NET honestly. Decision drivers, in order:
 1. User preference is Java (stated, Phase-0 decision table) — a legitimate tiebreaker, stated as such.

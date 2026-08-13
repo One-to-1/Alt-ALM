@@ -224,6 +224,19 @@ client itself consumes for its grids — a richer/denormalized shape distinct fr
 `application/json`. **The actual body shape difference is `UNVERIFIED`** — no probe has requested this
 media type; worth a live probe before Alt-ALM considers piggy-backing on it for grid/aggregation views.
 
+### 3.6 ⚠️ Field metadata `editable:false`/`required:false` does not describe write requirements — probe-verified
+
+A second instance of the class of trap in §3.2, distinct from field *order*: field metadata can flatly
+misstate what a write needs. `POST test-parameters` (§6.4) omitting `ref-count` fails with `HTTP 500
+{"Id":"qccore.general-error","Title":"...request is missing required field TP_REF_COUNT"}`, even
+though `customization/entities/test-parameter/fields` reports `ref-count` as `editable:false,
+required:false` — implying it should be omittable. Sending it anyway succeeds `[probe]`
+(live-probe-log.md Probe 9, §9.3). **Generalized rule for the BFF's write-safety component:**
+`editable:false` does not imply "omit from the write body", and `required:false` does not imply
+"optional on create" — the `Required` flag describes UI/validation semantics, not the server's own
+FREC-conversion preconditions. Any `HTTP 500` naming a `missing required field <PHYSICAL_NAME>` should
+be retried once with that physical field's logical name included, before being reported as a failure.
+
 ---
 
 ## 4. Query grammar, paging & bulk operations
@@ -515,7 +528,13 @@ work as a parameter-authoring mechanism.**
 survives round-trip and flips `has-params=Y` `[probe]` (live-probe-log.md Probe 5). This is the
 required client-side authoring convention for parameter tokens in step text.
 
-**`step-parameters` — FAILED after 2 informed attempts, documented failure not a shape bug.** Real
+**⚠️ RETRACTED 2026-08-13 (Probe 9) — the "genuine gap" conclusion below was wrong.** It was a shape
+bug (`step-parameters.parent-id` was passed the design-step/test id instead of a `test-parameter` id)
+compounded by a missed second collection, `test-parameters`, that earlier rounds never probed because
+documentation research had asserted no REST entity for test parameters existed at all. The original
+finding is kept below for the record; the corrected model and working recipes follow immediately after.
+
+**`step-parameters` — FAILED after 2 informed attempts, documented failure not a shape bug** *(superseded — see corrected model below)*. Real
 fields (from `customization/entities/step-parameter/fields`): `actual-value`(Memo),
 `ignore-test-instance-parameters`(String), `origin-test`(Number), `id`(Number),
 `used-by-owner-id`(Number), `key`(String), `used-by-owner-type`(String, REQUIRED), `parent-id`(Number),
@@ -527,8 +546,82 @@ this is a genuine gap, not a shape bug**: every attempted shape — including af
 tokens successfully flipped `has-params=Y` — fails with the same "Test parameter does not exist"
 `[probe]` (Probe 5). **There is no REST path to *define* a test parameter object** (full CRUD exists
 per resource-list `[resource-list]` in design-steps/{id}, runs/{id}, test-configs/{id},
-test-instances/{id} nested contexts, but presence ≠ working create). **OTA-fallback candidate**
-(OTA `TestParameterFactory`); see §9.
+test-instances/{id} nested contexts, but presence ≠ working create). ~~**OTA-fallback candidate**
+(OTA `TestParameterFactory`); see §9.~~ **Not needed — see below.**
+
+**Corrected model (Probe 9): two entities, not one.** `test-parameter` (physical `TP_*`, collections
+`test-parameters` and `tests/{testId}/test-parameters`) **defines** the parameter on a test — 11
+fields; `name` (String) is the only Required one, `default-value` (Memo), `description` (Memo) and
+`order` (Number) are editable, and `id`, `parent-id` (`TP_TEST_ID`), `ref-count`, `is-mapped`, `vts`,
+`vc-user-name`, `ver-stamp` are metadata-read-only. `step-parameter` (physical `SP_*`, field set as
+above) **records a value** against an already-defined `test-parameter` — its `parent-id`
+(`SP_TEST_PARAM_ID`) must be the **`test-parameter` id**, not the design-step/test id; passing the
+owner id there is exactly what produced the "Test parameter does not exist" 500 above `[probe]`
+(live-probe-log.md Probe 9, §9.1).
+
+**Two working creation routes for `test-parameter`:**
+
+*Route A — direct create (preferred; deterministic, no text parsing):*
+
+```json
+POST tests/{testId}/test-parameters
+{"Fields":[{"Name":"name","values":[{"value":"my_param"}]},
+           {"Name":"ref-count","values":[{"value":"0"}]}],
+ "Type":"test-parameter"}                                          -> HTTP 201
+```
+`parent-id` is read-only, so the owning test comes from the **URL**. The flat `POST test-parameters`
+form also works when both `parent-id` and `ref-count` are in the body. `order` may be set explicitly;
+otherwise the server auto-assigns the next ordinal.
+
+*Route B — token registration (matches the stock UI's authoring flow):* a design step whose
+`description` contains an entity-encoded `&lt;&lt;&lt;name&gt;&gt;&gt;` token registers the parameter
+as a side effect, identically to OTA: `GET tests/{testId}/test-parameters` then shows
+`TotalResults=1`, `name` matching the token, `ref-count=1`. **This answers Q34: yes — the REST token
+registers a real parameter object.** The entity-encoded form survives round-trip with the token name
+intact; a **raw** `<<<name>>>` token is still mangled to `<<>>` by the sanitizer — that caveat above
+stands unchanged. Registered parameters have **independent lifetime**: they are not cascade-deleted
+when the step that registered them is removed.
+
+**⚠️ NEW WRITE HAZARD — metadata `editable:false`/`required:false` does not mean "omit from write
+body".** `POST test-parameters` without `ref-count` fails: `HTTP 500 {"Id":"qccore.general-error",
+"Title":"failed converting entity test-parameter to FREC, request is missing required field
+TP_REF_COUNT"}` — even though `customization/entities/test-parameter/fields` reports `ref-count` as
+`editable:false, required:false`. Sending it anyway (`{"name":"…","ref-count":"0"}`) succeeds, 4/4
+shapes tried. **Rule for the BFF's write-safety component: on a 500 naming `missing required field
+<PHYSICAL_NAME>`, retry once with that field included regardless of what metadata says.** This is a
+second instance of the class of trap in §3.2 (metadata does not fully describe what a write needs) —
+see §3.6 `[probe]` (live-probe-log.md Probe 9, §9.3).
+
+**`step-parameters` create — WORKS**, retracting the failure above, once `parent-id` is the
+`test-parameter` id, for both `used-by-owner-type=design-step` and `=test`:
+
+```json
+POST step-parameters
+{"Fields":[{"Name":"used-by-owner-type","values":[{"value":"design-step"}]},
+           {"Name":"used-by-owner-id","values":[{"value":"<design-step id>"}]},
+           {"Name":"parent-id","values":[{"value":"<TEST-PARAMETER id>"}]},
+           {"Name":"actual-value","values":[{"value":"<html><body>runtime-value</body></html>"}]}],
+ "Type":"step-parameter"}                                          -> HTTP 201
+```
+`actual-value` is a Memo and round-trips through the same sanitizer as any other memo field. Verified
+read-back via `GET step-parameters/{id}`.
+
+**Default values — REST can do what OTA cannot.** `PUT test-parameters/{id}` with `default-value` →
+**HTTP 200**, value reads back intact. OTA's `Params` collection raises `Invalid field type
+definition` on the equivalent operation (Probe 8 left this UNVERIFIED) — the REST route simply works
+and is the one to use. The field is `default-value`; there is no `value` field
+(`qccore.unknown-field-name` if tried).
+
+**Observed, cause unconfirmed:** `DELETE design-steps/{id}` returned HTTP 500 for a step that had a
+`step-parameter` referencing it (parameters remained afterwards; deleting the parent test then cleaned
+everything up, 200). Likely a referential-integrity ordering constraint. `UNVERIFIED` as a cause; the
+workaround (delete `step-parameters` before their owning design step, or delete the parent test) is
+verified `[probe]` (live-probe-log.md Probe 9, §9.8).
+
+`[probe]` (live-probe-log.md Probe 9, §9.1–9.7; `scripts/probe/probe-write-4.ps1`, `-4b.ps1`,
+`probe-ota-7-paramcheck.ps1`). An OTA cross-check (`Params.Count`, names) confirmed the REST-created
+objects are real. **OTA is no longer needed for parameter definition or values** — see the corrected
+§9 gap-table entry.
 
 ### 6.5 Defects & defect-links
 
@@ -842,6 +935,11 @@ denormalized `*-name` fields on `run`) — the latter carry a distinctive **`Siz
 - **Release-cycle date validation**: VERIFIED server-enforced against the parent release window → §6.7.
 - **`<<<param>>>` tokens in step text**: survive when HTML-entity-pre-encoded → §6.4.
 - **BPT**: `components` 403 license-gated, `business-components` 404 — OTA-only here → §6.7b.
+- **`test-parameters`/`step-parameters` create (Probe 9, 2026-08-13)**: RETRACTS the "genuine gap, no
+  REST path to define a test parameter" conclusion carried since Probes 4–5. A separate, never-probed
+  `test-parameters` collection defines the parameter object; the `step-parameters` failure was a shape
+  bug (`parent-id` needed the `test-parameter` id, not the design-step/test id). Both entities, both
+  creation routes, and `PUT .../default-value` are now VERIFIED working over REST → §6.4.
 
 ### Still open
 
@@ -856,7 +954,7 @@ but not airtight negative (the inventory has known false negatives elsewhere, §
 | **Alerts / alert rules** | Confirmed absent (`alerts.html`/`alert-rules.html` 404; zero resource-list hits) `[docs-research]` | Capture stock-UI network traffic while creating/triggering an alert rule |
 | **Follow-up flags** | No dedicated source located; may be UI decoration on alert state only | Same UI-traffic capture as alerts |
 | **Purge-runs** | Confirmed absent as a REST endpoint; only per-id `DELETE runs/{id}` exists | Re-check resource-list/Swagger; UI-only `PurgeRunsTask` background job has no documented trigger endpoint |
-| **`step-parameters` create** | **FAILED live, twice (rounds 1–2)** — every shape returns 500 `"Test parameter does not exist"`, even after entity-encoded tokens registered `has-params=Y`; no REST path to define the parameter object exists `[probe]` (Probes 4–5) | **OTA fallback** (`TestParameterFactory`) once tdconnect.exe is available; optionally capture the stock UI's parameter-creation traffic to confirm no REST route was missed |
+| **`step-parameters` create** | ~~FAILED live, twice (rounds 1–2) — every shape returns 500 `"Test parameter does not exist"`, even after entity-encoded tokens registered `has-params=Y`; no REST path to define the parameter object exists `[probe]` (Probes 4–5)~~ **RESOLVED, Probe 9 (2026-08-13):** the "Test parameter does not exist" error was literally true — a `test-parameter` had to exist first, via the missed `test-parameters` collection, before `step-parameters.parent-id` (which needed the *parameter's* id, not the owner's) would resolve. Both entities now VERIFIED working over REST → §6.4 | **Done — no further experiment needed.** OTA fallback is not required for parameter definition or values. |
 | **Audit/history partial coverage** | **VERIFIED partial**: `GET requirements/{id}/audits` returned only 2 entries (both `status` field changes) for a requirement that had a create + 2 rich-text PUTs + a coverage link — creates and memo PUTs produced **no** audit entry `[probe]` (probe4-write-round-1.md §10) | Isolate per-field: PUT a plain (non-memo) editable field and check for an audit entry, to determine if the gap is memo-specific or coverage extends only to derived/computed fields like `status` |
 | **`alm-web` dialect body shape** | Media type identified on 42 ops (§3.5), never requested | `GET` one `groups/{groupsFields}` endpoint with `Accept: application/json;schema=alm-web` and diff against the plain-JSON response |
 | **`/mail` POST (19 entity types)** | **Probed, FAILED** — 3 JSON shapes → identical opaque NPE; 1 XML shape → different 400. Body format genuinely undocumented `[probe]` (Probe 5) | Capture the stock UI's send-by-email request body, or accept Alt-ALM sending its own mail (already the plan per wave2-05) |

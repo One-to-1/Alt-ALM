@@ -27,6 +27,12 @@ Target: OpenText ALM/Quality Center classic (`/qcbin`), NOT Octane. Sandbox grou
    silent-commit risk here — the XSRF gate runs before business logic [api-ref §2.2].
 4. **`Accept` header must be set or you get an HTML error page.** No/invalid `Accept` → full branded
    HTML error page. Use `Accept: application/json` (or `application/xml`) on every call [api-ref §3.4].
+5. **Field metadata `editable:false`/`required:false` does NOT mean "omit from the write body."**
+   `POST test-parameters` omitting `ref-count` 500s as `"...missing required field TP_REF_COUNT"` even
+   though its metadata reports `editable:false, required:false`. Sending it anyway succeeds. **Rule: on
+   any 500 naming `missing required field <PHYSICAL_NAME>`, retry once with that field included,
+   regardless of what metadata claims.** Second instance of hazard #1's class of trap — metadata does
+   not fully describe what a write needs [api-ref §3.6, Probe 9].
 
 ## 2. Auth handshake
 
@@ -146,7 +152,42 @@ on-server). Sibling-order field is `step-order`, not `order-id`.
 ```
 **Parameter tokens**: a raw `<<<name>>>` in step text is mangled by the sanitizer to `<<>>` (tag-name
 stripped). **Must HTML-entity-pre-encode it**: send `&lt;&lt;&lt;name&gt;&gt;&gt;` — survives intact and
-flips `has-params=Y`. (But see §9 — `step-parameters` itself cannot be created via REST.)
+flips `has-params=Y`, and this token registers a real `test-parameter` object as a side effect. **Retracted**: the old note here ("`step-parameters` itself cannot be created via REST") was wrong — see
+the `test-parameter`/`step-parameter` recipe below.
+
+**`test-parameter` define + `step-parameter` value record** — retracts the earlier "genuine REST gap"
+finding (Probes 4–5): a missed `test-parameters` collection defines the object, and the
+`step-parameters` failure was a `parent-id` shape bug, not a real gap [live-probe-log.md Probe 9].
+**Two entities**: `test-parameter` (physical `TP_*`) *defines* a parameter on a test; `step-parameter`
+(physical `SP_*`) *records a value* against an already-defined one.
+
+Route A — direct create (preferred; deterministic, no text-parsing dependency):
+```json
+POST tests/{testId}/test-parameters
+{"Fields":[{"Name":"name","values":[{"value":"my_param"}]},
+           {"Name":"ref-count","values":[{"value":"0"}]}],
+ "Type":"test-parameter"}                                          -> HTTP 201
+```
+`parent-id` is read-only — the owning test comes from the **URL**, not the body. ⚠️ **`ref-count` looks
+optional (metadata `editable:false, required:false`) but is NOT — omitting it 500s with `"missing
+required field TP_REF_COUNT"`. Always send it** (hazard #5 above). The flat `POST test-parameters` form
+also works if both `parent-id` and `ref-count` are in the body.
+
+Once a `test-parameter` exists, record a value against it — `parent-id` here must be the
+**`test-parameter`'s id**, NOT the design-step/test id (passing the owner id there is exactly what
+produced the old, misleading "Test parameter does not exist" 500):
+```json
+POST step-parameters
+{"Fields":[{"Name":"used-by-owner-type","values":[{"value":"design-step"}]},
+           {"Name":"used-by-owner-id","values":[{"value":"<design-step id>"}]},
+           {"Name":"parent-id","values":[{"value":"<TEST-PARAMETER id>"}]},
+           {"Name":"actual-value","values":[{"value":"<html><body>runtime-value</body></html>"}]}],
+ "Type":"step-parameter"}                                          -> HTTP 201
+```
+`used-by-owner-type=test` also works. Set a default value with `PUT test-parameters/{id}` and a
+`default-value` field (Memo) → HTTP 200 — there is no `value` field
+(`qccore.unknown-field-name` if tried). OTA cannot set this (`"Invalid field type definition"`); REST
+can — use REST for this operation even if the OTA bridge is present.
 
 **Requirement coverage** (req↔test):
 ```json
@@ -246,12 +287,11 @@ naming trap: `cycle-id` = test-set id, `testcycl-id` = test-instance id.
 ## 9. Confirmed absent — don't go looking
 
 Zero hits across the 1,111-op resource-list AND doc-host 404s: **timeslots, libraries/baselines,
-alerts/alert rules, follow-up flags, purge-runs** (only per-id `DELETE runs/{id}` exists). Also
-confirmed by direct probe failure, not just absence: **`step-parameters` create** (all shapes → 500
-`"Test parameter does not exist"` — no REST path to define a parameter object, only reference/value
-rows exist; OTA `TestParameterFactory` is the fallback candidate). **BPT**: `GET /components` → 403
-license-gated, `GET /business-components` → 404 — effectively OTA-only here. **Mail body shape**:
-genuinely undocumented, all attempted shapes fail.
+alerts/alert rules, follow-up flags, purge-runs** (only per-id `DELETE runs/{id}` exists). **BPT**:
+`GET /components` → 403 license-gated, `GET /business-components` → 404 — effectively OTA-only here.
+**Mail body shape**: genuinely undocumented, all attempted shapes fail. **RETRACTED (Probe 9)**:
+`step-parameters`/test-parameter creation is **not** absent — it was a missed `test-parameters`
+collection plus a `parent-id` shape bug; see the recipe in §7. Do not re-list it here.
 
 See also: `docs/research/alm-api-reference.md` (full detail, §1–9), `docs/research/live-probe-log.md`
 (raw probe results), `docs/research/alm-data-model.md` (entity relationships/field types — load

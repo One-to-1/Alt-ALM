@@ -195,7 +195,7 @@ into it. Data-model agent corrections are authoritative where they cite r3-* fix
    list refreshed (item 10 = deferred probes).
 3. **Plan set** DONE (lead decision brief `docs/plan/_lead-decision-brief.md` D1–D7 → 3 Sonnet
    drafting agents, lead-reviewed):
-   - `docs/plan/architecture.md` + ADRs 0001–0005 (BFF required; **Java 21 + Spring Boot** BFF +
+   - `docs/plan/architecture.md` + ADRs 0001–0005 (BFF required; **Java 25 + Spring Boot** BFF +
      React/TS SPA — scored 4-way comparison, user preference named as tiebreaker; OTA Windows-only
      sidecar; service-account pooled sessions + app-level users, per-user-key evolution path;
      metadata-driven rendering).
@@ -245,20 +245,57 @@ created and deleted via OTA).
 (P6). ADR 0003's language decision (.NET vs Python + pywin32) is **live again**. Feasibility matrix,
 risks (R9/R10/R17/R18, Q18/Q32/Q33 + new Q34) and architecture.md all corrected.
 
-**Highest-value next experiment (Q34):** does writing an entity-encoded
-`&lt;&lt;&lt;name&gt;&gt;&gt;` token via **REST** register a parameter the same way OTA's token
-does? If yes, `step-parameters` POST may then succeed and the gap closes **without OTA at all**.
+## Probe 9 — the test-parameter gap is CLOSED over REST (2026-08-13)
+
+⚠️ **This retracts "there is no REST path to define a test parameter", held since Probe 4.** Full
+detail in [live-probe-log.md](live-probe-log.md) §Probe 9; scripts `probe-write-4.ps1`, `-4b.ps1`,
+`probe-ota-7-paramcheck.ps1`. All records cleaned up; orphan sweep 0.
+
+**Two entities, not one** — this is why 5 attempts at one endpoint never worked:
+
+| Entity | Physical | Role |
+|---|---|---|
+| `test-parameter` | `TP_*` | **defines** a parameter on a test |
+| `step-parameter` | `SP_*` | **records a value** against a defined one |
+
+`step-parameter.parent-id` = the **test-parameter id**, not the design-step/test id. Earlier probes
+passed the owner id, so `"Test parameter does not exist"` was literally true.
+
+- **Create**: `POST tests/{id}/test-parameters` with `name` + `ref-count` → **201**. (`parent-id` is
+  read-only; the owner comes from the URL. The flat form works with `parent-id` + `ref-count`.)
+- **Q34 = YES**: an entity-encoded `&lt;&lt;&lt;name&gt;&gt;&gt;` token in a REST-written design step
+  registers a real parameter, and the token name **survives round-trip** (a raw `<<<name>>>` is still
+  mangled to `<<>>`). Parameters have independent lifetime — not cascade-deleted with the step.
+- **`POST step-parameters` → 201** for owner types `design-step` and `test`.
+- **`PUT test-parameters/{id}` `default-value` → 200** — **OTA cannot do this**. Use REST.
+- **OTA cross-check confirms** the REST-created objects are real (`Params.Count=5`, names match).
+- ⚠️ **NEW WRITE HAZARD**: `ref-count` is metadata `editable:false, required:false`, yet the create
+  500s without it (`missing required field TP_REF_COUNT`) and succeeds with it. **Metadata does not
+  fully describe writes.** On a 500 naming a missing physical field, retry once including it.
+- `UNVERIFIED`: `DELETE design-steps/{id}` 500s when a `step-parameter` references it (workaround —
+  delete children first, or delete the parent test — is verified).
+
+**Consequences:** the only *generator-blocking* gap is gone; ADR 0003's sidecar drops from **three
+gaps to two** (BPT components, similar-defects) and no longer blocks the generator, so P6 is
+genuinely optional.
 
 ## Next actions (in order)
 
 **Planning is closed. Next work is implementation phase P0** —
 see [../plan/implementation-plan.md](../plan/implementation-plan.md): repo scaffolding, CI, BFF
-skeleton (Java 21 + Spring Boot per ADR 0002), auth/session manager, metadata service, and the
-fixture-based test harness over the existing redacted `tests/fixtures/`.
+skeleton (**Java 25 + Spring Boot 4.x** per ADR 0002), auth/session manager, metadata service, and
+the fixture-based test harness over the existing redacted `tests/fixtures/`.
+
+**Toolchain**: Node 24.13.1 and git 2.54 present. **JDK 25 (LTS) is being installed by the user**
+(2026-08-13) — it was absent at session start. ADR 0002's baseline was revised 21 → 25 to match:
+Spring Framework 7 fully tests JDK 17/21/25 and **recommends 25+ for production**, and Spring Boot
+4.0 supports up to Java 25 (4.1 up to 26). **Pin Spring Boot 4.0.x or later** — Boot 3.x predates
+JDK 25. Do not enable preview features.
 
 Optional before/alongside P0:
-- ~~OTA spike~~ **DONE — negative result, see above.** No further OTA work until a non-SSO instance
-  exists.
-- Remaining deferred probes are tracked as **Q1–Q31** in
+- ~~OTA spike~~ **DONE — POSITIVE (Probe 8).** OTA works via API key; sidecar deferred to P6 and now
+  scoped to just BPT + similar-defects.
+- ~~Q34 / step-parameters~~ **DONE — closed over REST (Probe 9).**
+- Remaining deferred probes are tracked as **Q**-numbers in
   [../plan/risks-and-open-questions.md](../plan/risks-and-open-questions.md), each already mapped to
-  the phase that needs its answer; risks are R1–R16 in the same file.
+  the phase that needs its answer; risks are **R**-numbers in the same file.

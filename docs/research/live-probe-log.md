@@ -404,10 +404,142 @@ be swept via REST `DELETE /tests/{id}`. **Always sweep by name prefix across `te
 The Probe 7 write-off was wrong. ADR 0003's sidecar now has a **reachable target**, so the
 implementation-language decision (.NET vs Python + pywin32) becomes live again.
 
-**Next experiments:** (1) whether writing an entity-encoded `&lt;&lt;&lt;name&gt;&gt;&gt;` token via
-**REST** registers a parameter the same way (if so, `step-parameters` POST may finally succeed —
-this would close the gap without OTA at all); (2) how to set a parameter's default value
-(`Invalid field type definition`); (3) decode `DeniedFeatures`.
+**Next experiments:** ~~(1) whether writing an entity-encoded `&lt;&lt;&lt;name&gt;&gt;&gt;` token via
+**REST** registers a parameter the same way; (2) how to set a parameter's default value~~
+**BOTH ANSWERED — see Probe 9. Neither needs OTA.** Remaining: (3) decode `DeniedFeatures`.
+
+## Probe 9 — the test-parameter gap is CLOSED over REST, 2026-08-13 (`scripts/probe/probe-write-4.ps1`, `-4b.ps1`, `probe-ota-7-paramcheck.ps1`)
+
+⚠️ **This retracts the "no REST path to define a test parameter" conclusion carried since Probe 4.**
+It was reported as "a genuine gap, not a shape bug" after 5 failed `POST step-parameters` attempts
+across rounds 1–2. **It was a shape bug** — specifically a wrong `parent-id` — plus a missed
+collection. Every claim below is HTTP-verified against the sandbox; all records cleaned up, orphan
+sweep returned 0 in `tests` and `test-folders`.
+
+### 9.1 The missed collection: `test-parameters` ≠ `step-parameters`
+
+The per-instance resource-list has carried a **separate** collection all along, never probed because
+documentation research asserted "no REST entity for test parameters at all":
+
+```
+/domains/{d}/projects/{p}/test-parameters                DELETE,GET,POST,PUT
+/domains/{d}/projects/{p}/test-parameters/{id}           DELETE,GET,PUT
+/domains/{d}/projects/{p}/tests/{test_id}/test-parameters    GET,POST
+/domains/{d}/projects/{p}/tests/{test_id}/test-parameters/{id}  DELETE,GET,PUT
+```
+
+The two entities divide the job cleanly, which is why hammering one never worked:
+
+| Entity | Physical | Role |
+|---|---|---|
+| `test-parameter` | `TP_*` | **Defines** the parameter on a test (name, default value, order) |
+| `step-parameter` | `SP_*` | **Records a value** against an already-defined parameter |
+
+`step-parameter.parent-id` (`SP_TEST_PARAM_ID`) is the **`test-parameter` id** — *not* the design-step
+or test id. Rounds 1–2 passed the owner id there, which is exactly what produced the opaque
+`HTTP 500 "Test parameter does not exist"` on all 5 attempts. The error was literally true.
+
+### 9.2 `test-parameter` field set (runtime metadata, fixture `r4-test-parameter-fields.json`)
+
+11 fields. `name` (`TP_NAME`, String) is the only **Required** one; `default-value` (`TP_DEFAULT_VALUE`,
+Memo), `description` (`TP_DESCRIPTION`, Memo) and `order` (`TP_ORDER`, Number) are editable; the rest
+(`id`, `parent-id`/`TP_TEST_ID`, `ref-count`, `is-mapped`, `vts`, `vc-user-name`, `ver-stamp`) are
+metadata-read-only.
+
+### 9.3 ⚠️ NEW WRITE HAZARD — a metadata-read-only field can be *required* on write
+
+`POST test-parameters` with a correct body fails:
+
+```
+HTTP 500 {"Id":"qccore.general-error",
+          "Title":"failed converting entity test-parameter to FREC, request is missing required field TP_REF_COUNT"}
+```
+
+`ref-count` is reported `editable:false, required:false` by
+`customization/entities/test-parameter/fields`. **Sending it anyway makes the create succeed** —
+`{"name":"…","ref-count":"0"}` → **HTTP 201**, on both the nested and flat forms (4/4 shapes).
+
+**Generalized rule for the BFF's write-safety component: field metadata `editable:false` does NOT
+imply "omit from the write body", and `required:false` does NOT imply "optional on create".** The
+`Required` flag describes UI/validation semantics, not the server's own FREC-conversion
+preconditions. Any 500 naming a `missing required field <PHYSICAL_NAME>` should be retried once with
+that physical field's logical name included, before being reported as a failure. This is a second
+instance of the same class of trap as the load-bearing field-order hazard (§3.2) — both are cases
+where the metadata does not fully describe what a write needs.
+
+### 9.4 Two working creation routes — both verified
+
+**Route A — direct create (preferred; deterministic, no text parsing):**
+```
+POST tests/{testId}/test-parameters
+{"Fields":[{"Name":"name","values":[{"value":"my_param"}]},
+           {"Name":"ref-count","values":[{"value":"0"}]}],
+ "Type":"test-parameter"}                                          -> HTTP 201
+```
+`parent-id` is read-only, so the owning test comes from the **URL**. The flat
+`POST test-parameters` form also works when `parent-id` **and** `ref-count` are both in the body.
+`order` may be set explicitly; otherwise the server auto-assigns the next ordinal.
+
+**Route B — token registration (matches the stock UI's authoring flow):** a design step whose
+`description` contains an **entity-encoded** token registers the parameter as a side effect.
+```
+POST design-steps  description = "<html><body>Value is &lt;&lt;&lt;altalm_rt&gt;&gt;&gt;</body></html>"
+  -> HTTP 201, has-params="Y"
+GET tests/{testId}/test-parameters -> TotalResults=1, name="altalm_rt", ref-count=1
+```
+**This answers Q34: yes — the REST token registers a real parameter object, identically to OTA's.**
+The entity-encoded form also **survives round-trip with the token name intact** (fixture
+`r4b-designstep-roundtrip.txt`), unlike a raw `<<<name>>>`, which the sanitizer still mangles to
+`<<>>` (§6.4). Registered parameters have **independent lifetime** — they are not cascade-deleted
+when the step is removed.
+
+### 9.5 `POST step-parameters` — WORKS (retracts the Probe 4/5 failure)
+
+With `parent-id` = the **`test-parameter` id**, it returns **HTTP 201** for both owner types:
+```
+POST step-parameters
+{"Fields":[{"Name":"used-by-owner-type","values":[{"value":"design-step"}]},
+           {"Name":"used-by-owner-id","values":[{"value":"<design-step id>"}]},
+           {"Name":"parent-id","values":[{"value":"<TEST-PARAMETER id>"}]},
+           {"Name":"actual-value","values":[{"value":"<html><body>runtime-value</body></html>"}]}],
+ "Type":"step-parameter"}                                          -> HTTP 201
+```
+`used-by-owner-type=test` also returns 201. `actual-value` is a Memo and round-trips through the
+same sanitizer as any other memo field. Verified read-back via `GET step-parameters/{id}`.
+
+### 9.6 Default values — REST can do what OTA cannot
+
+`PUT test-parameters/{id}` with `default-value` → **HTTP 200**, value reads back intact. Probe 8 left
+this `UNVERIFIED` because OTA's `Params` collection raises `Invalid field type definition` when
+setting one. **The REST route simply works**, and is the one to use. (`value` is not a field name —
+`qccore.unknown-field-name`; the field is `default-value`.)
+
+### 9.7 OTA cross-check — the REST-created objects are real
+
+`probe-ota-7-paramcheck.ps1` (32-bit host, ALM's deployed client) opened the same test over COM:
+`HasParam=True`, `Params.Count = 5`, and the parameter names matched what REST created, including
+the token-registered one. OTA's `ParamValue()` raised `Invalid field type definition` on read — so
+**REST reads the default value that OTA cannot**. The two APIs agree on existence; REST is strictly
+more capable here.
+
+### 9.8 Observed, cause unconfirmed
+
+`DELETE design-steps/{id}` returned **HTTP 500** for a step that had a `step-parameter` referencing
+it (parameters remained afterwards; deleting the parent test then cleaned everything up, 200).
+Likely a referential-integrity ordering constraint — delete `step-parameters` before their owning
+design step. `UNVERIFIED` as a cause; the workaround (delete children first, or delete the parent
+test) is verified.
+
+### 9.9 Consequences
+
+- **The single hardest gap in the feasibility matrix is closed over documented REST.** Test
+  parameters were the only *generator-blocking* gap in `data-generator-spec.md`'s appendix; the
+  generator can now author parameters, default values, and per-step values end-to-end.
+- **ADR 0003's justification shrinks from three gaps to two.** Test-parameter definition was one of
+  exactly three named REST gaps that justified the OTA sidecar. Only **BPT components** and
+  **similar-defects** remain. The sidecar is still justified, but it is now a smaller, later thing.
+- **A second metadata-doesn't-describe-writes hazard** (§9.3) belongs in the write-safety component
+  alongside the field-order rule.
 
 ## Fixtures captured (redacted; under `tests/fixtures/`)
 

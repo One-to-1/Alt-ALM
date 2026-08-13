@@ -67,10 +67,13 @@ scripts.
 **Phase: research and planning — COMPLETE (2026-08-12). Implementation not started; no application
 code exists.**
 
-Six live probe rounds against the sandbox plus 20 subagent research reports produced the research
+Nine live probe rounds against the sandbox plus 20 subagent research reports produced the research
 corpus; the plan set and ADRs are written. **`docs/research/SESSION-STATE.md` is the resume
 point — read it first.** Next work is phase **P0** of
 [docs/plan/implementation-plan.md](docs/plan/implementation-plan.md).
+
+⚠️ **Toolchain**: Node 24 and git are present. **JDK 25 (LTS)** is being installed by the user
+(2026-08-13) — required before the Spring Boot BFF can be built or run.
 
 Key artifacts: [live-probe-log.md](docs/research/live-probe-log.md) (empirical ground truth — **wins
 every conflict**), [alm-api-reference.md](docs/research/alm-api-reference.md),
@@ -90,6 +93,10 @@ every conflict**), [alm-api-reference.md](docs/research/alm-api-reference.md),
 - **Write hazards (cause real bugs)**: entity-write JSON **field order is load-bearing** — wrong
   order yields opaque NPE-style 500s, so serialize deterministically. **An HTTP 5xx may still have
   committed the row** — treat every 5xx write as "unknown outcome, verify by query", never "failed".
+  **Field metadata does not fully describe writes**: `editable:false` does *not* mean "omit from the
+  body" and `required:false` does *not* mean "optional on create" — `test-parameter.ref-count` is
+  read-only per metadata yet the create 500s without it. On a 500 naming
+  `missing required field <PHYSICAL_NAME>`, retry once with that field included (probe 9).
 - **Field-type system**: exactly 8 types (String, Memo, Number, Date, DateTime, LookupList,
   UsersList, Reference). **No Boolean** — Y/N is a LookupList bound to list-id 1. Only 2 multivalue
   fields exist in the whole model. Metadata is per project — discover roots, lists, and subtypes at
@@ -106,9 +113,16 @@ every conflict**), [alm-api-reference.md](docs/research/alm-api-reference.md),
 - **Verified working**: design-steps CRUD, requirement-coverages, req-traces (requirement↔requirement
   traceability), defect-links, milestones (parented under a **release**), release-cycle date
   validation, Site Admin user seeding (the API key holds Customer Admin).
-- **Unreachable via REST** (most are reachable via the OTA sidecar — see below): step-parameters
-  *definition*, BPT/components (403), timeslots, libraries/baselines, alerts, follow-up flags,
-  purge-runs. Audit history is **partial** — only some field changes are recorded.
+- **Test parameters are fully REST-writable** (probe 9 — this **retracts** the long-held "no REST
+  path defines a test parameter"). Two entities, not one: **`test-parameters`** (`TP_*`) *defines*
+  a parameter; **`step-parameters`** (`SP_*`) *records a value* against one, and its `parent-id`
+  is the **test-parameter id** — passing the design-step/test id there was the actual bug behind 5
+  failed attempts. Create via `POST tests/{id}/test-parameters` with `name` + `ref-count` (parent
+  comes from the URL), or let an entity-encoded `&lt;&lt;&lt;name&gt;&gt;&gt;` token in a design
+  step register it. `PUT test-parameters/{id}` sets `default-value` — **which OTA cannot do**.
+- **Unreachable via REST** (both reachable via the OTA sidecar): BPT/components (403) and
+  similar-defects. Also absent: timeslots, libraries/baselines, alerts, follow-up flags, purge-runs.
+  Audit history is **partial** — only some field changes are recorded.
 - **OTA/COM WORKS against this sandbox** (probe 8; probe 7's "unreachable" verdict was wrong — it
   used a hand-extracted client). `InitConnectionWithApiKeyEx(url, clientId, secret)` authenticates
   with the **API key** — no username/password — and reads *and writes* fine. Requirements: a
@@ -118,9 +132,9 @@ every conflict**), [alm-api-reference.md](docs/research/alm-api-reference.md),
 - **BPT is writable via OTA** (probe 8) — REST's `403` on `/components` was **not** a licence gate.
   Recipe: component folder → subfolder → subfolder's `ComponentFactory` (components cannot sit
   directly under the root "Components" folder).
-- **Test parameters**: `Test.Params` is a collection (`AddParam`/`Save`/`ParamName`/`Count`), not a
-  factory. Declaring a parameter directly does **not** persist; a **`<<<token>>>` in a design step
-  registers it** (verified 0→1). Setting its default value still fails — `UNVERIFIED`.
+- **OTA test parameters** (superseded for practical purposes by the REST route above): `Test.Params`
+  is a collection, not a factory; declaring directly does not persist, and both setting and *reading*
+  a default value raise `Invalid field type definition`. **Use REST for parameters, not OTA.**
 - ⚠️ **OTA folder deletes do not cascade to tests** — sweep by name prefix across `tests` *and*
   `test-folders` after any OTA cleanup (5 orphans were left behind during probing).
 - **58% of the stock UI is reachable** via documented REST (feasibility matrix); 23 features are
@@ -142,12 +156,14 @@ every conflict**), [alm-api-reference.md](docs/research/alm-api-reference.md),
 
 - **BFF is required**, not optional — browsers cannot call `/qcbin` (CORS + cookie session + XSRF).
   The BFF is the single enforcement point for the write hazards above (ADR 0001).
-- **Stack: Java 21 + Spring Boot** (BFF) and **React + TypeScript** (SPA); probe scripts stay
-  PowerShell (ADR 0002).
+- **Stack: Java 25 (LTS) + Spring Boot 4.x** (BFF) and **React + TypeScript** (SPA); probe scripts
+  stay PowerShell (ADR 0002). Spring Framework 7 recommends JDK 25+ for production; Boot 3.x
+  predates JDK 25, so pin **Boot 4.0.x or later**. No `--enable-preview`.
 - **OTA/COM is isolated in an optional Windows-only sidecar** — mainline never touches COM; features
-  degrade behind capability flags when the bridge is absent (ADR 0003). The bridge now has a
-  **verified reachable target** (probe 8), so its language decision (.NET vs Python + pywin32) is
-  live again.
+  degrade behind capability flags when the bridge is absent (ADR 0003). The bridge has a **verified
+  reachable target** (probe 8), but probe 9 cut its scope from three gaps to **two** (BPT components,
+  similar-defects) — it no longer blocks the generator, so P6 is genuinely optional. Language
+  decision (.NET vs Python + pywin32) is still open.
 - **One service-account API key with pooled sessions**, plus Alt-ALM's own app-level user model; the
   licence finding retires the seat-consumption concern (ADR 0004).
 - **Metadata-driven rendering** — no hardcoded schemas, list values, or root IDs anywhere (ADR 0005).
@@ -156,6 +172,12 @@ every conflict**), [alm-api-reference.md](docs/research/alm-api-reference.md),
 
 - Workflow-script bypass means Alt-ALM's own validation layer is the *only* validation — necessarily
   incomplete against arbitrary VBScript. Permanent, documented limitation.
+- ⚠️ **Two confident negative verdicts have been overturned** (probe 7's "OTA unreachable" — a client
+  artifact; probes 4–5's "no REST path defines a test parameter" — a wrong `parent-id` plus an
+  unprobed sibling collection). Both were multiply-attempted and well-argued, and both failed the
+  same way: **an unexamined assumption about the shape of the question, not too few attempts.**
+  Before writing down any "X is impossible" verdict, re-read the per-instance `resource-list` for
+  sibling collections and confirm every id in the body means what you assume it means.
 - The whole evidence base is **one sandbox, one version**. Re-verify before trusting any probe
   finding on a different instance, especially on-prem.
 - The sanitizer's allowed-HTML set is deployment-specific — re-verify per target.

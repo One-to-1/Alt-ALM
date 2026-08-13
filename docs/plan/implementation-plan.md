@@ -112,10 +112,12 @@ requirements/tests/design-steps/defects; coverage, traceability, defect-links; t
 layer that substitutes for bypassed workflow scripts.
 
 **In scope** (`matrix` rows): requirement create/delete/rename #1–#3; requirement traceability #12;
-add-to-coverage #15/#16; test/design-step create #33, #36, #39; defect create/detail/delete #96, #99,
-#103; defect-links #122; bulk update #106 (PARTIAL — bulk endpoint itself unverified until its own
-contract test passes); basic non-embedded-image attachments #25, #180–185; filter-state persistence
-#154–156, #158.
+add-to-coverage #15/#16; test/design-step create #33, #36, #39; **test-parameter definition and
+step-parameter value recording #45** (moved here 2026-08-13 — see below, this was previously believed
+REST-unreachable and deferred to OTA/P6, retracted by `live-probe-log.md` Probe 9); defect
+create/detail/delete #96, #99, #103; defect-links #122; bulk update #106 (PARTIAL — bulk endpoint
+itself unverified until its own contract test passes); basic non-embedded-image attachments #25,
+#180–185; filter-state persistence #154–156, #158.
 
 **Out of scope**: Test Lab/runs, releases/cycles/milestones (P3), generator, rich-text editor UI and
 embedded images (P5 — memo fields are writable here as plain/pre-canonicalized HTML only, no editor
@@ -137,6 +139,14 @@ UX).
 - Attachments: octet-stream+`Slug` upload (`ref-subtype=0` only) and a basic multipart client
   (full `ref-subtype=1` embed flow deferred to P5, but multipart must be integration-tested against
   the real server now per D2's named risk).
+- Test-parameter/step-parameter CRUD (`api-ref §6.4`, `live-probe-log.md` Probe 9): `POST
+  tests/{testId}/test-parameters` to **define** a parameter (`name` + `ref-count` — `parent-id` comes
+  from the URL, read-only in the body); `POST step-parameters` to **record a value**, with
+  `parent-id` = the **`test-parameter`'s** id, not the test/design-step id (this was the shape bug
+  behind the original "no REST path" finding); `PUT test-parameters/{id}` with `default-value` to set
+  a default. **Write hazard**: `ref-count` is metadata `editable:false, required:false` but 500s as
+  `"missing required field TP_REF_COUNT"` if omitted on create — always send it (`api-ref §3.6`, a
+  second instance of the field-order hazard's class of trap). No OTA dependency for any of this.
 
 **Dependencies**: P1 (metadata, query builder, tree UI to navigate to records).
 
@@ -166,8 +176,9 @@ run-details composite flows #91, #92, #93 (partial); execution grid #79, #85, #9
 
 **Out of scope**: BPT/Business Components (OTA, `matrix #54–57` — P6), automatic runner/lab
 infrastructure (`matrix #75`, out of practical REST-only reach), timeslots (`matrix #81` — OTA, P6),
-step-parameters value recording (genuine gap, scoped out entirely per generator-impact appendix unless
-OTA bridge exists — P6), scope items/KPIs (`matrix #143/#145` — NO, absent from REST).
+scope items/KPIs (`matrix #143/#145` — NO, absent from REST). *(Test-parameter/step-parameter value
+recording, previously listed here as an OTA-gated gap, moved to P2 — retracted by `live-probe-log.md`
+Probe 9, see P2.)*
 
 **Key technical tasks**:
 - Test-set binding chain: `test-set-folders`→`test-sets`(`subtype-id=hp.qc.test-set.default`)→
@@ -207,17 +218,22 @@ seedable, with provenance marking and cleanup; user seeding so `UsersList` field
 
 **In scope**: the full verified creation-order DAG (`data-model §2.11`, feasibility-matrix
 "Generator-impact appendix"): release/cycle/milestone → requirement (+ traces) → test → design-step
-(plain text only, no `<<<param>>>` tokens yet — P5) → test-set/instance → Fast_Run → defect + links.
-Field-type→strategy matrix for the 8 types (`api-ref §8`); Required/Editable/System=read-only respect
-(191 of 432 probed fields are non-negotiable read-only — `api-ref §8`); the two genuinely multivalue
-fields (`requirement.target-rel`/`target-rcyc`) handled per whatever the P3 deferred probe resolved, or
-left unimplemented with an explicit `UNVERIFIED` flag if unresolved. User seeding via SA API
+(plain text only, no `<<<param>>>` tokens yet — P5) → **test-parameter (Route A direct create) →
+step-parameter (value record)** → test-set/instance → Fast_Run → defect + links. Test-parameter/
+step-parameter generation moved here (was believed OTA-gated; retracted by `live-probe-log.md` Probe 9
+— `data-generator-spec.md` §4/§9); Route A (`POST tests/{testId}/test-parameters`) is preferred over
+token-authoring because it is deterministic and does not depend on rich-text/sanitizer machinery,
+which is why it belongs in the DAG engine itself rather than waiting on P5. Field-type→strategy matrix
+for the 8 types (`api-ref §8`); Required/Editable/System=read-only respect (191 of 432 probed fields
+are non-negotiable read-only — `api-ref §8`); the two genuinely multivalue fields
+(`requirement.target-rel`/`target-rcyc`) handled per whatever the P3 deferred probe resolved, or left
+unimplemented with an explicit `UNVERIFIED` flag if unresolved. User seeding via SA API
 (`POST site-users` + `POST .../projects/{p}/users`, Customer Admin role verified — `api-ref §6.9`).
 
-**Out of scope**: rich-text/memo content generation and embedded images (P5); `<<<param>>>` step
-tokens and step-parameters value recording (P5/P6 respectively — step-parameters has no confirmed REST
-creation path at all, `data-model §6`, scope out of the generator permanently unless the P6 OTA bridge
-lands).
+**Out of scope**: rich-text/memo content generation and embedded images (P5); the `<<<param>>>`
+entity-encoded step-text token (Route B, cosmetic UI-authenticity marker) is deferred to P5 alongside
+the rest of rich-text authoring — but this no longer blocks parameter *data* generation, which uses
+Route A above and needs no rich-text infrastructure.
 
 **Key technical tasks**:
 - DAG engine executing the creation order above via P2/P3's write-safety-wrapped CRUD; refuses to run
@@ -248,13 +264,10 @@ ops step).
 **Objective**: rich-text editor with sanitizer-aware round-trip, embedded images, attachments UI;
 extend the generator with rich-text/image content strategies.
 
-**In scope** (`matrix` rows): rich-text description/comments editing #26, #191; parameter-token
-authoring #45 (must be HTML-entity-pre-encoded — `&lt;&lt;&lt;name&gt;&gt;&gt;` — or the sanitizer
-mangles it to `<<>>`, `data-model §6`); attachment types/upload/download #180–190, including the
-full embedded-image flow.
+**In scope** (`matrix` rows): rich-text description/comments editing #26, #191; attachment types/upload/download #180–190, including the full embedded-image flow; row #45's **Route B only** — parameter-token authoring, the entity-encoded `<<<name>>>` step-text marker (must be HTML-entity-pre-encoded — `&lt;&lt;&lt;name&gt;&gt;&gt;` — or the sanitizer mangles it to `<<>>`, `data-model §6`) — for UI-authenticity; the parameter *object* itself (definition, default value, step-value recording) is P2/P4 work, not gated on this phase.
 
-**Out of scope**: `step-parameters` value recording itself (still a confirmed REST-unreachable gap —
-P6/OTA only).
+**Out of scope**: *(nothing parameter-related remains out of scope here — `step-parameters` value
+recording moved to P2, retracted from "REST-unreachable" by `live-probe-log.md` Probe 9.)*
 
 **Key technical tasks**:
 - Canonicalized-HTML comparator: memo storage is a full `<html><body>` document, not byte-identical
@@ -297,19 +310,22 @@ per-item); automatic runner infra #75 (out of reach without lab hosts); timeslot
 defects #108 (OTA); alerts/follow-up flags #109/#110/#195–197 (OTA); favorites #117/#160 (PARTIAL,
 full CRUD/permissions to confirm); libraries #147/#153 (OTA); history/audit views #173/#176 (PARTIAL —
 UI must state the partial-coverage caveat, not imply full history); versions/VC UI #174/#177
-(PARTIAL — check-out/in write sequence unprobed until this phase); step-parameters via OTA
-(`StepFactory`, contingent on `tdconnect.exe` being supplied per `CLAUDE.md`).
+(PARTIAL — check-out/in write sequence unprobed until this phase). *(Step-parameters via OTA
+[`StepFactory`] removed from this list 2026-08-13 — retracted by `live-probe-log.md` Probe 9, which
+closed parameter definition and values over documented REST; see P2. ADR 0003's OTA justification now
+rests on BPT and similar-defects only.)*
 
 **Out of scope**: anything requiring a REST surface this project has confirmed absent (KPIs/scope-item
 computation, text search/global search, business-view graphs, report authoring — all `NO` verdicts in
 the matrix and not revisited here).
 
 **Key technical tasks**:
-- OTA bridge sidecar (D3): small internal HTTP API for REST-unreachable operations only
-  (step-parameters definition, BPT components if license allows, similar-defects). Implementation
-  language decided when `tdconnect.exe` is supplied (candidates: .NET COM interop, or Python +
-  pywin32 — see architecture.md's ADR). BFF treats the bridge as optional: absent bridge → features
-  degrade behind capability flags; mainline works fully without it.
+- OTA bridge sidecar (D3): small internal HTTP API for REST-unreachable operations only (BPT
+  components if license allows, similar-defects — narrowed from three to two named gaps 2026-08-13;
+  step-parameters definition dropped from this list, closed over REST by `live-probe-log.md` Probe 9).
+  Implementation language decided when `tdconnect.exe` is supplied (candidates: .NET COM interop, or
+  Python + pywin32 — see architecture.md's ADR). BFF treats the bridge as optional: absent bridge →
+  features degrade behind capability flags; mainline works fully without it.
 - Version-control UI: `.../{id}/lock` and `.../{id}/versions` sub-resources exist and are readable;
   check-out/check-in/undo-check-out write sequence and two-version compare are probed and implemented
   here for the first time (`api-ref §5`, restricted to requirements/tests/resources).
@@ -332,9 +348,12 @@ operations are tested separately (COM/Windows-only, not a sandbox REST contract 
 exists.
 
 **Deferred probes executed at phase start**: mail body shape (`live-probe-log.md` §Open items #10);
-step-parameters via OTA (`live-probe-log.md` §Open items #10, blocked on `tdconnect.exe`); audit
-coverage isolation — plain-field PUT vs. memo PUT (`live-probe-log.md` §Open items #10); versions
-check-in/check-out write probe (`live-probe-log.md` §Open items #10).
+audit coverage isolation — plain-field PUT vs. memo PUT (`live-probe-log.md` §Open items #10); versions
+check-in/check-out write probe (`live-probe-log.md` §Open items #10). *(The "step-parameters via OTA"
+deferred probe formerly listed here is retracted — resolved directly over REST by Probe 9, no OTA
+probe needed; see P2. A new, unrelated open item from Probe 9 — why `DELETE design-steps/{id}` 500s
+when a `step-parameter` still references it — is tracked as Q35 in `risks-and-open-questions.md`,
+scoped to P4/P5 generator cleanup-path work, not this phase.)*
 
 ---
 
@@ -351,7 +370,7 @@ the phase that needs the answer):
 | Test-set → release/cycle assignment field (`matrix #61`) | P3 |
 | `IMAGE_COMPRESSION_LEVEL` round-trip | P5 (rich content) |
 | Mail POST body shape | P6 (hardening) |
-| Step-parameters via OTA (`tdconnect.exe`-gated) | P6 (OTA bridge) |
+| ~~Step-parameters via OTA (`tdconnect.exe`-gated)~~ | **Retracted — resolved directly over REST, Probe 9. No OTA probe needed; see P2.** |
 | Audit coverage isolation (plain-field vs. memo PUT) | P6 (audits view) |
 | Versions check-in/check-out write probe | P6 (VC UI) |
 

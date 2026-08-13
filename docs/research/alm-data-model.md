@@ -260,10 +260,20 @@ requirements/0 "Requirements" (root, VERIFIED)
 test-folders/2 "Subject" (root, VERIFIED, project-specific — discover at runtime)
   └─ test-folder  (parent-id=folder id)                                   [probe VERIFIED]
        └─ test  (parent-id=folder id; subtype-id e.g. "MANUAL")           [probe VERIFIED]
+            ├─ test-parameter  (parent-id=test id via URL
+            │    tests/{testId}/test-parameters, read-only in body;
+            │    DEFINES the parameter — name/default-value/order)       [probe VERIFIED — Probe 9,
+            │                                                              retracts the "genuine gap"
+            │                                                              note this DAG carried below]
+            │    └─ step-parameter (parent-id=THIS test-parameter's id
+            │         [TRAP — not the test/design-step id]; RECORDS a
+            │         value; used-by-owner-id = a design-step or the
+            │         test itself)                                      [probe VERIFIED — Probe 9]
             ├─ design-step  (parent-id=test id)                          [probe VERIFIED —
             │                                                              contradicts stale doc]
-            │    └─ step-parameter (references a "Test parameter" object
-            │         that has NO confirmed REST creation path)          [probe FAILED — genuine gap]
+            │    (an entity-encoded <<<token>>> in a design-step's
+            │     description also registers a test-parameter as a
+            │     side effect — Route B, Probe 9, independent lifetime)
             └─ test-config  (parent-id=test id, TSC_TEST_ID, non-editable
                  after create)                                           [UNVERIFIED direct create;
                                                                              existence inferred]
@@ -321,6 +331,7 @@ this document adds detail (physical names, naming traps) the API reference omits
 | release-cycle | `end-date`, `name`, `parent-id`, `start-date` | **Yes** [probe] | n/a | dates validated inside parent release's window (§2.11) |
 | release-folder | `name`, `parent-id` | **No** — never directly write-probed; root `UNVERIFIED` (§2.1) | n/a | — |
 | resource | `parent-id`, `name`, `subtype-id` | **No** — never directly write-probed this session | n/a | fully versioned (full `vc-*` set), like requirement/test |
+| test-parameter *(added Probe 9, own fixture `r4-test-parameter-fields.json`, not the `customization-fields-*.json` set — 16th entity, not ★-marked in §1)* | `name` | **Yes** [probe] — Route A `POST tests/{testId}/test-parameters`, or Route B (design-step `<<<token>>>` side effect) | n/a | `ref-count` is metadata `editable:false, required:false` but **required on create anyway** (§6, `alm-api-reference.md` §3.6); `parent-id`/`TP_TEST_ID` is read-only (owner comes from the URL on Route A) |
 
 ---
 
@@ -418,14 +429,36 @@ extends to requirement/resource without re-checking the live Swagger doc on a ta
   for any text the sanitizer could parse as a tag, not just parameter tokens** — the generator's
   rich-text writer should HTML-entity-encode literal `<`/`>` in any free-text content it did not
   itself construct as valid markup.
-- **`step-parameters` REST gap — genuinely unreachable, OTA candidate.** Every create attempt (2 in
+- **⚠️ RETRACTED (Probe 9, 2026-08-13) — `step-parameters`/test-parameter gap is CLOSED over REST.**
+  The bullet immediately below was carried since Probes 4–5 and was wrong: the 5 failed
+  `step-parameters` create attempts were a shape bug (`parent-id`/`SP_TEST_PARAM_ID` needed the
+  **`test-parameter`** entity's id, not the design-step/test id), compounded by a missed second
+  collection — `test-parameters` (physical `TP_*`) — that **does** define the underlying object and
+  was never probed because documentation research had asserted no such REST entity existed at all.
+  Kept below for the historical record.
+- ~~**`step-parameters` REST gap — genuinely unreachable, OTA candidate.** Every create attempt (2 in
   round 1, 3 more in round 2, 5 total across both nested and standalone paths, both `used-by-owner-type`
   values) fails identically: `HTTP 500 "Test parameter does not exist"`. The physical name of
   `step-parameters.parent-id` is **`SP_TEST_PARAM_ID`**, implying the endpoint is a usage/value record
   for a "Test parameter" object that must **already exist**, and there is no REST-exposed entity or
   endpoint anywhere in this project's Core API surface to create that underlying object `[probe]`
   (probe5-write-round-2.md §b). Treat as REST-unreachable; OTA/COM `StepFactory`/parameter objects are
-  the fallback candidate per CLAUDE.md's allowed-fallback note.
+  the fallback candidate per CLAUDE.md's allowed-fallback note.~~
+- **`test-parameter` entity (Probe 9) — the object `step-parameters` needed all along.** Collections
+  `test-parameters` and `tests/{testId}/test-parameters` (`GET`/`POST`/`PUT`/`DELETE`). 11 fields:
+  `name` (String) is the only Required one; `default-value` (Memo), `description` (Memo), `order`
+  (Number) are editable; `id`, `parent-id` (`TP_TEST_ID`), `ref-count`, `is-mapped`, `vts`,
+  `vc-user-name`, `ver-stamp` are metadata-read-only `[probe]` (live-probe-log.md Probe 9, §9.2, fixture
+  `r4-test-parameter-fields.json`). **Two working creation routes**: direct `POST
+  tests/{testId}/test-parameters` (body: `name` + `ref-count`; `parent-id` comes from the URL, deterministic
+  — preferred for the generator), or an entity-encoded `<<<token>>>` in a design-step's `description`
+  registering the parameter as a side effect (matches the stock UI; answers Q34 yes). Once a
+  `test-parameter` exists, `POST step-parameters` with `parent-id` = its id succeeds for both
+  `used-by-owner-type ∈ {design-step, test}` — this is the fix for the retracted bullet above.
+  `PUT test-parameters/{id}` with `default-value` sets the default (HTTP 200; OTA cannot do this — see
+  `alm-api-reference.md` §6.4). **NEW write hazard**: `ref-count` is metadata `editable:false,
+  required:false` yet omitting it on create 500s with `"missing required field TP_REF_COUNT"` — send it
+  anyway (`alm-api-reference.md` §3.6).
 - **Release-cycle date validation is enforced server-side.** A cycle whose dates fall outside its
   parent release's window is rejected with a specific, well-formed message (`"start date cannot be
   later than release's end date"`), reproduced identically across all 4 round-2 runs; an in-range
@@ -469,7 +502,8 @@ unnarrated `r3-*` fixtures (§2.9, §6) are excluded here and stated as findings
 | run (direct POST) | Can a from-scratch `POST runs` ever succeed, or is Fast_Run synthesis the only path? What test-set field(s) does the stock UI populate that our minimal create doesn't? | Create a test-set via the stock web client (or one with a manually-run test already), diff its full field set against our minimal REST create, retry direct `POST runs` against the richer test-set |
 | run-step | Independent (non-synthesis) POST/PUT/DELETE never probed | Direct CRUD probe against an existing run |
 | run ↔ run-step status | ~~Does setting a run-step to `Failed` change the parent run's `status`?~~ **Settled (Probe 6): no eager aggregation** — remaining nuance: was only tested on a run force-set `Passed`; a fresh not-completed run might behave differently | PUT run-steps to `Failed` on a freshly synthesized, never-status-set run |
-| step-parameters | Is there truly no REST path to define the underlying "Test parameter" object, or does it need to be UI/OTA-created first and only then referenced by REST? | Define a parameter via the stock web client or OTA `StepFactory`, then retry `step-parameters` POST referencing it by `key` |
+| step-parameters | ~~Is there truly no REST path to define the underlying "Test parameter" object, or does it need to be UI/OTA-created first and only then referenced by REST?~~ **ANSWERED (Probe 9): the `test-parameters` collection defines it over REST directly — no UI/OTA prerequisite.** | Done — see §6 and `alm-api-reference.md` §6.4 |
+| `DELETE design-steps/{id}` vs. referencing `step-parameter` | Does deleting a design step that has a `step-parameter` referencing it always 500, and is the cause referential-integrity ordering? | Reproduce with a single isolated step+parameter+step-parameter, vary delete order, inspect server logs if accessible `[probe]` (live-probe-log.md Probe 9, §9.8) |
 | milestone | Full field set beyond the 11 seen on create (`kpis-count`, `milestone-scopeitem-count` suggest KPI/scope-item sub-structures) | `GET customization/entities/milestone/fields` full dump (not yet captured as its own fixture — only inferred from the create-response) |
 | list-binding "used but not in used-lists" | Confirm the read-only/system-field-exclusion theory (§4) for why `resource.res-type`/`vc-status` bind to lists 285/82 yet those lists are absent from `used-lists` | Bind list 285 or 82 to an *editable* field via UI/admin, re-pull `used-lists`, check if the count changes |
 | release-cycle CY_DESCRIPTION | Execution-flow/dependency encoding inside test-set's opaque description blob (wave1-05 #4) — unrelated to release-cycle proper, flagged here for tracking | Configure a dependency in the UI, GET the field, diff |
@@ -503,3 +537,9 @@ unnarrated `r3-*` fixtures (§2.9, §6) are excluded here and stated as findings
    a failed round-2 attempt. Resolved **working** by the unnarrated `r3-attach-multipart-refsubtype1.json`
    fixture — the round-2 failure is now attributable to the PowerShell client's multipart construction,
    not a server limitation.
+6. **`step-parameters`/test-parameter definition**: §2.11's DAG and §6 previously stated flatly that no
+   REST entity defines the underlying "Test parameter" object (Probes 4–5, "genuine gap"). Resolved
+   **wrong** by Probe 9 (`live-probe-log.md` §9, highest priority): a separate `test-parameters`
+   collection was never probed because prior documentation research asserted it didn't exist, and the
+   `step-parameters` failures were a `parent-id` shape bug, not a real gap. Both entities and both
+   creation routes are now `[probe]`-verified working — see §2.11 and §6.

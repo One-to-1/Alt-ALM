@@ -108,6 +108,20 @@ still flips `has-params="Y"`.
 generator did not itself construct as valid, whitelisted markup, to avoid the same malformed-tag
 collapse on arbitrary generated content.
 
+**Parameters are now generatable end-to-end (Probe 9) — this was previously a hard gap, now closed.**
+Two entities: `test-parameter` (physical `TP_*`) *defines* a parameter on a test; `step-parameter`
+(physical `SP_*`) *records a value* against an already-defined one. **Use Route A, not the token
+above, as the authoritative creation path**: `POST tests/{testId}/test-parameters` with `name` +
+`ref-count` (never omit `ref-count` — metadata says `editable:false, required:false` but omitting it
+500s with `"missing required field TP_REF_COUNT"`, see `alm-api` skill hazard #5). Route A is
+deterministic and doesn't depend on sanitizer/text-parsing, unlike the `<<<token>>>` above (Route B),
+which the generator should still emit in step text for UI-authenticity but must not treat as the
+source of truth for its own manifest/provenance tracking. Per-step values: `POST step-parameters` with
+`parent-id` = the Route A `test-parameter`'s id (**not** the test/design-step id — this was the shape
+bug behind the old "no REST path" belief) and `used-by-owner-id` = the design-step or test. Default
+values: `PUT test-parameters/{id}` with `default-value` (Memo, same sanitizer rules as any other
+memo field) — REST can do this where OTA cannot.
+
 ## 5. Embedded images
 
 Two confirmed, REST-only paths (plan toggle `richText.embeddedImages`, default off):
@@ -128,7 +142,9 @@ or relative path silently drops the `src` attribute — never generate one.
 Execution levels (each level's writes MUST complete/verify before the next begins — bulk is
 non-transactional, see §7): `[release-folder]` → `[release]` → `[release-cycle, milestone]`
 (parallel with) `[requirement]` and `[test-folder]` → `[req-trace]` and `[test]` →
-`[design-step]` and `[requirement-coverage]` (needs both requirement and test levels done) →
+`[design-step, test-parameter]` (parallel — test-parameter does not depend on design-step) →
+`[step-parameter]` (needs the owning `test-parameter` id; may reference either a `design-step` or the
+`test`) and `[requirement-coverage]` (needs both requirement and test levels done) →
 `[test-set-folder]` → `[test-set]` → `[test-instance]` → `[run via Fast_Run PUT]` → `[defect]` →
 `[defect-link]`.
 
@@ -174,7 +190,7 @@ See `alm-api` skill for the concrete envelope shapes, error-code table, and pagi
 
 | Feature | Status | MVP treatment |
 |---|---|---|
-| `step-parameters` (parameter *definition*) | REST-unreachable — every create shape returns 500 "Test parameter does not exist," even after tokens flip `has-params=Y` | Deferred behind `stepParameters.otaBridge` flag; generator still emits entity-encoded `<<<name>>>` markers in step text (cosmetic) but does not attempt `step-parameters` creation unless the OTA bridge reports the capability present |
+| ~~`step-parameters` (parameter *definition*) — REST-unreachable, every create shape returns 500~~ | **RETRACTED (Probe 9) — CLOSED, not deferred.** A missed `test-parameters` collection defines the object directly; the failure was a `parent-id` shape bug. See §4 | Generator authors `test-parameter`/`step-parameter` as ordinary DAG nodes (§6), no capability flag, no OTA dependency |
 | BPT (Business Process Testing) | License-gated: `components` → 403, `business-components` → 404 | Out of scope for MVP entirely |
 | Mail (`{id}/mail` POST) | Body shape undocumented — 3 JSON + 1 XML shapes all failed | Not attempted |
 | `target-rel`/`target-rcyc` | Write path UNVERIFIED (own multivalue field vs. separate `requirement-target-releases/-cycles` collections) | Deferred behind `targetRelCycle` flag; generated requirements carry no release/cycle targeting until settled |

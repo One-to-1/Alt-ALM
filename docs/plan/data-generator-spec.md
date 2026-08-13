@@ -29,9 +29,12 @@ plausible, interlinked data for stakeholder walkthroughs; (3) load-shaped data f
 performance testing (large flat collections — defects, requirements — where only volume matters and
 DAG depth can be shallow).
 
-Non-goals for the MVP (see §9): parameter-*definition* authoring, BPT, mail, cross-project or
-cross-instance generation, anything requiring OTA/COM unless the bridge (D3) is present and its
-capability flag is set.
+Non-goals for the MVP (see §9): BPT, mail, cross-project or cross-instance generation, anything
+requiring OTA/COM unless the bridge (D3) is present and its capability flag is set. **Test-parameter
+authoring (definition, default values, and per-step values) is now IN scope for the MVP** — retracted
+2026-08-13 from this non-goals list: it was previously excluded because `step-parameters` had no
+confirmed REST creation path; `live-probe-log.md` Probe 9 closed that gap over documented REST (see
+§4/§9).
 
 ---
 
@@ -111,7 +114,9 @@ generator engine.
 - **Generation plan** — a declarative config (YAML/JSON), not code: per-entity counts or count *ranges*,
   hierarchy shape parameters (requirement tree depth/fanout, test-folder depth), coverage/link density
   knobs (§7), the target `(domain, project)`, the provenance prefix override, and feature toggles
-  (`stepParameters.otaBridge`, `richText.embeddedImages`, `targetRelCycle` — all default off per §9).
+  (`richText.embeddedImages`, `targetRelCycle` — default off per §9; test-parameter generation is
+  **not** gated behind a capability flag as of Probe 9 — it is ordinary REST, on by default like
+  `design-step` — see §4/§6).
 - **Plan → resolved DAG → execution.** The plan is first resolved into a concrete, ordered list of
   entity-creation "nodes" (§4) with actual counts (ranges sampled once, deterministically, from the
   seed) — this resolved DAG is what dry-run previews and what the manifest is checked against.
@@ -168,9 +173,18 @@ requirements/0 "Requirements" (root VERIFIED)
 test-folders/2 "Subject" (root VERIFIED, project-specific — discover at runtime, never hardcode)
   └─ test-folder        name, parent-id                                 VERIFIED  [data-model §3]
        └─ test          name, parent-id, subtype-id="MANUAL"            VERIFIED  [api-ref §6.4]
+            ├─ test-parameter  name, ref-count (test-id supplied via URL) VERIFIED  [api-ref §6.4]
+            │   (Route A — preferred, deterministic; retracts the
+            │    "DEFERRED, no REST create path" note this DAG carried
+            │    until Probe 9 closed the gap)
+            │    └─ step-parameter  parent-id=THIS test-parameter's id
+            │         [TRAP, not the test/design-step id]; used-by-owner-id
+            │         = a design-step or the test itself                 VERIFIED  [api-ref §6.4]
             ├─ design-step  name, parent-id, description, expected      VERIFIED  [api-ref §6.4]
-            │   (param tokens MUST be entity-pre-encoded, §6 below)
-            │    └─ step-parameter   DEFERRED — no REST create path, OTA-bridge candidate (§9)
+            │   (param tokens MUST be entity-pre-encoded, §6 below; an
+            │    entity-encoded token also registers a test-parameter as
+            │    a side effect — Route B, not preferred for generated
+            │    data since it depends on text-parsing, see §6)
             └─ test-config   DEFERRED for direct create — UNVERIFIED (§9, data-model §2.6);
                               generator relies on the implicit default config a test carries
 
@@ -197,7 +211,9 @@ attachment (any entity id; octet-stream+Slug always works; multipart ref-subtype
 
 **Execution levels** (each level's writes MUST complete/verify before the next begins, per §3):
 `[release-folder]` → `[release]` → `[release-cycle, milestone]` (parallel with) `[requirement]` and
-`[test-folder]` → `[requirement's children: req-trace]` and `[test]` → `[design-step]` and
+`[test-folder]` → `[requirement's children: req-trace]` and `[test]` → `[design-step, test-parameter]`
+(parallel — test-parameter does not depend on design-step) → `[step-parameter]` (needs the owning
+`test-parameter` id; may reference either a `design-step` or the `test` via `used-by-owner-id`) and
 `[requirement-coverage]` (needs both requirement and test levels done) → `[test-set-folder]` →
 `[test-set]` → `[test-instance]` → `[run via Fast_Run PUT]` → `[defect]` → `[defect-link]`.
 
@@ -257,6 +273,22 @@ flips `has-params="Y"` [data-model §6, api-ref §6.4]. **General rule, not just
 literal `<`/`>` in free text the generator did not itself construct as valid, whitelisted markup MUST
 be entity-encoded before insertion, to avoid the same malformed-tag collapse on arbitrary generated
 text.
+
+**Parameter authoring — retracted gap, now in scope (Probe 9).** §9's previous "Test-parameter
+*definition*" row treated this as REST-unreachable and OTA-gated; that was wrong (`live-probe-log.md`
+Probe 9). The generator **MUST use Route A** — a direct `POST tests/{testId}/test-parameters` create
+(body: `name` + `ref-count`; `parent-id` comes from the URL) — as the authoritative way to define a
+parameter, because it is deterministic and does not depend on the sanitizer or on the design-step's
+free text. The entity-encoded `<<<name>>>` token above still MUST be emitted in step text for
+UI-authenticity (it also registers a `test-parameter` as a side effect, "Route B" in `api-ref §6.4`),
+but the generator's manifest tracking and provenance MUST key off the Route A id, not off text-parsing
+the token back out of the step. Per-step values are then written via `POST step-parameters` with
+`parent-id` = the Route A `test-parameter` id (**not** the test/design-step id — this was the shape bug
+that produced the original false "no REST path" conclusion) and `used-by-owner-id` = the owning
+design-step or test id. Default values are written via `PUT test-parameters/{id}` with `default-value`
+(Memo, same sanitizer as any other memo field). **Write hazard**: `ref-count` is metadata
+`editable:false, required:false` but omitting it on create 500s with `"missing required field
+TP_REF_COUNT"` — the generator MUST always send it (`api-ref §3.6`).
 
 **Embedded images** — two confirmed, REST-only paths, either usable by the `richText.embeddedImages`
 plan toggle (default off, §9):
@@ -335,7 +367,7 @@ or is entirely out of scope, with its evidence pointer.
 
 | Gap | Status | Evidence | MVP treatment |
 |---|---|---|---|
-| **Test-parameter *definition*** | REST-unreachable — every create shape returns 500 "Test parameter does not exist," even after entity-encoded tokens flip `has-params=Y` | `alm-data-model.md` §6, §7; `alm-api-reference.md` §6.4, §9 | Deferred behind `stepParameters.otaBridge` capability flag (D3's OTA sidecar); the generator still emits entity-encoded `<<<name>>>` markers in step text (cosmetic, §6) but does not attempt to create a bound `step-parameters` object unless the bridge reports the capability present |
+| ~~**Test-parameter *definition*** — REST-unreachable — every create shape returns 500 "Test parameter does not exist," even after entity-encoded tokens flip `has-params=Y`~~ | **RETRACTED 2026-08-13 (Probe 9) — CLOSED, no longer a gap.** A missed `test-parameters` collection defines the object directly; the original failure was a `parent-id` shape bug. No capability flag or OTA dependency needed | `live-probe-log.md` Probe 9; `alm-data-model.md` §6, §7; `alm-api-reference.md` §6.4, §3.6, §9 | **No longer deferred.** The generator authors parameters via Route A (`POST tests/{testId}/test-parameters`) as an ordinary DAG node alongside `design-step` (§4), records per-step values via `POST step-parameters`, and sets defaults via `PUT test-parameters/{id}`, per §6 above |
 | **BPT (Business Process Testing)** | `components` → 403 license-gated; `business-components` → 404 | `alm-data-model.md` §6.7b; `live-probe-log.md` Probe 6 | Out of scope for the MVP entirely; OTA-fallback candidate, not planned before D3's bridge exists |
 | **Mail** (`POST .../{id}/mail`) | Body shape genuinely undocumented — 3 JSON shapes + 1 XML shape all failed | `alm-api-reference.md` §9 | N/A to record generation; not attempted |
 | **`requirement.target-rel`/`target-rcyc`** (and the parallel `requirement-target-releases`/`-cycles` collections) | Write path UNVERIFIED — unclear whether the requirement's own multivalue field or the separate collections are the real join surface; neither probed | `alm-data-model.md` §2.10, §7 | Deferred behind `targetRelCycle` capability flag; generated requirements carry no release/cycle targeting links until settled |
@@ -389,3 +421,10 @@ Testable statements; each should map to an automated check in the eventual test 
 12. **5xx dedup.** Injecting a simulated 5xx on a single write during a test run results in exactly one
     committed record for that logical (seed, entity-type, ordinal) key — never zero (silent failure)
     and never two (duplicate from a naive retry).
+13. **Parameter authoring end-to-end.** For every generated design-step whose plan enables parameter
+    generation, a `test-parameter` exists (created via Route A, `POST tests/{testId}/test-parameters`,
+    never omitting `ref-count`), at least one `step-parameter` referencing it by the `test-parameter`'s
+    own id (never the test/design-step id) round-trips its `actual-value`, and a `PUT
+    test-parameters/{id}` `default-value` write reads back intact — verified by `GET
+    tests/{testId}/test-parameters` showing `ref-count` matching the number of `step-parameters` created
+    against it.

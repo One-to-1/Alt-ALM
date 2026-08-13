@@ -28,7 +28,7 @@ clean JSON API to the SPA.
                                                                        ▼
                                                         ┌───────────────────────────┐
                                                         │      Alt-ALM BFF          │
-                                                        │  Java 21 / Spring Boot     │
+                                                        │  Java 25 / Spring Boot 4   │
                                                         │  single deployable JAR     │
                                                         │                            │
                                                         │  session mgr │ metadata svc│
@@ -80,7 +80,7 @@ renderer bound to list-id 1 (api-ref §8). UDFs (`user-NN` physical names) carry
 renderer — they arrive through the same `customization/entities/{e}/fields` shape as system fields and
 render automatically (api-ref §6.8).
 
-### 2.2 BFF (Java 21, Spring Boot)
+### 2.2 BFF (Java 25 LTS, Spring Boot 4.x)
 
 **ALM session manager.** Owns one pooled session per configured target, built from the service-account
 API key in `Secrets/` (D4). Responsibilities: `oauth2/login` handshake (api-ref §2.1), keepalive via

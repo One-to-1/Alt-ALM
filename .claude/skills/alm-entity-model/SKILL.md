@@ -33,7 +33,7 @@ discovery query; do not assume `1` or any other value is the root [data-model §
 | Domain | Collections |
 |---|---|
 | Requirements (5) | ★requirements, req-traces, requirement-coverages, requirement-target-cycles, requirement-target-releases |
-| Test Plan (11) | ★test-folders, ★tests, ★design-steps, ★test-configs, test-config-coverages, test-criterion-coverages, test-criterions, test-parameters, step-parameters, ★resources, resource-folders |
+| Test Plan (11) | ★test-folders, ★tests, ★design-steps, ★test-configs, test-config-coverages, test-criterion-coverages, test-criterions, ☆test-parameters, step-parameters, ★resources, resource-folders |
 | Test Lab (8) | ★test-set-folders, ★test-sets, ★test-instances, ★runs, ★run-steps, test-executions, results, lab-runs-protocol-granularities |
 | Defects (2) | ★defects, defect-links |
 | Releases & Milestones (4) | ★release-folders, ★releases, ★release-cycles, milestones |
@@ -45,7 +45,9 @@ discovery query; do not assume `1` or any other value is the root [data-model §
 | Lab hosts (2) | bv-hosts, host-groups |
 
 Everything non-★ is known to exist (collection-level + generic sub-resource surface) but its field
-shape is UNVERIFIED beyond a live metadata call [data-model §1].
+shape is UNVERIFIED beyond a live metadata call [data-model §1]. ☆ = probed by Probe 9 via its own
+fixture (`r4-test-parameter-fields.json`), not the original 15-entity `customization-fields-*.json`
+set — see §7 for its field list.
 
 ## 3. Generic entity contract
 
@@ -113,8 +115,15 @@ requirements/0 "Requirements" (root VERIFIED)
 test-folders/2 "Subject" (root VERIFIED, project-specific — discover at runtime)
   └─ test-folder        name, parent-id                                  VERIFIED
        └─ test          name, parent-id, subtype-id (e.g. "MANUAL")      VERIFIED
+            ├─ test-parameter  name, ref-count (parent test-id from URL)  VERIFIED — Probe 9,
+            │                                                              retracts the "BLOCKED" note
+            │                                                              this DAG carried below
+            │    └─ step-parameter  parent-id=THIS test-parameter's id
+            │         [TRAP, not the test/design-step id]; used-by-owner-id
+            │         = a design-step or the test itself                  VERIFIED — Probe 9
             ├─ design-step  name, parent-id, description, expected       VERIFIED — contradicts stale doc
-            │    └─ step-parameter   BLOCKED — no REST create path (see §8)
+            │    (an entity-encoded <<<token>>> in description also
+            │     registers a test-parameter as a side effect — Probe 9)
             └─ test-config   direct create UNVERIFIED; existence + auto-bind on runs confirmed
 
 test-set-folders/0 "Root" (root VERIFIED)
@@ -147,8 +156,10 @@ attachment (any entity id; octet-stream+Slug always works; multipart ref-subtype
 | `list-items` ≠ used-list items | `list-items` is an ordinary project-entity collection (own lock/mail/groups/bulk-delete). It is **unrelated** to `customization/used-lists/{list-id}/items`, the list-of-values editor. Same word, different resources. |
 | `milestones.parent-id` | Physical `MS_RELEASE_ID` — parents directly under a **release**, not a folder or milestone tree. |
 | `test-config.parent-id` | Physical `TSC_TEST_ID`, required, **non-editable after create** (fixed at create time). |
+| `step-parameter.parent-id` | Physical `SP_TEST_PARAM_ID` — must be the **`test-parameter`'s own id**, NOT the design-step/test id. Getting this wrong produces a misleading `HTTP 500 "Test parameter does not exist"` that looks like a missing-feature error but is actually a wrong-id error [Probe 9]. |
+| `test-parameter.ref-count` | Metadata reports `editable:false, required:false` — but **omitting it on create 500s** with `"missing required field TP_REF_COUNT"`. Send it anyway. Metadata `editable`/`required` flags describe UI semantics, not server-side create preconditions — a general trap, not specific to this field [api-ref §3.6, Probe 9]. |
 
-## 7. Per-entity quick reference (15 probed entities)
+## 7. Per-entity quick reference (15 probed entities + test-parameter, added by Probe 9)
 
 | Entity | Required fields | Verified create? | subtype/type-id used | Trap |
 |---|---|---|---|---|
@@ -167,6 +178,7 @@ attachment (any entity id; octet-stream+Slug always works; multipart ref-subtype
 | release-cycle | `end-date`, `name`, `parent-id`, `start-date` | Yes | n/a | dates validated inside parent release's window |
 | release-folder | `name`, `parent-id` | No — never directly probed; root UNVERIFIED | n/a | — |
 | resource | `parent-id`, `name`, `subtype-id` | No — never directly probed | n/a | fully versioned (full `vc-*` set), like requirement/test |
+| test-parameter ☆ (Probe 9) | `name` (only Required field) | Yes — Route A `POST tests/{testId}/test-parameters`, or Route B (design-step `<<<token>>>` side effect) | n/a | `ref-count` required-on-write despite metadata; `parent-id`/`TP_TEST_ID` read-only (owner from URL on Route A). 11 fields total: `name`/`default-value`/`description`/`order` editable, rest (`id`,`parent-id`,`ref-count`,`is-mapped`,`vts`,`vc-user-name`,`ver-stamp`) metadata-read-only |
 
 **Requirement type-id table** [data-model §2.2]:
 
@@ -198,7 +210,7 @@ attachment (any entity id; octet-stream+Slug always works; multipart ref-subtype
 
 | Gap | Status |
 |---|---|
-| `step-parameters` | BLOCKED — every create shape (5 attempts, both `used-by-owner-type` values) returns `HTTP 500 "Test parameter does not exist"`. It's a "record a value against an already-registered parameter" endpoint, not a "define a new parameter" one. No REST-exposed entity creates the underlying parameter object. OTA `TestParameterFactory` is the fallback candidate. |
+| ~~`step-parameters`~~ | **RETRACTED (Probe 9) — not a gap.** The old "BLOCKED, every create shape 500s" finding was a `parent-id` shape bug (needed the `test-parameter` id, not the design-step/test id) plus a missed `test-parameters` collection that defines the object directly. Both entities are REST-creatable — see §5/§7. **Not OTA-only** — `TestParameterFactory` is not needed. |
 | BPT (Business Process Testing) | License-gated: `components` → 403, `business-components` → 404. |
 | `test-config` direct create | UNVERIFIED — never write-probed; existence + auto-bind on synthesized runs confirmed only indirectly. |
 | `target-rel`/`target-rcyc` write path | UNVERIFIED — unclear whether the requirement's own multivalue field or the separate `requirement-target-releases`/`-cycles` collections are the real join surface. |

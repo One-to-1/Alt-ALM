@@ -1,7 +1,31 @@
-# ADR 0002 — BFF stack: Java 21 + Spring Boot; SPA: React + TypeScript
+# ADR 0002 — BFF stack: Java 25 + Spring Boot; SPA: React + TypeScript
 
-- Status: Accepted
-- Date: 2026-08-12
+- Status: Accepted (JDK baseline revised 2026-08-13: **21 → 25**)
+- Date: 2026-08-12 (addendum 2026-08-13)
+
+## Addendum, 2026-08-13 — JDK baseline moves to 25 LTS
+
+The original decision named **Java 21** simply because it was the prevailing LTS when this ADR was
+written. **JDK 25 (September 2025) is now the current LTS**, and the user is installing it. The
+baseline moves to **Java 25**. No part of the comparison below changes — the criteria that selected
+Java over TypeScript/Python/.NET are language-ecosystem properties, not version-specific ones.
+
+This is a strict improvement rather than a neutral bump, because the Spring side actively prefers it:
+
+- **Spring Framework 7** fully tests and supports the JDK LTS line — **17, 21, and 25** — with
+  intermediate releases (22/23/24) on a best-effort basis only, and **recommends JDK 25 or higher for
+  production use**.
+- **Spring Boot 4.0** requires Java 17 minimum and supports **up to Java 25**; **Spring Boot 4.1**
+  extends that to Java 26.
+
+So Java 25 + Spring Boot 4.x is a fully-tested, vendor-recommended pairing rather than a
+best-effort one. **Pin Spring Boot 4.0.x or later** in P0 — Spring Boot 3.x predates JDK 25 and is
+not the right baseline for a greenfield build here.
+
+Consequences: none for architecture. P0 sets the Maven/Gradle toolchain to release 25. Language
+features newer than 21 (and any preview features) are **not** to be adopted merely because they are
+available — the `--enable-preview` flag stays off, so the build never depends on a feature that can
+change between releases.
 
 ## Context
 
@@ -38,7 +62,7 @@ What this BFF's job actually demands, per `architecture.md` §2.2 and the resear
 
 ## Decision
 
-**BFF: Java 21 + Spring Boot.** **SPA: React + TypeScript**, metadata-driven rendering (D5). Probe/ops
+**BFF: Java 25 (LTS) + Spring Boot 4.x.** **SPA: React + TypeScript**, metadata-driven rendering (D5). Probe/ops
 scripts remain PowerShell (matching the existing `scripts/probe/*.ps1` convention), independent of this
 decision.
 

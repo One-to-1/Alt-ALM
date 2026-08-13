@@ -6,7 +6,7 @@ description: Alt-ALM front-end conventions — metadata-driven form/grid/filter 
 # Alt-ALM UI conventions
 
 Front end for the Alt-ALM ALM/QC alternative client. Stack: **React + TypeScript SPA** talking to the
-Alt-ALM **BFF** (Java 21 + Spring Boot) — never to `/qcbin` directly (ADR 0001; browsers cannot reach
+Alt-ALM **BFF** (Java 25 + Spring Boot 4.x) — never to `/qcbin` directly (ADR 0001; browsers cannot reach
 it through CORS + cookie session + XSRF).
 
 Design source of truth: `docs/adr/0005-metadata-driven-rendering.md`, `docs/plan/architecture.md`.

@@ -1,7 +1,44 @@
 # ADR 0003 — OTA/COM fallback isolated in an optional Windows sidecar
 
-- Status: **Accepted — validated by a live spike; the bridge has a verified reachable target**
-- Date: 2026-08-12 (addendum 2026-08-13)
+- Status: **Accepted — reachable target verified, but the scope has shrunk from three gaps to two**
+- Date: 2026-08-12 (addenda 2026-08-13 ×2)
+
+## Addendum 2, 2026-08-13 — one of the three justifying gaps is CLOSED over REST
+
+**Probe 9** (`live-probe-log.md`) retracts this ADR's gap #1. Test-parameter definition is **not** a
+REST gap: a separate `test-parameters` collection (physical `TP_*`) defines parameters, while the
+`step-parameters` collection (`SP_*`) records values against them. The five failed round-1/2 attempts
+passed the design-step/test id in `step-parameter.parent-id` where the **`test-parameter` id** was
+required — so `"Test parameter does not exist"` was literally true, and the "genuine gap, not a shape
+bug" verdict in § Context below was wrong. Direct create (`POST tests/{id}/test-parameters`),
+token registration, per-step values, and default values all now return 200/201. REST is in fact
+**more** capable than OTA here: `PUT test-parameters/{id}` sets a default value, which OTA cannot do.
+
+**Revised scope — the sidecar covers exactly two gaps, not three:**
+
+| Gap | Status |
+|---|---|
+| ~~Test-parameter definition~~ | **REMOVED — documented REST works** (Probe 9) |
+| BPT components | Still OTA-only; REST `GET /components` 403, `business-components` 404. OTA-writable (Probe 8) |
+| Similar-defects | Still OTA-only; vendor's own `resource-list.html` disclaims it |
+
+**The decision still stands, but its priority drops.** Isolation was right in all three states of
+knowledge (OTA looking dead, OTA working, and now the sidecar covering less). What changes is
+**scheduling and expected value**: the sidecar no longer blocks the generator at all — test
+parameters were the only *generator-blocking* gap — so P6 becomes genuinely optional rather than
+"optional but quietly required for a complete generator". Two features, not three, degrade behind
+`otaBridgeAvailable`.
+
+**A caution this episode earns.** Two of this project's confident negative verdicts have now been
+overturned within a day of each other: Probe 7's "OTA is unreachable" (a client artifact) and
+Probe 4/5's "no REST path defines a test parameter" (a wrong `parent-id` plus an unprobed
+collection). Both were multiply-attempted and reasonably argued, and both were wrong in the same
+way — **the failure was in an unexamined assumption about the shape of the question, not in the
+number of attempts.** Before any future gap is written down as justifying an OTA exception, it must
+clear a higher bar than "we tried N shapes": enumerate the per-instance `resource-list` for
+*sibling* collections, and confirm every id in the body means what it is assumed to mean.
+
+## Addendum 1, 2026-08-13 — OTA is reachable; the sidecar is viable
 
 ## Addendum, 2026-08-13 — OTA is reachable; the sidecar is viable
 
@@ -59,7 +96,12 @@ fallback where REST has gaps... OTA is COM/Windows-only — architectural weight
 Research and write-probing narrowed this from a general concern to three **specific, verified-genuine**
 REST gaps, each with a documented negative-result trail rather than an assumption:
 
-1. **Test-parameter definition.** `step-parameters` POST fails identically across every attempted
+1. ~~**Test-parameter definition.**~~ ⚠️ **RETRACTED by Probe 9 — see Addendum 2. The reasoning below
+   is preserved as a record of how the wrong conclusion was reached; it is no longer true.** The
+   flaw: every attempt passed the design-step/test id in `step-parameter.parent-id`, which requires
+   a `test-parameter` id, and the sibling `test-parameters` collection was never probed because
+   documentation research had asserted no such entity existed.
+   `step-parameters` POST fails identically across every attempted
    shape — 2 attempts in round 1, 3 more in round 2 (5 total, both nested and standalone paths, both
    `used-by-owner-type` values) — all returning `HTTP 500 "Test parameter does not exist"` (api-ref
    §6.4, data-model §6, §9). The physical field name `SP_TEST_PARAM_ID` on `step-parameters.parent-id`
@@ -90,9 +132,9 @@ that criterion there, deliberately) — this ADR is the reason that tradeoff is 
 OTA/COM capability is confined to a small, optional **"OTA bridge" sidecar service** — a separate
 Windows-only process exposing a minimal internal HTTP API, reachable only from the BFF (never from the
 SPA or the public network — `architecture.md` §1 diagram: internal HTTP, localhost/LAN only). It covers
-**exactly the three gaps above and nothing else**:
+**exactly the gaps above and nothing else** — originally three, now **two** after Probe 9:
 
-- test-parameter *definition* (OTA `TestParameterFactory`, per `_lead-decision-brief.md` D3)
+- ~~test-parameter *definition*~~ — **removed; documented REST handles this** (Addendum 2)
 - BPT components (OTA `BusinessComponentFactory`-family objects)
 - similar-defects (OTA-only per `resource-list.html`'s own disclaimer)
 

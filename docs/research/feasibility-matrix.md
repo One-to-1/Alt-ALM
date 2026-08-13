@@ -116,7 +116,7 @@ Evidence citation shorthand: `[probeN]` = `live-probe-log.md` Probe *N*; `[api-r
 | 42 | Convert manual test → component | OTA | none | Depends on Business Components, REST-blocked [probe6] | BPT verified writable via OTA — component create/delete confirmed [probe8] |
 | 43 | New Test Configuration | UNVERIFIED | `POST test-configs` | Existence + relationship confirmed via side effect [data-model §2.6]; **direct create never write-probed** | Exp: POST test-configs with name+parent-id against a known test |
 | 44 | Map Parameters | UNVERIFIED | `test-configs.data-obj` (XML) | Field exists, structure never probed | Exp: build a config via stock UI, GET it, inspect `data-obj` |
-| 45 | New Parameter / Insert Parameter (`<<<name>>>`) | PARTIAL | `POST design-steps` (entity-encoded token) | [data-model §6][probe5/6] token survives **only if HTML-entity-pre-encoded** (`&lt;&lt;&lt;name&gt;&gt;&gt;`); flips `has-params=Y` | `step-parameters` (the value-recording side) has **NO REST creation path** — see Generator appendix |
+| 45 | New Parameter / Insert Parameter (`<<<name>>>`) | FULL | `POST tests/{testId}/test-parameters` (define); `POST design-steps` entity-encoded token (alt. define, `has-params=Y`); `POST step-parameters` (value) | [data-model §6][api-ref §6.4][probe9] both entities and both creation routes VERIFIED 201; `PUT test-parameters/{id} default-value` VERIFIED 200 | **RETRACTED 2026-08-13**: previously PARTIAL because `step-parameters` (the value-recording side) was believed to have **NO REST creation path**. Probe 9 found the missed `test-parameters` collection plus a `parent-id` shape bug — see Generator appendix |
 | 46 | Link to Model / Add to Linkage (BPM) | UNVERIFIED | `bpm-folders` + linkage fields | Same as Requirements #21 | |
 | 47 | Baseline / Audit Log / Check-in-out / Compare versions (test) | PARTIAL | `.../tests/{id}/versions` | Full VC confirmed present via `vc-*` field set [data-model §5]; Audit Log confirmed **partial-only** (status changes visible only) | Baseline = NO (absent) |
 | 48 | Resource tree (typed folders) | UNVERIFIED | `resources`/`resource-folders` | Collections exist, direct create never write-probed [data-model §3/§7] | Exp: direct create probe |
@@ -457,14 +457,18 @@ correct in `alm-api-reference.md`:
 
 | Verdict | Count | % |
 |---|---|---|
-| FULL | 53 | 24% |
+| FULL | 54 | 25% |
 | FULL* | 22 | 10% |
-| PARTIAL | 51 | 23% |
+| PARTIAL | 50 | 23% |
 | UNVERIFIED | 31 | 14% |
 | NO | 21 | 10% |
 | OTA | 23 | 11% |
 | N/A | 17 | 8% |
 | **Total** | **218** | 100% |
+
+**Updated 2026-08-13 (Probe 9):** row #45 (New/Insert Parameter) moved PARTIAL → FULL — the
+`step-parameters` gap that kept it at PARTIAL is closed over REST. FULL 53→54, PARTIAL 51→50; the
+FULL+FULL*+PARTIAL sum is unchanged.
 
 **"Achievable" (FULL + FULL* + PARTIAL) = 126 of 218 rows (58%).**
 
@@ -481,14 +485,14 @@ closed: they are a real, buildable path gated on standing up the Windows-only 32
 | Module | Rows | FULL | FULL* | PARTIAL | UNVERIFIED | NO | OTA | N/A |
 |---|---|---|---|---|---|---|---|---|
 | 1. Requirements | 31 | 9 | 7 | 8 | 4 | 2 | 1 | 0 |
-| 2. Test Plan+BPT+Resources | 28 | 7 | 2 | 3 | 8 | 2 | 5 | 1 |
+| 2. Test Plan+BPT+Resources | 28 | 8 | 2 | 2 | 8 | 2 | 5 | 1 |
 | 3. Test Lab | 25 | 5 | 1 | 4 | 8 | 1 | 5 | 1 |
 | 4. Test Runs | 11 | 2 | 3 | 6 | 0 | 0 | 0 | 0 |
 | 5. Defects | 28 | 11 | 3 | 6 | 1 | 2 | 3 | 2 |
 | 6. Dashboard/Analysis | 16 | 1 | 5 | 4 | 1 | 5 | 0 | 0 |
 | 7. Releases/Management | 14 | 1 | 1 | 2 | 2 | 1 | 6 | 1 |
 | 8. Cross-cutting | 65 | 17 | 0 | 18 | 7 | 8 | 3 | 12 |
-| **Total** | **218** | **53** | **22** | **51** | **31** | **21** | **23** | **17** |
+| **Total** | **218** | **54** | **22** | **50** | **31** | **21** | **23** | **17** |
 
 ### Headline findings
 
@@ -507,11 +511,16 @@ closed: they are a real, buildable path gated on standing up the Windows-only 32
   coupling) simply because Alt-ALM isn't bound by the desktop UI's single-session model.
 - Site Admin user management is fully automatable — solves the sandbox's single-user realism problem
   without any manual admin step.
+- **`step-parameters`/test-parameter definition (RETRACTED from "honestly impossible" below, 2026-08-13,
+  Probe 9)** — a missed `test-parameters` collection defines the parameter object directly, and the
+  `step-parameters` failures were a `parent-id` shape bug, not a real gap. Both entities, both creation
+  routes, and setting a default value are all `[probe9]`-verified working over REST — see row #45 and
+  the Generator-impact appendix.
 
 **Honestly impossible (or OTA-only, unconfirmed):**
-- `step-parameters` (test-parameter value definitions) — no REST creation path found after 5 informed
+- ~~`step-parameters` (test-parameter value definitions) — no REST creation path found after 5 informed
   attempts across two rounds; the underlying "Test parameter" object has no discoverable REST-creatable
-  form.
+  form.~~ **RETRACTED — see the "Surprisingly possible" bullet above [probe9].**
 - Business Components/BPT — REST-blocked (403 / 404 absent, not a licence gate); **verified reachable
   and writable via the OTA sidecar** [probe8].
 - Libraries, Baselines, Alerts, Follow-up flags, Timeslots, Purge-runs, KPIs/Scope-items — all
@@ -538,8 +547,8 @@ test-sets → instances → runs (Fast_Run) → defects → links** — maps to 
 | Release / cycle create | FULL | #141 | Cycle dates must fall inside the parent release's window — server-enforced, will 500 otherwise |
 | Test create | FULL | #33 | Root test-folder is project-specific — discover via `parent-id[0]` query at runtime, never hardcode |
 | Design-step create | FULL | #39 | Works, but any free text the generator did not author as deliberate markup should be HTML-entity-encoded before write (sanitizer risk, see below) |
-| `<<<param>>>` tokens in step text | PARTIAL | #45 | **Must be HTML-entity-pre-encoded** (`&lt;&lt;&lt;name&gt;&gt;&gt;`) or the sanitizer mangles them to `<<>>` |
-| `step-parameters` (parameter value records) | **OTA** | #45 note | REST still cannot define a parameter (no confirmed creation path after 5 attempts). Via OTA, the mechanism is now understood [probe8]: declaring a parameter directly (`Test.Params.AddParam`/`Save`) is a no-op, but a design step containing a `<<<token>>>` **does register the parameter** (`Count` 0→1 verified). Setting the registered parameter's default *value* still fails (`"Invalid field type definition."`) — `UNVERIFIED`, needs one more probe. Parameterized-test data generation is therefore OTA-dependent for registration, with the value-set step still open |
+| `<<<param>>>` tokens in step text | FULL (as Route B) | #45 | **Must be HTML-entity-pre-encoded** (`&lt;&lt;&lt;name&gt;&gt;&gt;`) or the sanitizer mangles them to `<<>>`. Registers a `test-parameter` as a side effect [probe9], but the generator should prefer Route A (direct `test-parameters` create, below) since it is deterministic and does not depend on text-parsing |
+| `test-parameter` define + `step-parameters` value record | **FULL** | #45 | **RETRACTED prior OTA verdict (Probe 9).** Route A: `POST tests/{testId}/test-parameters` with `name`+`ref-count` → 201 (`parent-id` from URL, read-only in body). Then `POST step-parameters` with `parent-id` = the new `test-parameter`'s id → 201 for `used-by-owner-type ∈ {design-step, test}`. `PUT test-parameters/{id}` with `default-value` → 200 (REST can do this; OTA cannot — `"Invalid field type definition"` [probe8]). **Write hazard**: `ref-count` is metadata `editable:false, required:false` but 500s as `"missing required field TP_REF_COUNT"` if omitted — send it anyway [probe9] |
 | Requirement-coverage links | FULL | #15/#16 | One `test-config-coverages` row auto-creates per link — do not also POST it directly |
 | Test-set / test-set-folder create | FULL | #60 | Root = id 0 "Root" |
 | Test-instance create | FULL | #68 | `cycle-id` = **test-set** id (legacy-naming trap, not a release cycle) |
@@ -553,9 +562,9 @@ test-sets → instances → runs (Fast_Run) → defects → links** — maps to 
 | Every write above | (cross-cutting hazard) | — | **Deterministic field order is a hard requirement** (wrong JSON member order → opaque 500s) and **HTTP 500 is not proof of no-commit** (one 500 silently committed a row) — the generator's write layer must always verify-by-GET after any non-2xx response before retrying |
 
 **Bottom line for the generator spec**: the full happy-path chain (requirement → release/cycle → test →
-design-step → test-set → instance → Fast_Run → defect → links) is achievable end-to-end via documented
-REST, with one remaining gap (`step-parameters`, i.e. parameterized-test data generation) that REST
-cannot close on its own, but that **the OTA sidecar can now close for registration** (design-step
-`<<<token>>>` triggers parameter registration, verified [probe8]) — the parameter's default *value* is
-still `UNVERIFIED` pending one more probe. This should be scoped as an OTA-dependent stretch feature
-(gated on the sidecar existing), not scoped out of v1 entirely.
+design-step → test-set → instance → Fast_Run → defect → links **→ test-parameters/step-parameters**) is
+achievable end-to-end via documented REST. **UPDATE 2026-08-13 (Probe 9): the generator's one remaining
+hard gap — `step-parameters`, i.e. parameterized-test data generation — is CLOSED over REST.** The
+paragraph above (superseded) treated it as OTA-dependent; that was wrong (§ retraction above, row #45).
+The generator can author parameters, default values, and per-step values end-to-end via documented REST
+alone, with no OTA dependency and no scope-out required.
