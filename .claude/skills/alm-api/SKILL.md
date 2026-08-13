@@ -41,18 +41,30 @@ Target: OpenText ALM/Quality Center classic (`/qcbin`), NOT Octane. Sandbox grou
   cookie set in one step on this server: `LWSSO_COOKIE_KEY`, `QCSession`, `XSRF-TOKEN`, `ALM_USER`,
   `JSESSIONID` [probe]. This is simpler than the documented general two-step
   `alm-authenticate`→`site-session` dance (that sets only `LWSSO_COOKIE_KEY` first).
-- `POST /qcbin/rest/site-session` → 201 after `oauth2/login` — harmless but whether strictly required
-  is still open (UNVERIFIED).
+- `POST /qcbin/rest/site-session` → 201 after `oauth2/login` — **confirmed redundant**: a project read
+  with the login cookies alone returns 200 [probe 13]. Keep it (documented flow, one call), but ⚠️ **if
+  you issue it, merge the cookies it sets** — otherwise you hold a pre-site-session `QCSession` and
+  nothing breaks visibly until teardown targets the wrong session.
 - **Session-liveness check — use the v2 path.** `GET /qcbin/rest/is-authenticated` is **XML-only**;
   `Accept: application/json` → **406 trap**. Use `GET /qcbin/v2/rest/is-authenticated` →
   `{"AuthenticationInfo":{"Username":"…"}}` for JSON, XML and JSON both supported, opens no session
-  [api-ref §2.3].
+  [api-ref §2.3]. ⚠️ **But it is the wrong liveness check for a pooled session** — it reports on the
+  LWSSO token, not the site session, and returns **200 while every project-scoped call returns 401**
+  after a `DELETE site-session` [probe 13]. Use the keepalive below instead.
 - **Keepalive**: GET/PUT `/qcbin/rest/site-session` resets the idle-timeout clock. **Idle timeout**:
   `REST_SESSION_MAX_IDLE_TIME` site param, default 60 min [docs-research].
-- **Logout**: `GET /qcbin/authentication-point/logout` → 200, drops session cookies — confirmed on our
-  server, but conflicts with docs claiming GET-logout is disabled by default since 24.1
-  (`ENABLE_GET_LOGOUT_METHOD=Y` needed). Probe wins for our target; prefer POST for portability
-  elsewhere [api-ref §2.2].
+- ⚠️ **Logout is TWO calls, both needing `X-XSRF-TOKEN`** [probe 13]:
+  1. `DELETE /qcbin/rest/site-session` → 200 — ends the **project** session only; **LWSSO survives**.
+  2. `POST /qcbin/authentication-point/logout` → ends the **authentication**.
+
+  Stopping after (1) leaks one authenticated identity per session — for a pool, the whole pool.
+  Without the XSRF header, (2) returns **401 and silently does nothing**. Its own status varies
+  (200/500 "already logged out"); the outcome does not, so **ignore the status, it is best-effort**.
+  `GET /qcbin/authentication-point/logout` → 200 also works here, but docs say GET-logout is disabled
+  by default since 24.1 (`ENABLE_GET_LOGOUT_METHOD=Y`), so POST is the portable choice [api-ref §2.2].
+- ⚠️ **Replaying a logged-out session's cookies → HTTP 500**, body `TokenId is invalid because it has
+  logged out` — *not* 401. Do not confuse this 5xx with the "may have committed" write 5xx (§1.2);
+  this one never reached entity processing [probe 13].
 - **API keys consume no licence seat.** Each key = Client ID + Secret, maps to a real user account and
   inherits that user's exact project/permission scope; deleting the user deletes its keys.
   `APIKEY_MAX_NUM_PER_USER` default 10, `APIKEY_EXPIRE_DAYS` default -1 (never) [docs-research §2.4].

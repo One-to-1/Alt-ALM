@@ -713,6 +713,85 @@ the helper used `Write-Output` for status lines, so each function returned
 documented in the `alm-live-probe` skill §4 — **use `Write-Host` in any helper that also returns a
 value.** Worth flagging because the corrupted output was plausible enough to have been believed.
 
+## Probe 13 — session teardown semantics, 2026-08-13 (`scripts/probe/probe-session-teardown.ps1` + the BFF contract test)
+
+**Trigger**: the first live run of `AlmAuthClientContractTest` — P0's exit criterion — failed on its
+logout assertion. Investigating that failure produced this probe. It is the first finding in the
+project surfaced by *product code under test* rather than by a hand-written probe.
+
+### The headline: `DELETE site-session` is only half a logout
+
+| Step | Result |
+|---|---|
+| `DELETE /qcbin/rest/site-session` (+ XSRF) | **200** |
+| …then a project-scoped read | **401** — the project session is gone |
+| …then `GET /qcbin/v2/rest/is-authenticated` | **200** — the authentication is **not** gone |
+| `POST /qcbin/authentication-point/logout` (+ XSRF) | **200 or 500** (varies; see below) |
+| …then replaying the same cookies | **500** `TokenId is invalid because it has logged out` |
+
+Stable across 3 scripted iterations plus 8 contract-suite runs.
+
+**Consequence**: a client that logs out with `DELETE site-session` alone leaves the service account
+authenticated server-side — **one leaked identity per session**, which for a pool is the whole pool.
+`AlmAuthClient.logout()` was doing exactly that, and now issues both calls. This is the bug the
+contract test was written to catch, caught on its first run.
+
+### `POST authentication-point/logout` needs `X-XSRF-TOKEN` like any other non-GET
+
+Without the header it returns **401 and silently does nothing** — the session stays fully usable
+(is-authenticated 200, project read 200). This looked at first like an *ordering* constraint ("you
+must delete the site session before you may log out"); it is not. It is the ordinary XSRF gate
+(§2.2), and the reason case A appeared to make logout "work" is that after `DELETE site-session`
+the gate no longer applies. **Stable, 3/3.**
+
+`GET /qcbin/authentication-point/logout` also works here (200, full teardown, no XSRF needed since
+it is a GET) — but OpenText disabled GET-logout by default in 24.1, so POST + XSRF is the portable
+choice and is what the BFF does.
+
+### ⚠️ A 5xx that means "your token is dead", not "your write may have committed"
+
+Replaying a logged-out session's cookies returns **HTTP 500** with body
+`{"Id":"qccore.general-error","Title":"TokenId is invalid because it has logged out",…}`, not a 401.
+
+This collides with the standing write-safety rule (*every 5xx write is an unknown outcome, verify by
+query*). Here the 5xx is definitive: the request never reached entity processing, so nothing can have
+committed. `AlmWriteOutcome` classifies it `UNKNOWN` today, which is **wasteful but safe** — it
+triggers a needless verify-by-query rather than a wrong answer — so it is deliberately left alone.
+Narrowing it would mean asserting "this message implies no commit", which is an inference, not an
+observation. `UNVERIFIED`; the experiment is a deliberate write on a logged-out session followed by a
+re-authenticated query for the row.
+
+The status of the `POST logout` call itself varied (200, 500, 500, 200 across four runs) with no code
+change between them — the 500 carrying the same "already logged out" body. The *outcome* never
+varied: the session was dead every time. `logout()` therefore ignores the status by design.
+
+### Also settled: `POST site-session` is redundant after `oauth2/login` — **open item #2, closed**
+
+A project-scoped read succeeds using the `oauth2/login` cookies alone, with **no** `POST site-session`
+call at all → **200**. The call is kept in `AlmAuthClient.login()` because it is the documented flow
+and costs one request at session open, but it is confirmed not load-bearing on this server.
+
+Related bug found while chasing this: `login()` built the session from the login response and then
+made the site-session call **without merging the cookies that response sets**, leaving us holding a
+pre-site-session `QCSession`. Fixed by merging both responses. The symptom was nasty — every call
+kept working, because project reads authenticate off LWSSO regardless, so the mismatch stayed
+invisible until teardown targeted a different session than the one we held.
+
+### ⚠️ Intermittency worth knowing about
+
+Immediately after `DELETE site-session`, the project-scoped read returned **401 on 6 of 8 runs and
+200 on 2**, with no code change between them — while the single-connection PowerShell client returned
+401 on 3/3. `UNVERIFIED` hypothesis: this SaaS deployment load-balances across nodes that learn about
+the teardown at different times. Experiment: capture the LB/routing response headers on the `DELETE`
+and the following `GET` and check whether the 200s correlate with a node change. Tracked as **Q40**.
+The contract test records this value but deliberately does **not** assert on it.
+
+### Design consequence: `is-authenticated` is not a session-liveness check
+
+It reports on the LWSSO token, not the site session, and there is a real state where it says 200
+while every project-scoped call says 401. Pool liveness must use `GET /rest/site-session` (the
+keepalive), which tests the thing that determines whether a request will actually work.
+
 ## Fixtures captured (redacted; under `tests/fixtures/`)
 
 - `customization-fields-<entity>.json` × 15
@@ -728,7 +807,9 @@ entity data are not captured.
 ## Open items for the next probe round
 
 1. ~~Map `SiteVersion 20.0 (20.00.0.143)` → marketing version~~ **DONE: ALM 26.1** (probe 3).
-2. Is `site-session` required after `oauth2/login`, or fully redundant? (Skip it, observe.)
+2. ~~Is `site-session` required after `oauth2/login`, or fully redundant?~~ **DONE: fully redundant**
+   — a project read with the login cookies alone returns 200 (probe 13). Kept in `login()` anyway as
+   the documented flow.
 3. ~~XSRF header requirement~~ **DONE: 401 without header** (probe 4).
 4. ~~Rich-text round-trip fidelity~~ **DONE** (probes 4–5: sanitizer rules, img-src forms, token
    encoding).

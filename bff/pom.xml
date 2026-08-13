@@ -22,6 +22,10 @@
 		<!-- JDK 25 LTS per ADR 0002. Do NOT enable preview features. -->
 		<java.version>25</java.version>
 		<project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+		<!-- Contract tests hit the live ALM sandbox and need Secrets/, so they are excluded from
+		     the default build and from CI (test-strategy §7: every-commit layers must never require
+		     credentials). Opt in with `./mvnw test -Pcontract`. -->
+		<excluded.test.groups>contract</excluded.test.groups>
 	</properties>
 	<dependencies>
 		<dependency>
@@ -70,6 +74,13 @@
 			</plugin>
 			<plugin>
 				<groupId>org.apache.maven.plugins</groupId>
+				<artifactId>maven-surefire-plugin</artifactId>
+				<configuration>
+					<excludedGroups>${excluded.test.groups}</excludedGroups>
+				</configuration>
+			</plugin>
+			<plugin>
+				<groupId>org.apache.maven.plugins</groupId>
 				<artifactId>maven-compiler-plugin</artifactId>
 				<executions>
 					<execution>
@@ -91,5 +102,16 @@
 			</plugin>
 		</plugins>
 	</build>
+
+	<profiles>
+		<!-- `./mvnw test -Pcontract` runs the live-sandbox suite as well. It still gates on the
+		     credentials file being present and SKIPS (never fake-passes) when it is absent. -->
+		<profile>
+			<id>contract</id>
+			<properties>
+				<excluded.test.groups/>
+			</properties>
+		</profile>
+	</profiles>
 
 </project>

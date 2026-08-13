@@ -1,4 +1,4 @@
-# Research Session State — updated 2026-08-12 (PLANNING PHASE COMPLETE)
+# Research Session State — updated 2026-08-13 (P0 auth criterion MET; contract test live and green)
 
 Working state of the Fable 5 research-and-planning session (kickoff:
 [docs/prompts/fable-5-research-and-plan.md](../prompts/fable-5-research-and-plan.md)). Written
@@ -330,14 +330,30 @@ Monorepo, Maven — both chosen by the user.
 | `.github/workflows/ci.yml` | Both halves + a check that fails if `Secrets/` is ever tracked |
 | `bff/.../alm/write/` | Write-safety core: `AlmEntityBody` (deterministic field order), `AlmWriteOutcome` (5xx→UNKNOWN), `AlmWriteRetry` (single missing-required-field retry) |
 | `bff/.../alm/metadata/` | `AlmFieldType` (the 8 verified types, no Boolean), `FieldDescriptor`, `AlmMetadataParser` (no HTTP dependency — parses offline) |
-| `bff/.../alm/session/` | `AlmCredentials` (runtime-only load, refuses to render itself), `AlmSession`, `AlmSessionPool` (bounded, idle-eviction, keepalive scheduling), `AlmAuthClient` (one-step login, XSRF, keepalive, logout) |
+| `bff/.../alm/session/` | `AlmCredentials` (runtime-only load, refuses to render itself), `AlmSession`, `AlmSessionPool` (bounded, idle-eviction, keepalive scheduling), `AlmAuthClient` (one-step login, XSRF, keepalive, two-call logout) |
+| `bff/src/test/.../alm/contract/` | `AlmSandbox` (credential discovery, `@EnabledIf` gate, masker), `AlmAuthClientContractTest` (**live**, tagged `contract`), `CredentialMaskingTest` (runs on every build) |
 
-**38 tests green.** 20 of them are the fixture harness: it parses **all 15** captured
+**43 tests green by default; 52 with `-Pcontract`.** 20 of them are the fixture harness: it parses **all 15** captured
 `customization-fields-*.json` entities with **no server and no credentials**, and asserts the model
 facts in executable form (exactly 8 field types, no Boolean, `rbt-*` family present on requirement,
 multivalue is rare, memo size −1, malformed payload fails loudly rather than looking like an empty
 entity). 7 more cover pool behaviour (reuse, bound, idle-eviction, failed-login slot release,
 logout-on-close, keepalive timing, and that `toString` never leaks cookie values).
+
+**The live contract test is in and green** (probe 13). `AlmAuthClientContractTest` — 9 ordered cases
+tracing one session's lifecycle: one-step login, v2 is-authenticated, project reach, keepalive,
+XSRF-missing → 401, a 3-session pool with distinct `QCSession` cookies, site-session redundancy,
+teardown semantics, and an `@AfterAll` orphan sweep that **asserts** zero `ALTALM-CONTRACT*` rows
+rather than merely cleaning up. Gating: tagged `contract` → excluded from the default build and CI
+via Surefire `excludedGroups`; `./mvnw test -Pcontract` opts in; absent `Secrets/` it **skips**
+(9 skipped, build green), never fake-passes.
+
+⚠️ **Its first run found two real bugs in `AlmAuthClient`**: `logout()` issued only
+`DELETE site-session`, which leaves the LWSSO authentication alive — one leaked identity per pooled
+session; and `login()` built the session from the login response then discarded the cookies
+`POST site-session` sets. Both fixed. **This is the first finding in the project surfaced by product
+code under test rather than a hand-written probe** — the argument for contract tests, made by the
+contract test.
 
 **Boot 4 gotchas already paid for** (all found by building): starter is `spring-boot-starter-webmvc`
 not `-web`; test deps are **per-starter**; **Jackson is not transitive** (add
@@ -350,13 +366,11 @@ folder**: it locks `bff/target` and breaks `mvnw clean`. Run without `clean`.
 
 ## Next actions (in order)
 
-1. ~~**Finish P0**~~ **DONE 2026-08-13** — session/auth manager, metadata parser, and the
-   fixture harness are in and green (see the P0 table above).
-   ⚠️ **One exit criterion is NOT yet met**: "BFF authenticates against the sandbox and holds a
-   keepalive session." `AlmAuthClient` implements the handshake and compiles, but it has **not been
-   run against the live sandbox** — that is a contract test, which by design stays out of CI (it
-   needs `Secrets/` and the designated sandbox project). **Run it before starting P1.**
-   Also still open from P0's scope: wiring the pool + metadata cache as Spring beans with
+1. ~~**Finish P0**~~ — session/auth manager, metadata parser, and the fixture harness are in and
+   green (see the P0 table above). ✅ **The auth exit criterion — "BFF authenticates against the
+   sandbox and holds a keepalive session" — is now MET** (2026-08-13): the contract test ran green
+   against the live sandbox, and fixed two bugs on the way (probe 13).
+   **Still open from P0's scope**: wiring the pool + metadata cache as Spring beans with
    `@ConfigurationProperties`, and the per-project metadata cache's explicit invalidation (ADR 0005)
    — the parser is done, the caching layer around it is not.
 2. **Then P1** (read-only Alt-ALM) per [../plan/implementation-plan.md](../plan/implementation-plan.md).

@@ -50,12 +50,22 @@ here even though no entity CRUD exists yet.
 
 **Dependencies**: none.
 
-**Exit criteria**: BFF authenticates against the sandbox and holds a keepalive session; metadata
-service returns cached field descriptors for all 15 probe-known entity types (`data-model §1`); fixture
-test suite green in CI; write-safety unit tests (field-order regression) green.
+**Exit criteria**:
 
-**Sandbox contract-test gate**: session lifecycle contract test only (login → is-authenticated → 
-keepalive → logout); no entity writes yet, so `ALTALM-*`/cleanup/orphan-sweep are N/A this phase.
+- ✅ **BFF authenticates against the sandbox and holds a keepalive session** — met 2026-08-13,
+  `AlmAuthClientContractTest` green against the live sandbox (probe 13).
+- ⬜ Metadata service returns **cached** field descriptors for all 15 probe-known entity types
+  (`data-model §1`) — the parser is done and fixture-tested; **the cache is not built yet**.
+- ✅ Fixture test suite green in CI (20 cases over all 15 entities, no server, no credentials).
+- ✅ Write-safety unit tests (field-order regression) green.
+- ⬜ Spring bean wiring via `@ConfigurationProperties`.
+
+**Sandbox contract-test gate**: ✅ **done** — session lifecycle contract test (login →
+is-authenticated → project reach → keepalive → pool → teardown). No entity writes, so
+`ALTALM-*`/cleanup are N/A — but the suite still runs the orphan sweep as an **assertion**, because
+the one deliberately-rejected POST it makes (the XSRF-missing negative case) is only *argued* not to
+commit. Tagged `contract`, excluded from CI via Surefire `excludedGroups`, opt in with `-Pcontract`,
+skips when `Secrets/` is absent.
 
 ---
 

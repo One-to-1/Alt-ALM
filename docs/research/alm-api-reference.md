@@ -71,9 +71,15 @@ simplifies the two-step `alm-authenticate` → `site-session` dance documented a
 two other documented one-step flows (the other being `POST /qcbin/api/authentication/sign-in` with
 HTTP Basic credentials, untested by us).
 
-`POST /qcbin/rest/site-session` → **201** after `oauth2/login` on our server — harmless, but whether
-it is strictly *required* after `oauth2/login` (vs. purely idempotent confirmation) is still open
-`[probe]` (Probe 1, open item #2).
+`POST /qcbin/rest/site-session` → **201** after `oauth2/login` on our server. **Not required**: a
+project-scoped read using the `oauth2/login` cookies alone, with no site-session call at all, returns
+**200** `[probe]` (Probe 13 — this closes Probe 1's open item #2). We still issue it, because it is
+the documented flow and costs one request at session open.
+
+⚠️ **If you issue it, merge the cookies it sets.** Building the session from the `oauth2/login`
+response and then firing the site-session call leaves the client holding a pre-site-session
+`QCSession`. Nothing visibly breaks — project reads authenticate off LWSSO regardless — until
+teardown targets a different session than the one you hold `[probe]` (Probe 13).
 
 ### 2.2 Site-session and XSRF
 
@@ -89,11 +95,27 @@ it is strictly *required* after `oauth2/login` (vs. purely idempotent confirmati
 - The request never reached entity-level processing — the XSRF gate runs before any business logic, so
   a missing-XSRF failure carries **no silent-commit risk** `[probe]`.
 - **Keepalive**: `GET` or `PUT /qcbin/rest/site-session` resets the idle-timeout clock
-  `[docs-research]` (wave1-01 §5).
+  `[docs-research]` (wave1-01 §5). **Use this, not `is-authenticated`, as the pool's liveness
+  check** — see §2.3.
 - **Idle timeout**: `REST_SESSION_MAX_IDLE_TIME` site parameter, default **60 minutes**
   `[docs-research]` (wave1-01 §5). A second, SSO-specific `SSO_EXPIRATION_TIME` (reported default ~11
   min) is lower-confidence — sourced from an unverified page extraction, not a literal quote
   `UNVERIFIED`.
+- ⚠️ **Logout takes TWO calls, and the second one is easy to miss** `[probe]` (Probe 13).
+  `DELETE /qcbin/rest/site-session` (+ XSRF) → **200** ends only the **project** session:
+  project-scoped reads start returning 401, but the **LWSSO authentication survives it** and
+  `/qcbin/v2/rest/is-authenticated` keeps answering **200**. Stopping there leaks one authenticated
+  identity per session — for a pool, the whole pool. `POST /qcbin/authentication-point/logout`
+  (+ XSRF) is what ends the authentication. **The XSRF header is required on it** like any other
+  non-GET: without it you get 401 and the session stays fully usable, which reads deceptively like an
+  ordering constraint but is just the gate in §2.2. The POST's own status varies (200 / 500 with an
+  "already logged out" body, 4 runs, no code change); the *outcome* does not, so treat logout as
+  best-effort and ignore its status.
+- ⚠️ **Replaying a logged-out session's cookies returns HTTP 500**, body
+  `{"Id":"qccore.general-error","Title":"TokenId is invalid because it has logged out",…}` — **not**
+  a 401 `[probe]` (Probe 13). This collides with the 5xx-means-unknown-outcome write rule (§3.3): here
+  the 5xx is definitive and nothing can have committed. Our client still classifies it `UNKNOWN`,
+  which is wasteful but safe; narrowing that would mean trusting an inference. `UNVERIFIED`.
 - **Logout — conflict, probe wins**: `GET /qcbin/authentication-point/logout` → **200**, session
   cookies dropped (only `JSESSIONID` remained) `[probe]` (Probe 1). This **conflicts** with
   `[docs-research]` (wave1-01 §5, source 12/23): *"Since ALM 24.1, GET is disabled by default"* on both
@@ -118,6 +140,13 @@ it is strictly *required* after `oauth2/login` (vs. purely idempotent confirmati
 
 Both confirmed live: unauthenticated `GET is-authenticated` → 401; authenticated → 200 `[probe]`
 (Probe 1). Use the v2 path for any JSON-consuming client — the Core path is a 406 trap.
+
+⚠️ **`is-authenticated` answers a narrower question than its name suggests, and is the wrong liveness
+check for a pooled session** `[probe]` (Probe 13). It reports on the **LWSSO token**, not the site
+session. There is a reproducible state — after `DELETE site-session` — where it returns **200** while
+**every project-scoped call returns 401**. A pool that trusts it will hand out sessions that cannot
+do anything. Use `GET /qcbin/rest/site-session` (the keepalive) instead: it tests the thing that
+actually determines whether a request will work.
 
 ### 2.4 API keys
 

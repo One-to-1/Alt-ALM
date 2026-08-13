@@ -74,7 +74,7 @@ Twelve live probe rounds against the sandbox plus 20 subagent research reports p
 corpus; the plan set and ADRs are written. **`docs/research/SESSION-STATE.md` is the resume
 point — read it first.**
 
-**P0 in the repo now — 38 tests green** (`./mvnw test` in `bff/`; no local Maven needed):
+**P0 in the repo now — 43 tests green** (`./mvnw test` in `bff/`; no local Maven needed):
 
 - `bff/.../alm/write/` — `AlmEntityBody` (deterministic field order), `AlmWriteOutcome`
   (5xx→UNKNOWN, never REJECTED), `AlmWriteRetry` (single missing-required-field retry)
@@ -82,13 +82,25 @@ point — read it first.**
   (**no HTTP dependency** — parses fixtures offline)
 - `bff/.../alm/session/` — `AlmCredentials` (runtime-only; `toString` refuses to render itself),
   `AlmSession`, `AlmSessionPool` (bounded, idle-eviction, keepalive scheduling), `AlmAuthClient`
+- `bff/src/test/.../alm/contract/` — `AlmSandbox` (credential discovery, the `@EnabledIf` gate, the
+  masker), `AlmAuthClientContractTest` (live, tagged `contract`), `CredentialMaskingTest` (always on)
 - `spa/` builds; CI runs both halves and **fails if `Secrets/` is ever tracked**
 - Fixture harness parses **all 15** captured entities with no server and no credentials
 
-**P0 remaining**: ⚠️ `AlmAuthClient` has **not been run against the live sandbox** — that contract
-test stays out of CI by design (needs `Secrets/`); run it before P1. Plus Spring bean wiring
-(`@ConfigurationProperties`) and the metadata **cache** layer with explicit invalidation (ADR 0005) —
-the parser exists, the cache around it does not. Then P1. See
+✅ **The contract test is in and runs green against the live sandbox** (2026-08-13) —
+`AlmAuthClientContractTest`, 9 cases: one-step login, v2 is-authenticated, project reach, keepalive,
+XSRF-missing → 401, a 3-session pool with distinct cookies, site-session redundancy, teardown
+semantics, plus an orphan sweep that fails loudly. **P0's auth exit criterion is now met.** Tagged
+`contract`, excluded from the default build and CI, opt in with `./mvnw test -Pcontract`; without
+`Secrets/` it **skips**, never fake-passes. `CredentialMaskingTest` (5 cases) runs on *every* build
+and scans the tracked tree for literal credential values. **43 tests default, 52 with `-Pcontract`.**
+
+⚠️ **Its first run found two real bugs in `AlmAuthClient`** — logout leaked authentication, and
+`login()` discarded the cookies `POST site-session` sets. Both fixed; see probe 13. This is the first
+finding in the project surfaced by product code under test rather than a hand-written probe.
+
+**P0 remaining**: Spring bean wiring (`@ConfigurationProperties`) and the metadata **cache** layer
+with explicit invalidation (ADR 0005) — the parser exists, the cache around it does not. Then P1. See
 [docs/plan/implementation-plan.md](docs/plan/implementation-plan.md).
 
 ✅ **Toolchain ready**: Node 24.13.1, git 2.54, **JDK 25.0.4 Temurin** (machine-level `JAVA_HOME`
@@ -111,8 +123,17 @@ every conflict**; probes 1–12), [alm-api-reference.md](docs/research/alm-api-r
 **Load the `alm-api` skill before any ALM work — these are the headlines only.**
 
 - **Auth**: `POST /qcbin/rest/oauth2/login` with `{clientId, secret}` sets the full cookie set in one
-  call. `X-XSRF-TOKEN` header required on every non-GET (missing → 401). REST sessions consume **no
-  licence seat**. Use `/qcbin/v2/rest/is-authenticated` for JSON (the Core path is XML-only, 406).
+  call; the follow-up `POST site-session` is **redundant** (probe 13) but kept — merge the cookies it
+  sets if you issue it. `X-XSRF-TOKEN` header required on every non-GET (missing → 401). REST sessions
+  consume **no licence seat**. Use `/qcbin/v2/rest/is-authenticated` for JSON (the Core path is
+  XML-only, 406).
+- ⚠️ **Logout is two calls, both needing XSRF** (probe 13): `DELETE rest/site-session` ends only the
+  **project** session — LWSSO survives it, so stopping there leaks one authenticated identity per
+  session. `POST authentication-point/logout` ends the authentication. Its status varies (200/500);
+  the outcome does not, so treat logout as best-effort and ignore the status. **`is-authenticated` is
+  not a liveness check** — it returns 200 while every project call returns 401; use the
+  `GET site-session` keepalive. Replaying a logged-out session's cookies gives **500
+  `TokenId is invalid because it has logged out`**, a 5xx that emphatically did *not* commit anything.
 - **One API key holds many concurrent sessions** — **50/50 opened, zero evicted, all usable
   simultaneously** (probe 10); no cap was reached, so 50 is a floor. Unlike a username/password
   login, there is **no one-machine-at-a-time constraint**. `JSESSIONID`, `LWSSO_COOKIE_KEY`,
