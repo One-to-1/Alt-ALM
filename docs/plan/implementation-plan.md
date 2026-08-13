@@ -350,9 +350,16 @@ path either (text search/global search #107/#119/#170/#214, risk export to Word 
 2026-08-13; they were reclassified `NO`→`OTA` by Probe 12 and are listed in-scope above.
 
 **Key technical tasks**:
-- OTA bridge sidecar (D3): small internal HTTP API for REST-unreachable operations only (BPT
-  components if license allows, similar-defects — narrowed from three to two named gaps 2026-08-13;
-  step-parameters definition dropped from this list, closed over REST by `live-probe-log.md` Probe 9).
+- OTA bridge sidecar (D3): small internal HTTP API for REST-unreachable operations. Scope narrowed
+  from three to two named gaps on 2026-08-13 (step-parameters definition dropped, closed over REST by
+  `live-probe-log.md` Probe 9: BPT components if license allows, similar-defects) — then **grew to
+  eight named surfaces the same day** (Probes 11–12 NO-verdict recheck: RBT/Testing-Policy matrix
+  one-time read for #18, KPI types, report templates, business views, alerts, permissions/data-hiding —
+  see ADR 0003 Addendum 3 for the full current scope). The sidecar is now load-bearing for the
+  product's feature surface, though still off the generator's critical path. **Settle the
+  implementation-language decision (.NET vs Python + `pywin32`) at this phase's kickoff, before writing
+  sidecar code** — ADR 0003 Addendum 3 argues the eight-surface scope makes this worth resolving early
+  rather than deferring further; .NET scored 5/5 on COM interop in ADR 0002 against Python's 3/5.
   Implementation language decided when `tdconnect.exe` is supplied (candidates: .NET COM interop, or
   Python + pywin32 — see architecture.md's ADR). BFF treats the bridge as optional: absent bridge →
   features degrade behind capability flags; mainline works fully without it.

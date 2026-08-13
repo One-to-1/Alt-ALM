@@ -21,38 +21,62 @@ negative result, not papered over.
 
 ## Summary table
 
-| # | Feature | Matrix row(s) | Old reason for NO | New classification | Confidence | Key source |
-|---|---|---|---|---|---|---|
-| 1 | Analyze / Analyze and Apply to Children | #18 | "No computation endpoint... scoring algorithm undocumented" | **LIKELY WRONG** — reclassify toward `FULL*` clientside | High | [doc] admhelp `t_assess_risk.htm` |
-| 2 | Risk export to Word | #20 | "Desktop-local document generation" | **CONFIRMED NO** | High | [doc] admhelp `t_assess_risk.htm` (Word must be installed locally) |
-| 3 | Application Area Viewer | #51 | "No REST surface... beyond generic resource CRUD" | **POSSIBLY WRONG** (OTA, weak) | Low | [doc]/[forum] `QCResourceFactory` |
-| 4 | Dependencies (Used by/Using) | #52 | "No relationship-tracking endpoint found" | **POSSIBLY WRONG** (OTA, weak) | Low-Med | [doc] official OTA "Dependencies Overview" page exists |
-| 5 | Live Analysis tab (Test Lab) | #83 | "Never server-persisted, Enterprise-only" | **CONFIRMED NO** | High | [doc] admhelp `menu_live_analysis.htm` |
-| 6 | Text Search (project-wide FTS) | #107, #170 | "Server FTS index, opt-in, confirmed absent from REST" | **CONFIRMED NO** | High | [doc] admhelp text-search config pages; 404 on guessed REST doc path |
-| 7 | Global Search / "Quality Insight" | #119, #214 | "No dedicated cross-project search endpoint identified" | **CONFIRMED NO** | Med-High | [doc]/[forum] "ALM Global Search" legacy add-in, no REST |
-| 8 | Business View Graphs | #129 | "No REST surface confirmed" | **LIKELY WRONG for OTA** (still NO for REST) | Med | [doc] `GraphBuilder`/`BuildGraph` official OTA objects |
-| 9 | PPT Graphs (Releases) | #130 | "Depends on KPIs/scope items, absent from REST" | **LIKELY WRONG for OTA** (still NO for REST) | Med-High | [repo] probe8 `KPIFactory`/`ScopeItemFactory` acquired + [doc] `GraphBuilder` |
-| 10 | Create/design new Project Report | #132 | "UI-only Report Wizard" | **POSSIBLY WRONG for OTA** (still NO for REST) | Med | [forum] `OTAReport80.Reporter`/`ReportConfig`, 2 independent threads |
-| 11 | Excel Reports (standard SQL) | #133 | "Structurally out of scope by hard constraint (raw SQL)" | **PARTIAL reframe** — *running* an existing report is OTA-reachable; *authoring new SQL* stays correctly out of scope | Med | [forum] same `Reporter` pipeline |
-| 12 | Live Analysis Graphs | #134 | "Never server-persisted, no REST surface" | **CONFIRMED NO** | High | Same as #83 |
-| 13 | Scorecard (KPI readiness) | #145 | "Depends on KPI computation, absent from REST" | **LIKELY WRONG for OTA** (still NO for REST) | Med-High | [repo] probe8 `KPIFactory`/`ScopeItemFactory` acquired |
-| 14 | Alerts row indicators | #166 | "Depends on Alerts data, absent from REST" | **LIKELY WRONG for OTA** (still NO for REST) — internally inconsistent with rows #109/#196/#197 which already say OTA | High | [doc] official "Alert Object" page, `TDConnection.AlertManager` |
-| 15 | Entity baseline history | #175 | "Depends on Baselines, absent from REST" | **CONFIRMED NO for REST; POSSIBLY WRONG for OTA** | Med | [repo] probe8 `BaselineFactory` acquired; [repo] `purgeVCHistories` (test-only, doesn't cover this) |
-| 16 | Per-attachment History | #186 | "No dedicated audit trail identified" | **POSSIBLY WRONG** (genuinely unverified) | Low-Med | No doc/forum evidence either way — cheap experiment available |
-| 17 | Data-hiding tab per group per module | #205 | "No REST enforcement/config surface identified" | **POSSIBLY WRONG** (genuinely unverified) | Low | SA REST API is Swagger-only (178 ops), never grepped by name for this |
-| 18 | Workflow-script field visibility | #209 | "By design — REST bypasses workflow scripts" | **CONFIRMED NO** | Very High | Architectural fact, not a probing gap; no counter-evidence found |
-| 19 | "Required" checkbox rendering (script-driven) | #210 | Same bypass | **CONFIRMED NO** | Very High | Same as #209 |
+**Column note added 2026-08-13**: the last column, "Probed outcome," was not part of the original
+web-research pass — it records what Probes 11 (REST, read-only) and 12 (OTA, read-only) actually found
+when they went live, so this report and `live-probe-log.md` do not disagree. "New classification" below
+is left exactly as originally written — it is this pass's *prediction*, kept for the record of how well
+web research alone called it; "Probed outcome" is the *empirical result*, which wins per this project's
+own evidentiary rule.
+
+| # | Feature | Matrix row(s) | Old reason for NO | New classification (predicted) | Confidence | Key source | Probed outcome (2026-08-13, Probes 11–12) |
+|---|---|---|---|---|---|---|---|
+| 1 | Analyze / Analyze and Apply to Children | #18 | "No computation endpoint... scoring algorithm undocumented" | **LIKELY WRONG** — reclassify toward `FULL*` clientside | High | [doc] admhelp `t_assess_risk.htm` | **CONFIRMED — `NO` → `FULL*`.** `Customization.RBT` reads the full matrix live [probe12 §12.1]. Prediction was correct. |
+| 2 | Risk export to Word | #20 | "Desktop-local document generation" | **CONFIRMED NO** | High | [doc] admhelp `t_assess_risk.htm` (Word must be installed locally) | **`NO` stands.** Not independently re-probed live (per this report's own "not recommended for re-probing" list) — reconfirmation is web-research-only. |
+| 3 | Application Area Viewer | #51 | "No REST surface... beyond generic resource CRUD" | **POSSIBLY WRONG** (OTA, weak) | Low | [doc]/[forum] `QCResourceFactory` | **Not re-probed.** Outside Probes 11–12's scope (neither probe's findings mention `QCResourceFactory`). `NO` stands, unresolved. |
+| 4 | Dependencies (Used by/Using) | #52 | "No relationship-tracking endpoint found" | **POSSIBLY WRONG** (OTA, weak) | Low-Med | [doc] official OTA "Dependencies Overview" page exists | **Not re-probed.** Outside Probes 11–12's scope (no `AssetRelationFactory` check recorded). `NO` stands, unresolved. |
+| 5 | Live Analysis tab (Test Lab) | #83 | "Never server-persisted, Enterprise-only" | **CONFIRMED NO** | High | [doc] admhelp `menu_live_analysis.htm` | **`NO` stands.** Not independently re-probed live — web-research-only reconfirmation. |
+| 6 | Text Search (project-wide FTS) | #107, #170 | "Server FTS index, opt-in, confirmed absent from REST" | **CONFIRMED NO** | High | [doc] admhelp text-search config pages; 404 on guessed REST doc path | **`NO` stands.** Not independently re-probed live — web-research-only reconfirmation. |
+| 7 | Global Search / "Quality Insight" | #119, #214 | "No dedicated cross-project search endpoint identified" | **CONFIRMED NO** | Med-High | [doc]/[forum] "ALM Global Search" legacy add-in, no REST | **`NO` stands.** Not independently re-probed live — web-research-only reconfirmation. |
+| 8 | Business View Graphs | #129 | "No REST surface confirmed" | **LIKELY WRONG for OTA** (still NO for REST) | Med | [doc] `GraphBuilder`/`BuildGraph` official OTA objects | **CONFIRMED — `NO` → `OTA`.** `Customization.BusinessViews` (37 views) + `GraphBuilder` all read-reachable [probe12 §12.2]. Prediction was correct; read-only, write UNVERIFIED. |
+| 9 | PPT Graphs (Releases) | #130 | "Depends on KPIs/scope items, absent from REST" | **LIKELY WRONG for OTA** (still NO for REST) | Med-High | [repo] probe8 `KPIFactory`/`ScopeItemFactory` acquired + [doc] `GraphBuilder` | **Not re-probed as its own row.** Probe 12's live findings table covers #145 (Scorecard/KPI) but does not separately exercise #130 — the shared `KPIFactory` dependency this report predicted was never independently confirmed for the PPT-graphs surface specifically. `NO` stands in the matrix pending a dedicated check; prediction neither confirmed nor refuted. |
+| 10 | Create/design new Project Report | #132 | "UI-only Report Wizard" | **POSSIBLY WRONG for OTA** (still NO for REST) | Med | [forum] `OTAReport80.Reporter`/`ReportConfig`, 2 independent threads | **PARTIALLY CONFIRMED, different mechanism — `NO` → `OTA`.** The predicted `Reporter`/`ReportConfig` recipe itself is **NOT registered on this deployment** (`REGDB_E_CLASSNOTREG` on all 3 candidate ProgIDs [probe12 §12.4]) — that specific prediction was wrong. But the *template* surface is reachable a different way: `Customization.ReportProjectTemplates` (79 templates) [probe12 §12.2]. Net verdict matches the prediction's direction (`OTA`) but not its mechanism. |
+| 11 | Excel Reports (standard SQL) | #133 | "Structurally out of scope by hard constraint (raw SQL)" | **PARTIAL reframe** — *running* an existing report is OTA-reachable; *authoring new SQL* stays correctly out of scope | Med | [forum] same `Reporter` pipeline | **CONFIRMED in direction, `NO` → `OTA`, same caveat as #10** — template surface reachable via `Customization.ReportProjectTemplates`, not the predicted `Reporter` pipeline (unregistered). Raw-SQL authoring stays out of scope as predicted. |
+| 12 | Live Analysis Graphs | #134 | "Never server-persisted, no REST surface" | **CONFIRMED NO** | High | Same as #83 | **`NO` stands.** Not independently re-probed live — web-research-only reconfirmation, same as #83. |
+| 13 | Scorecard (KPI readiness) | #145 | "Depends on KPI computation, absent from REST" | **LIKELY WRONG for OTA** (still NO for REST) | Med-High | [repo] probe8 `KPIFactory`/`ScopeItemFactory` acquired | **CONFIRMED — `NO` → `OTA`.** `Customization.KPITypes.KPITypes` (11 types) + `KPIFactory` [probe12 §12.2]. Prediction was correct; read-only, write UNVERIFIED. |
+| 14 | Alerts row indicators | #166 | "Depends on Alerts data, absent from REST" | **LIKELY WRONG for OTA** (still NO for REST) — internally inconsistent with rows #109/#196/#197 which already say OTA | High | [doc] official "Alert Object" page, `TDConnection.AlertManager` | **CONFIRMED — `NO` → `OTA`.** `AlertManager.AlertList`/`GetFilterText`/`DeleteAlert`/`DeleteAlertsByFilter`/`CleanAllAlerts` all present [probe12 §12.2]; row now aligned with #109/#196/#197 as predicted. Prediction was correct. |
+| 15 | Entity baseline history | #175 | "Depends on Baselines, absent from REST" | **CONFIRMED NO for REST; POSSIBLY WRONG for OTA** | Med | [repo] probe8 `BaselineFactory` acquired; [repo] `purgeVCHistories` (test-only, doesn't cover this) | **Not re-probed.** Outside Probes 11–12's scope (no `BaselineFactory` read/write exercised this round). `NO` stands in the matrix for REST; OTA half of the prediction remains unresolved. |
+| 16 | Per-attachment History | #186 | "No dedicated audit trail identified" | **POSSIBLY WRONG** (genuinely unverified) | Low-Med | No doc/forum evidence either way — cheap experiment available | **CONFIRMED — `NO` → `UNVERIFIED`.** The named cheap experiment was attempted but the sandbox had no attachment to test against [probe11 §11.4] — genuinely inconclusive, exactly as predicted. Re-run after P2 creates an attachment. |
+| 17 | Data-hiding tab per group per module | #205 | "No REST enforcement/config surface identified" | **POSSIBLY WRONG** (genuinely unverified) | Low | SA REST API is Swagger-only (178 ops), never grepped by name for this | **CONFIRMED, resolved toward OTA rather than REST — `NO` → `OTA`.** REST side: broader group/role/permission structure IS readable (`v2/sa/api/permissions`, `/permissions/metadata`, `/roles`, `/groups` all 200 [probe11 §11.2]), but no dedicated data-hiding endpoint was found — REST stays `NO` for the specific feature. OTA side: `Customization.Modules`/`Permissions`/`UsersGroups` all reachable [probe12 §12.2]. Per-module accessor arity still open. |
+| 18 | Workflow-script field visibility | #209 | "By design — REST bypasses workflow scripts" | **CONFIRMED NO** | Very High | Architectural fact, not a probing gap; no counter-evidence found | **CONFIRMED, now on direct evidence.** `Customization.Workflow` exposes only `ProjectScriptsUpdated`/`TemplateScriptsUpdated` (dirty flags, no script content) [probe12 §12.3]. Prediction was correct, and this is the one row in the batch where the live probe *upgraded* the evidence class from inference to direct observation. |
+| 19 | "Required" checkbox rendering (script-driven) | #210 | Same bypass | **CONFIRMED NO** | Very High | Same as #209 | **CONFIRMED, same direct evidence as #209** [probe12 §12.3]. |
 
 Rows are deduplicated where the matrix lists the same underlying feature twice (Text Search
 appears as both #107 and #170; Global Search as both #119 and #214; Live Analysis as both #83 and
 #134 — these last two are genuinely distinct UI surfaces but rest on identical evidence, so they're
 discussed together).
 
-**Bucket counts**: CONFIRMED NO = 8 rows (Risk export to Word, Live Analysis ×2, Text Search ×2,
-Global Search ×2, Workflow-script ×2 — 9 individual matrix rows across 6 distinct features).
-LIKELY WRONG = 4 features (7 matrix rows once you count the OTA-inconsistency catch on #166).
-POSSIBLY WRONG = 5 features (5 matrix rows). No feature returned zero information either way with
-high confidence of absence beyond what's already in the repo — every row got *some* new evidence.
+**Bucket counts (predicted, from web research alone)**: CONFIRMED NO = 8 rows (Risk export to Word,
+Live Analysis ×2, Text Search ×2, Global Search ×2, Workflow-script ×2 — 9 individual matrix rows
+across 6 distinct features). LIKELY WRONG = 4 features (7 matrix rows once you count the
+OTA-inconsistency catch on #166). POSSIBLY WRONG = 5 features (5 matrix rows). No feature returned zero
+information either way with high confidence of absence beyond what's already in the repo — every row
+got *some* new evidence.
+
+**Bucket counts (probed, 2026-08-13, Probes 11–12 — this is what actually landed in
+`feasibility-matrix.md`)**: of the 19 rows in the table above, **8 flipped verdict** (#18 → `FULL*`;
+#129, #132, #133, #145, #166, #205 → `OTA`; #186 → `UNVERIFIED` — note #132/#133 landed on `OTA` via a
+*different* mechanism than predicted, `Customization.ReportProjectTemplates` rather than the forum's
+`OtaReport80.Reporter`, which turned out unregistered on this deployment). **11 rows stayed `NO`** in
+the matrix: **2** were independently reconfirmed by direct live OTA evidence (#209, #210 — the one
+pairing this report predicted would need no re-check, and the live probe upgraded anyway); **9** were
+**not re-probed live at all** this round and remain either web-research-only reconfirmations or
+genuinely open, untested predictions — #51, #52, #130, #175 (the "POSSIBLY/LIKELY WRONG" calls that
+were never actually tested) and #20, #83, #107/#170, #119/#214, #134 (the "CONFIRMED NO" calls, also
+not independently live-tested, carried into the matrix as web-corroborated but not probe-corroborated).
+**Every prediction that WAS tested live turned out directionally correct** — the "LIKELY WRONG for OTA"
+and "POSSIBLY WRONG" calls that were actually probed (#18, #129, #132, #133, #145, #166, #186, and
+#205's OTA half) all confirmed toward `OTA`/`FULL*`/`UNVERIFIED`; none of the tested rows contradicted
+this report's prediction, only its predicted *mechanism* in two cases (#132/#133).
 
 ---
 
