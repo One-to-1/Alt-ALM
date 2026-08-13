@@ -213,29 +213,47 @@ adds XML entity building and hand-built multipart).
 
 ## 6. OTA / COM probing (read this before attempting any OTA work)
 
-**On our SaaS sandbox, OTA does not connect — do not spend time re-discovering this** (probe 7).
-The server 302-redirects the OTA transport endpoint `/qcbin/servlet/tdservlet/TdServlet` to its SSO
-front door (`/authentication-point/discovery.jsp`); the OTA client cannot negotiate that and reports
-**"Invalid server response"**. Every documented bridge was tried and failed:
-`InitConnectionWithApiKeyEx`, `InitConnectionWithCookies(Ex)` across four cookie encodings,
-`ApplyCookie` + `InitConnectionEx`, and `GetAuthenticationToken`/`LoginWithAuthenticationToken`.
-The endpoint itself is alive (HTTP 200 to GET and POST from an authenticated REST session), so OTA
-is not disabled server-side — the client just cannot carry a session through SSO. An **on-prem /
-non-SSO** instance would likely work; retest there, not here.
+**OTA works on our sandbox** (probe 8). Authenticate with the **API key** — no username/password:
 
-If you do get a reachable instance, the client-side setup is solved — reuse it:
+```powershell
+$td = New-Object -ComObject TDApiOle80.TDConnection      # 32-bit host only
+$null = $td.InitConnectionWithApiKeyEx($url, $clientId, $secret)   # $url ends in /qcbin
+$null = $td.Connect($domain, $project)                   # -> ProjectConnected = True
+```
+
+(An earlier probe concluded OTA was blocked by the SaaS SSO front door. **That was wrong** — it used
+a hand-extracted client. Use ALM's deployed client and it connects first try.)
+
+Verified over OTA: test-folder and test create/delete; **BPT components create/delete** (REST's 403
+was not a licence gate — use component folder → subfolder → subfolder's `ComponentFactory`); all the
+OTA-only factories (Baseline, Library, Host, HostGroup, Milestone, KPI, ScopeItem). **Test
+parameters**: `Test.Params` is a *collection* (`AddParam`/`Save`/`ParamName`/`Count`), not a factory;
+declaring one directly does not persist, but a **`<<<token>>>` in a design step registers it**.
+
+Client-side setup — get these right or nothing works:
 
 | Constraint | What to do |
 |---|---|
 | **OTA is 32-bit only** | 64-bit instantiation fails `0x80040154 REGDB_E_CLASSNOTREG`. Run `C:\Windows\SysWOW64\WindowsPowerShell\v1.0\powershell.exe`. |
 | **Client version must match the server** | A 12.53 client against a 26.1 server returns "Invalid server response". Check the registered DLL's `FileVersion` before blaming the server. |
-| **No admin? Register per-user** | Copy the client payload to a user-writable folder and write `HKCU\Software\Classes\CLSID\{clsid}\InprocServer32` (+ `ProgID`, + the `TDApiOle80.TDConnection\CLSID` mapping). |
+| **Use ALM's DEPLOYED client** | `%LOCALAPPDATA%\HP\ALM-Client\<version>\OTAClient.dll` — these are laid down by the ALM Client Launcher and they work. A payload hand-extracted from `TDConnect_*.exe` did **not** (it produced the bogus "OTA is blocked by SSO" conclusion). |
+| **No admin? Register per-user** | Point `HKCU\Software\Classes\CLSID\{clsid}\InprocServer32` at that DLL (+ `ProgID`, + the `TDApiOle80.TDConnection\CLSID` mapping). No admin needed. |
 | **WOW64 registry trap** | Those keys **must be written from a 32-bit process** — they redirect to `Wow6432Node`. Keys written from 64-bit are invisible to the 32-bit COM host and the old DLL silently keeps loading. Verify with `(Get-Process -Id $PID).Modules`. |
 | **Type library must be registered too** | `regsvr32 /i:user` fails (no `DllInstall`). Use `LoadTypeLibEx(dll, REGKIND_NONE)` + `RegisterTypeLibForUser`. A stale typelib resolves names against the new DLL and every call fails `0x8002802B TYPE_E_ELEMENTNOTFOUND`. |
 | **Installer needs elevation** | `TDConnect_*.exe` ignores `/s /v/qn` and blocks on a GUI dialog. Extract its payload instead and register per-user. |
 
-Working scripts: `scripts/probe/probe-ota-{1,2,3}.ps1`. Undo the per-user registration from a 32-bit
-shell: `Remove-Item -Recurse 'HKCU:\Software\Classes\CLSID\{C5CBD7B2-490C-45F5-8C40-B8C3D108E6D7}','HKCU:\Software\Classes\TDApiOle80.TDConnection'`
+**COM call traps** (each cost a probe run):
+- `AddItem(Null)` must be `[System.DBNull]::Value` — `$null` and `[Reflection.Missing]::Value` both
+  fail with "Value does not fall within the expected range".
+- `SysTreeNode.RemoveNode()` takes the **node object**, not its id (an id is read as a child index).
+- **Connect/Login calls return project-list objects that PowerShell prints to stdout, bypassing your
+  mask function.** Always `$null = $td.InitConnection...`. This leaked real project names once.
+- ⚠️ **An OTA folder delete does NOT cascade to the tests inside it.** Sweep by prefix across
+  `tests` *and* `test-folders` afterwards (5 orphans were left behind before this was caught).
+
+Working scripts: `scripts/probe/probe-ota-{1..6}.ps1` (1–3 are the superseded SSO investigation;
+**4–6 are the working ones**). Undo the per-user registration from a 32-bit shell:
+`Remove-Item -Recurse 'HKCU:\Software\Classes\CLSID\{C5CBD7B2-490C-45F5-8C40-B8C3D108E6D7}','HKCU:\Software\Classes\TDApiOle80.TDConnection'`
 
 **Windows PowerShell 5.1 encoding trap** (the 32-bit host is 5.1, not PS7): it reads UTF-8-without-BOM
 as ANSI, so any non-ASCII character (em dashes especially) becomes mojibake that unbalances string

@@ -1,44 +1,53 @@
 # ADR 0003 — OTA/COM fallback isolated in an optional Windows sidecar
 
-- Status: **Accepted — and validated by a live spike, with a material caveat (see addendum)**
-- Date: 2026-08-12
+- Status: **Accepted — validated by a live spike; the bridge has a verified reachable target**
+- Date: 2026-08-12 (addendum 2026-08-13)
 
-## ⚠️ Addendum, 2026-08-12 (post-spike) — the sidecar has no reachable target today
+## Addendum, 2026-08-13 — OTA is reachable; the sidecar is viable
 
-A live OTA spike ran after this ADR was accepted (`live-probe-log.md`, **Probe 7**). Outcome:
+Two spikes ran after this ADR was accepted. **The first one's negative verdict was wrong and is
+retracted**; the second is authoritative (`live-probe-log.md`, **Probe 8**).
 
-> **OTA cannot connect to our ALM 26.1 SaaS instance.** The client half works — OTA is 32-bit only,
-> and the version-matched 26.1 client was registered *per-user without admin rights*, exposing
-> `InitConnectionWithApiKeyEx` and the cookie/token entry points. The blocker is the server: the OTA
-> transport endpoint `/qcbin/servlet/tdservlet/TdServlet` **302-redirects to the SaaS SSO front door**
-> (`/authentication-point/discovery.jsp`), and the OTA client cannot negotiate that redirect — it
-> reports "Invalid server response". The endpoint is alive (HTTP 200 to GET and POST from an
-> authenticated REST session), so OTA is not disabled; the client simply cannot carry a session
-> through SSO. Every documented bridge failed: `InitConnectionWithApiKeyEx`,
-> `InitConnectionWithCookies(Ex)` across four cookie encodings, `ApplyCookie` + `InitConnectionEx`,
-> and the authentication-token route.
+- **Probe 7 (2026-08-12) — RETRACTED.** It concluded "OTA cannot connect to our SaaS instance",
+  blaming a 302 redirect to the SSO front door. The real cause was the **client**: the probe ran
+  against a hand-extracted 4-DLL payload from the TDConnect installer.
+- **Probe 8 (2026-08-13) — AUTHORITATIVE.** Using ALM's **own deployed client**
+  (`%LOCALAPPDATA%\HP\ALM-Client\<version>\`), `InitConnectionWithApiKeyEx(url, clientId, secret)`
+  returns `Connected/LoggedIn=True` and `Connect(domain, project)` returns `ProjectConnected=True`.
+  **The API key authenticates OTA — no username/password, and SSO is not an obstacle.** Reads and
+  writes both work (a test folder and test were created and deleted through OTA).
 
-**This does not reverse the decision — it vindicates it.** Isolating OTA in an *optional,
-capability-flagged* sidecar rather than embedding it in the mainline is precisely why this discovery
-costs us nothing architecturally. The consequences are:
+**What this buys, verified:**
 
-1. **The capability-flag design is load-bearing, not theoretical.** The mainline MUST be fully
-   functional with the bridge absent, because that is the actual state of the current target.
-2. **Do not schedule bridge implementation.** The three gaps below (test-parameter definition, BPT,
-   similar defects) have **no working route on this deployment** — REST cannot do them and OTA cannot
-   be reached. They must be scoped out, not deferred to a bridge that has nothing to connect to.
-3. **The failure is deployment-specific, not universal.** An **on-prem** or non-SSO-fronted instance
-   would very likely work, since the client half is fully functional locally. Revisit this ADR if
-   such an instance becomes available.
-4. **Still `UNVERIFIED`**: whether a SaaS-side site parameter governs OTA access — `GET
-   /v2/sa/api/site-params` returned **403** even with our Customer Admin key, so it could not be
-   inspected.
-5. **Environment constraints confirmed for any future bridge**: it must run as a **32-bit host
-   process**, against a **version-matched** client, with the **type library registered separately**
-   (a stale typelib resolves names against the new DLL and fails `TYPE_E_ELEMENTNOTFOUND`).
+1. **BPT is reachable AND writable over OTA** — a business component was created and deleted.
+   REST's `403` on `/components` was **not** a licence gate; the OTA-side errors were structural
+   ("Invalid owner specified", then "Components cannot be added directly under COMPONENTS folder").
+   Recipe: component folder → subfolder → that subfolder's `ComponentFactory`.
+2. **Test parameters**: `Test.Params` is a *collection* (`AddParam`/`Save`/`ParamName`/`Count`), not
+   the `TestParameterFactory` that doc research predicted. Declaring a parameter directly does not
+   persist; a **`<<<token>>>` in a design step registers it** (verified 0→1). Setting its default
+   value still fails (`Invalid field type definition`) — `UNVERIFIED`.
+3. **Every other OTA-only candidate factory is reachable**: Baseline, Library, Host, HostGroup,
+   Milestone, KPI, ScopeItem, plus `PurgeRuns`, `SynchronizeFollowUps`, `AlertManager`,
+   `ExtendedStorage`.
 
-The language decision below (.NET vs Python + pywin32) remains **deferred** — there is now no
-reachable target against which to evaluate it.
+**The decision stands unchanged and is reinforced.** Isolation in an optional, capability-flagged
+sidecar was right both when OTA looked dead and now that it works — the mainline never depends on
+COM either way. Updated consequences:
+
+1. **Bridge implementation is now schedulable** (phase P6 as planned), and the deferred
+   **language decision (.NET vs Python + pywin32) is live again** — there is a real target to
+   evaluate against. .NET's first-class COM interop (ADR 0002, criterion 4) is the leading candidate.
+2. **The ~23 OTA-verdict features are back in scope**, gated only on building the sidecar.
+3. **Hard environment constraints for the bridge** (all probe-verified): it MUST run as a **32-bit
+   host process**; the client MUST be **version-matched** to the server; use ALM's **deployed
+   client**, not an installer payload; per-user COM keys MUST be written from a 32-bit process
+   (WOW64 redirection); and the **type library must be registered separately**, or every call fails
+   `TYPE_E_ELEMENTNOTFOUND`.
+4. **Cleanup semantics differ from REST**: an OTA folder delete does **not** cascade to the tests
+   inside it. Any bridge operation that deletes containers must sweep children explicitly.
+5. **Still `UNVERIFIED`**: how to set a test parameter's default value; whether a SaaS site parameter
+   governs OTA access (`GET /v2/sa/api/site-params` → 403 even with Customer Admin).
 
 ## Context
 

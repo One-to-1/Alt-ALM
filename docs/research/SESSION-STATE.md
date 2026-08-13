@@ -215,23 +215,39 @@ verified-facts section, the design decisions, the sandbox designation, and the T
 
 **TDConnect is available** at `TDConnect/` (git-ignored): 24.1 / 25.1 / 26.1 CE SAAS.
 
-## OTA spike — DONE 2026-08-12, RESULT NEGATIVE (live-probe-log.md, Probe 7)
+## OTA spike — DONE, RESULT POSITIVE (live-probe-log.md, **Probe 8**, 2026-08-13)
 
-**OTA/COM cannot connect to this SaaS sandbox.** Client side is fully working (32-bit only; the 26.1
-client is registered per-user at `%LOCALAPPDATA%\AltALM\ota-client-26.1` with no admin rights, and
-exposes `InitConnectionWithApiKeyEx` + cookie/token entry points). The server blocks it: the OTA
-transport endpoint 302-redirects to the SaaS SSO front door, which the OTA client cannot negotiate.
-Every documented bridge failed (API-key, 4 cookie encodings, ApplyCookie, auth-token). The endpoint
-is alive (HTTP 200 from an authenticated REST session), so OTA is not disabled — the client just
-cannot carry a session through SSO.
+⚠️ **Probe 7's negative verdict is RETRACTED.** It blamed the SaaS SSO front door; the real cause was
+a hand-extracted OTA client. **Probe 8 is authoritative: OTA WORKS.**
 
-**Consequences:** the ~23 OTA-marked features in the feasibility matrix and Q18 (test-parameter
-definition) have **no implementation path on this deployment**; scope them out rather than deferring
-them to a bridge with nothing to connect to. ADR 0003 carries a full addendum — the optional,
-capability-flagged sidecar design is *vindicated* (the mainline is unaffected), but bridge
-implementation must not be scheduled. **Not a universal verdict**: an on-prem/non-SSO instance would
-likely work. `UNVERIFIED`: whether a SaaS site parameter governs OTA access (`GET
-/v2/sa/api/site-params` → 403 even with Customer Admin).
+Using ALM's **own deployed client** (`%LOCALAPPDATA%\HP\ALM-Client\20.00.0.0_952\`, v20.00.0.174):
+`InitConnectionWithApiKeyEx(url, clientId, secret)` → Connected/LoggedIn=True;
+`Connect(domain, project)` → ProjectConnected=True. **The API key authenticates OTA — no
+username/password, SSO is not an obstacle.** Reads and writes both verified (test folder + test
+created and deleted via OTA).
+
+- **BPT is writable via OTA** — component created and deleted. REST's 403 was **not** a licence gate;
+  the OTA errors were structural. Recipe: component folder → subfolder → subfolder's
+  `ComponentFactory`.
+- **Test parameters (Q18)**: `Test.Params` is a collection, not a factory. Declaring directly does
+  not persist; a **`<<<token>>>` in a design step registers the parameter** (0→1 verified). Setting
+  its default value fails — `UNVERIFIED`.
+- **All other OTA-only factories reachable**: Baseline, Library, Host, HostGroup, Milestone, KPI,
+  ScopeItem, + PurgeRuns/SynchronizeFollowUps/AlertManager/ExtendedStorage.
+- **Environment (hard constraints)**: 32-bit host process; version-matched client; use ALM's
+  deployed client (NOT an installer payload); per-user COM keys must be written from a 32-bit
+  process (WOW64); typelib must be registered separately or everything fails
+  `TYPE_E_ELEMENTNOTFOUND`.
+- ⚠️ **OTA folder delete does not cascade to tests** — 5 orphans were left behind and swept via REST.
+  Always sweep `tests` *and* `test-folders` by prefix after OTA cleanup.
+
+**Consequences:** the ~23 OTA-verdict features are **back in scope**, gated on building the sidecar
+(P6). ADR 0003's language decision (.NET vs Python + pywin32) is **live again**. Feasibility matrix,
+risks (R9/R10/R17/R18, Q18/Q32/Q33 + new Q34) and architecture.md all corrected.
+
+**Highest-value next experiment (Q34):** does writing an entity-encoded
+`&lt;&lt;&lt;name&gt;&gt;&gt;` token via **REST** register a parameter the same way OTA's token
+does? If yes, `step-parameters` POST may then succeed and the gap closes **without OTA at all**.
 
 ## Next actions (in order)
 

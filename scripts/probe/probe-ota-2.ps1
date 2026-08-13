@@ -101,7 +101,7 @@ if (-not $connected) {
 
 try {
     # --- 3. project connect + capability discovery ---
-    $td.Connect($domain, $project)
+    $null = $td.Connect($domain, $project)
     $projConn = [bool]$td.ProjectConnected
     Say ("3. Connect(domain, project) : ProjectConnected={0}" -f $projConn)
     if (-not $projConn) { exit 3 }

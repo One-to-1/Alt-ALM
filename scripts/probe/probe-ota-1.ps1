@@ -64,17 +64,17 @@ try {
     # establishes the connection AND authenticates in one call - no username/password needed.
     # Fall back to the classic InitConnectionEx + Login(user,pass) shape if it is absent. ---
     try {
-        $td.InitConnectionWithApiKeyEx($url, $apiKey, $apiSec)
+        $null = $td.InitConnectionWithApiKeyEx($url, $apiKey, $apiSec)
         $connected = [bool]$td.Connected
         $loggedIn  = [bool]$td.LoggedIn
         Say ("2. InitConnectionWithApiKeyEx(url, clientId, secret) : Connected={0} LoggedIn={1}" -f $connected, $loggedIn)
     } catch {
         Say ("2. InitConnectionWithApiKeyEx : FAILED : " + $_.Exception.Message)
         try {
-            $td.InitConnectionEx($url)
+            $null = $td.InitConnectionEx($url)
             $connected = [bool]$td.Connected
             Say ("2b. InitConnectionEx fallback : Connected={0}" -f $connected)
-            $td.Login($apiKey, $apiSec)
+            $null = $td.Login($apiKey, $apiSec)
             $loggedIn = [bool]$td.LoggedIn
             Say ("3b. Login(api_key, api_secret) : LoggedIn={0}" -f $loggedIn)
         } catch {
@@ -91,7 +91,7 @@ try {
 
     # --- 4. project connect ---
     try {
-        $td.Connect($domain, $project)
+        $null = $td.Connect($domain, $project)
         $projConn = [bool]$td.ProjectConnected
         Say ("4. Connect(domain, project) : ProjectConnected={0}" -f $projConn)
     } catch {

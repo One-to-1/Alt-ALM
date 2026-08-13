@@ -29,29 +29,29 @@ the source document was skipped.**
 | `FULL` | Achievable with documented REST, probe-verified or unambiguous docs |
 | `FULL*` | Achievable via REST, but by an indirect/non-obvious route — footnote required |
 | `PARTIAL` | Core works, identified gaps (stated in Notes) |
-| `OTA` | REST-impossible, OTA/COM fallback candidate — **see callout below: currently unreachable on this deployment [probe7]** |
+| `OTA` | REST-impossible, OTA/COM fallback candidate — **see callout below: reachable and writable on this deployment via the OTA sidecar [probe8]** |
 | `NO` | Not achievable via any allowed API (documented REST or OTA) — honest gap |
 | `N/A` | Desktop-client concept that doesn't map to Alt-ALM, or a documentation/architectural note rather than a buildable feature |
 | `UNVERIFIED` | Plausible per docs but not probed; the confirming experiment is named |
 
-> **⚠️ UPDATE 2026-08-12 — OTA fallback confirmed unreachable on this deployment [probe7]**
+> **⚠️ UPDATE 2026-08-13 — OTA fallback confirmed REACHABLE and WRITABLE on this deployment [probe8]**
 >
-> The OTA/COM spike (`live-probe-log.md`, Probe 7) settled the question every `OTA`-verdict row below
-> was resting on. Result: **`OTA` now means "REST-impossible; OTA is the only candidate route — but
-> OTA is unreachable on our SaaS sandbox" [probe7]**. The OTA client side works perfectly (32-bit,
-> per-user-registered 26.1 client), but `/qcbin/servlet/tdservlet/TdServlet` 302-redirects
-> unauthenticated requests to the SaaS SSO front door and the OTA client cannot negotiate that
-> redirect — every documented bridge (`InitConnectionWithApiKeyEx`, `InitConnectionWithCookies(Ex)`
-> across 4 cookie encodings, `ApplyCookie`+`InitConnectionEx`, the auth-token route) failed [probe7].
-> The endpoint itself is alive (HTTP 200 via an authenticated REST session), so OTA is not disabled —
-> the client simply cannot carry a session through SSO [probe7].
+> Probe 7's "OTA is unreachable on this SaaS instance" conclusion is **superseded**. The failure was
+> caused by a hand-extracted 4-DLL OTA client payload, not by the server. Using ALM's own properly
+> deployed client (`%LOCALAPPDATA%\HP\ALM-Client\<version>\OTAClient.dll`), `InitConnectionWithApiKeyEx`
+> connects and authenticates cleanly (`Connected/LoggedIn/ProjectConnected` all True) — the SaaS SSO
+> front door is **not** an obstacle when the correct client is used [probe8]. Writes are verified: a
+> test folder and a test were created and deleted via OTA, and a **business component was created and
+> deleted** — BPT is reachable and writable via OTA (see BPT rows below) [probe8].
 >
-> **Practical effect: the 23 rows marked `OTA` below currently have no working implementation path on
-> this deployment.** They remain reachable only if an on-prem or non-SSO instance becomes available —
-> the failure is specific to the SSO-fronted SaaS deployment, and the client half is fully functional
-> locally, so an on-prem instance would very likely work [probe7]. `UNVERIFIED` whether a SaaS-side
-> site parameter would change this (`GET /v2/sa/api/site-params` → 403, could not be inspected)
-> [probe7]. Do not read this as "OTA is impossible" in general.
+> **Practical effect: the 23 rows marked `OTA` below are implementable via the OTA sidecar**, subject
+> to real environment constraints: the sidecar must run as a **32-bit Windows host process**, using a
+> **version-matched client copied from ALM's own deployed install** (not an installer-extracted
+> payload), with **per-user COM registration written from a 32-bit process** and **separate type-library
+> registration** (`RegisterTypeLibForUser`) — omitting any of these reproduces the old
+> `TYPE_E_ELEMENTNOTFOUND`/"Invalid server response" failures [probe8]. This is still a real,
+> non-trivial sidecar to build (ADR 0003) — it is not a REST substitute, and REST itself still cannot
+> reach any of these features.
 
 Evidence citation shorthand: `[probeN]` = `live-probe-log.md` Probe *N*; `[api-ref §x]` =
 `alm-api-reference.md` section *x*; `[data-model §x]` = `alm-data-model.md` section *x*.
@@ -113,7 +113,7 @@ Evidence citation shorthand: `[probeN]` = `live-probe-log.md` Probe *N*; `[api-r
 | 39 | New Design Step | FULL | `POST design-steps` | [api-ref §6.4][probe4] 201, **contradicts stale doc's "not applicable"** | |
 | 40 | Call to Test | UNVERIFIED | `PUT design-steps.link-test` | `link-test` field IS present on the design-step create response [api-ref §6.4], never independently write-probed | Exp: PUT link-test to a test id, verify readback + stock-UI rendering |
 | 41 | Generate Script | N/A | none | Desktop-local automation-framework skeleton generation | Not applicable to Alt-ALM's manual/API-driven test model |
-| 42 | Convert manual test → component | OTA | none | Depends on Business Components, REST-blocked [probe6] | |
+| 42 | Convert manual test → component | OTA | none | Depends on Business Components, REST-blocked [probe6] | BPT verified writable via OTA — component create/delete confirmed [probe8] |
 | 43 | New Test Configuration | UNVERIFIED | `POST test-configs` | Existence + relationship confirmed via side effect [data-model §2.6]; **direct create never write-probed** | Exp: POST test-configs with name+parent-id against a known test |
 | 44 | Map Parameters | UNVERIFIED | `test-configs.data-obj` (XML) | Field exists, structure never probed | Exp: build a config via stock UI, GET it, inspect `data-obj` |
 | 45 | New Parameter / Insert Parameter (`<<<name>>>`) | PARTIAL | `POST design-steps` (entity-encoded token) | [data-model §6][probe5/6] token survives **only if HTML-entity-pre-encoded** (`&lt;&lt;&lt;name&gt;&gt;&gt;`); flips `has-params=Y` | `step-parameters` (the value-recording side) has **NO REST creation path** — see Generator appendix |
@@ -125,10 +125,10 @@ Evidence citation shorthand: `[probeN]` = `live-probe-log.md` Probe *N*; `[api-r
 | 51 | Application Area Viewer | NO | none | No REST surface for structured Application Area content beyond generic resource CRUD | |
 | 52 | Dependencies (Used by/Using) | NO | none | No relationship-tracking endpoint found for resources | |
 | 53 | History (Resources) | UNVERIFIED | `GET resources/{id}/audits` | Sub-resource exists per generic contract (24-collection list, [api-ref §5]), never individually probed | Same partial-coverage caveat as requirement audits applies if confirmed |
-| 54 | Business Components tree | OTA | none | `GET /components` → **403 operation-forbidden** (license-gated); `GET /business-components` → **404** [probe6] | REST-blocked, confirmed not just absent |
-| 55 | BPT composition (flows) | OTA | none | Depends on #54 | |
-| 56 | Add/Delete manual step (Component) | OTA | none | Depends on #54 | |
-| 57 | Keep Editable / Sync to Automation | OTA | none | Depends on #54 | |
+| 54 | Business Components tree | OTA | none | `GET /components` → **403 operation-forbidden**; `GET /business-components` → **404** [probe6] | REST-blocked, but **verified reachable and writable via OTA** — `ComponentFactory` reads (4 folders visible) and a component was created and deleted (folder → subfolder → `ComponentFactory.AddItem`) [probe8]. The REST 403 was structural (owner/subfolder requirements), not a licence gate |
+| 55 | BPT composition (flows) | OTA | none | Depends on #54 | Same OTA path as #54 — reachable via `ComponentFactory` [probe8] |
+| 56 | Add/Delete manual step (Component) | OTA | none | Depends on #54 | Same OTA path as #54 [probe8] |
+| 57 | Keep Editable / Sync to Automation | OTA | none | Depends on #54 | Same OTA path as #54 [probe8]; this specific sub-operation itself not individually probed |
 | 58 | *(View)* Test Plan Tree | FULL* [^clientside] | `GET test-folders`+`tests`, walk `parent-id` | | |
 | 59 | *(View)* Test Plan Grid | FULL | `GET tests?query=…` | | |
 
@@ -410,8 +410,10 @@ correct in `alm-api-reference.md`:
    design-steps` all work; `POST` returns 201 [probe4 §4]. Settled by Probe 4, contradicting the
    static doc's "Not applicable."
 2. **Business Components REST Surface** (Conflict 2) — **RESOLVED OTA.** `GET /components` → 403
-   (license-gated, endpoint exists but forbidden); `GET /business-components` → 404 (absent). Settled
-   by Probe 6.
+   (endpoint exists but forbidden); `GET /business-components` → 404 (absent). Settled by Probe 6. REST
+   remains blocked, but Probe 8 shows the 403 was **not** a licence gate — over OTA, `ComponentFactory`
+   is reachable and a component was created and deleted; the REST errors were structural
+   (owner/subfolder requirements), and BPT is confirmed writable via the OTA sidecar [probe8].
 3. **Test Resources File-Content REST** (Conflict 3) — **STILL UNVERIFIED.** Collections
    (`resources`/`resource-folders`) confirmed to exist; the file-content read/write mechanism itself
    was never write-probed this round. Not fully settled — see row #48/#49/#50.
@@ -466,13 +468,13 @@ correct in `alm-api-reference.md`:
 
 **"Achievable" (FULL + FULL* + PARTIAL) = 126 of 218 rows (58%).**
 
-**Practical impact of the OTA spike (2026-08-12, `live-probe-log.md` Probe 7):** of the 218 features,
-the 23 `OTA`-verdict rows are currently unimplementable on this deployment (see callout above) — OTA
-is unreachable through the SaaS SSO front door with the credentials and client we hold. The
-genuinely-achievable count on *this instance*, today, is therefore **FULL + FULL* + PARTIAL only —
-the same 126 of 218 rows (58%)** — the `OTA` rows were never counted in "achievable" to begin with, but
-they can no longer be treated as a deferred-but-open path either; they are closed pending an on-prem
-or non-SSO instance [probe7].
+**Practical impact of the OTA spike (2026-08-13, `live-probe-log.md` Probe 8):** of the 218 features,
+the 23 `OTA`-verdict rows **are implementable** on this deployment via the OTA sidecar — the SaaS SSO
+front door is not an obstacle when ALM's own deployed client is used (see callout above) [probe8]. The
+REST-only achievable count remains **FULL + FULL* + PARTIAL = 126 of 218 rows (58%)**, unchanged — the
+`OTA` rows were never counted there, since REST itself still cannot reach them — but they are no longer
+closed: they are a real, buildable path gated on standing up the Windows-only 32-bit OTA sidecar
+(ADR 0003), not on an unreachable target [probe8].
 
 ### By module
 
@@ -510,7 +512,8 @@ or non-SSO instance [probe7].
 - `step-parameters` (test-parameter value definitions) — no REST creation path found after 5 informed
   attempts across two rounds; the underlying "Test parameter" object has no discoverable REST-creatable
   form.
-- Business Components/BPT — REST-blocked (403 license-gated / 404 absent), OTA candidate.
+- Business Components/BPT — REST-blocked (403 / 404 absent, not a licence gate); **verified reachable
+  and writable via the OTA sidecar** [probe8].
 - Libraries, Baselines, Alerts, Follow-up flags, Timeslots, Purge-runs, KPIs/Scope-items — all
   confirmed absent from the 1,111-operation resource-list inventory.
 - Workflow-script field visibility/required-ness — REST writes bypass workflow scripts *by design*
@@ -536,7 +539,7 @@ test-sets → instances → runs (Fast_Run) → defects → links** — maps to 
 | Test create | FULL | #33 | Root test-folder is project-specific — discover via `parent-id[0]` query at runtime, never hardcode |
 | Design-step create | FULL | #39 | Works, but any free text the generator did not author as deliberate markup should be HTML-entity-encoded before write (sanitizer risk, see below) |
 | `<<<param>>>` tokens in step text | PARTIAL | #45 | **Must be HTML-entity-pre-encoded** (`&lt;&lt;&lt;name&gt;&gt;&gt;`) or the sanitizer mangles them to `<<>>` |
-| `step-parameters` (parameter value records) | **OTA / NO** | #45 note | **Genuine REST-unreachable gap, and the named OTA fallback is now confirmed unavailable on this deployment** [probe7] — no confirmed way to create the underlying "Test parameter" object via REST after 5 attempts, and OTA/COM `StepFactory` cannot connect through this SaaS instance's SSO front door. Parameterized-test data generation is **out of scope for v1 with no fallback** (not merely "OTA-dependent") unless an on-prem/non-SSO instance becomes available |
+| `step-parameters` (parameter value records) | **OTA** | #45 note | REST still cannot define a parameter (no confirmed creation path after 5 attempts). Via OTA, the mechanism is now understood [probe8]: declaring a parameter directly (`Test.Params.AddParam`/`Save`) is a no-op, but a design step containing a `<<<token>>>` **does register the parameter** (`Count` 0→1 verified). Setting the registered parameter's default *value* still fails (`"Invalid field type definition."`) — `UNVERIFIED`, needs one more probe. Parameterized-test data generation is therefore OTA-dependent for registration, with the value-set step still open |
 | Requirement-coverage links | FULL | #15/#16 | One `test-config-coverages` row auto-creates per link — do not also POST it directly |
 | Test-set / test-set-folder create | FULL | #60 | Root = id 0 "Root" |
 | Test-instance create | FULL | #68 | `cycle-id` = **test-set** id (legacy-naming trap, not a release cycle) |
@@ -551,7 +554,8 @@ test-sets → instances → runs (Fast_Run) → defects → links** — maps to 
 
 **Bottom line for the generator spec**: the full happy-path chain (requirement → release/cycle → test →
 design-step → test-set → instance → Fast_Run → defect → links) is achievable end-to-end via documented
-REST, with one hard gap (`step-parameters`, i.e. parameterized-test data generation) whose named OTA
-fallback is now confirmed unreachable on this deployment [probe7] — it should be scoped out of the
-generator's v1 entirely, not flagged as an OTA-dependent stretch feature, unless an on-prem or
-non-SSO instance becomes available.
+REST, with one remaining gap (`step-parameters`, i.e. parameterized-test data generation) that REST
+cannot close on its own, but that **the OTA sidecar can now close for registration** (design-step
+`<<<token>>>` triggers parameter registration, verified [probe8]) — the parameter's default *value* is
+still `UNVERIFIED` pending one more probe. This should be scoped as an OTA-dependent stretch feature
+(gated on the sidecar existing), not scoped out of v1 entirely.

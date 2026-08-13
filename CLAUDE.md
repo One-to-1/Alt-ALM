@@ -106,16 +106,23 @@ every conflict**), [alm-api-reference.md](docs/research/alm-api-reference.md),
 - **Verified working**: design-steps CRUD, requirement-coverages, req-traces (requirement↔requirement
   traceability), defect-links, milestones (parented under a **release**), release-cycle date
   validation, Site Admin user seeding (the API key holds Customer Admin).
-- **Genuinely unreachable**: step-parameters *definition*, BPT/components (license-gated 403),
-  timeslots, libraries/baselines, alerts, follow-up flags, purge-runs. Audit history is **partial** —
-  only some field changes are recorded.
-- **⚠️ OTA/COM does not work against this sandbox** (probe 7). The client side is fine — OTA is
-  **32-bit only**, and the 26.1 client is registered *per-user* on this machine
-  (`%LOCALAPPDATA%\AltALM\ota-client-26.1`) — but the SaaS server 302-redirects the OTA transport
-  endpoint to its SSO front door, which the OTA client cannot negotiate ("Invalid server response").
-  Every documented bridge (API-key, cookie, token) failed. **Consequence: the ~23 OTA-only features
-  and the test-parameter gap have no implementation path on this deployment — do not plan around an
-  OTA fallback here.** An on-prem/non-SSO instance would likely work; this is not a universal verdict.
+- **Unreachable via REST** (most are reachable via the OTA sidecar — see below): step-parameters
+  *definition*, BPT/components (403), timeslots, libraries/baselines, alerts, follow-up flags,
+  purge-runs. Audit history is **partial** — only some field changes are recorded.
+- **OTA/COM WORKS against this sandbox** (probe 8; probe 7's "unreachable" verdict was wrong — it
+  used a hand-extracted client). `InitConnectionWithApiKeyEx(url, clientId, secret)` authenticates
+  with the **API key** — no username/password — and reads *and writes* fine. Requirements: a
+  **32-bit host process**, a **version-matched client** (use ALM's own deployed client under
+  `%LOCALAPPDATA%\HP\ALM-Client\<version>\`, not an installer payload), per-user COM keys written
+  **from a 32-bit process** (WOW64), and a **separately registered typelib**.
+- **BPT is writable via OTA** (probe 8) — REST's `403` on `/components` was **not** a licence gate.
+  Recipe: component folder → subfolder → subfolder's `ComponentFactory` (components cannot sit
+  directly under the root "Components" folder).
+- **Test parameters**: `Test.Params` is a collection (`AddParam`/`Save`/`ParamName`/`Count`), not a
+  factory. Declaring a parameter directly does **not** persist; a **`<<<token>>>` in a design step
+  registers it** (verified 0→1). Setting its default value still fails — `UNVERIFIED`.
+- ⚠️ **OTA folder deletes do not cascade to tests** — sweep by name prefix across `tests` *and*
+  `test-folders` after any OTA cleanup (5 orphans were left behind during probing).
 - **58% of the stock UI is reachable** via documented REST (feasibility matrix); 23 features are
   OTA-only, 21 are honest impossibilities.
 
@@ -138,7 +145,9 @@ every conflict**), [alm-api-reference.md](docs/research/alm-api-reference.md),
 - **Stack: Java 21 + Spring Boot** (BFF) and **React + TypeScript** (SPA); probe scripts stay
   PowerShell (ADR 0002).
 - **OTA/COM is isolated in an optional Windows-only sidecar** — mainline never touches COM; features
-  degrade behind capability flags when the bridge is absent (ADR 0003).
+  degrade behind capability flags when the bridge is absent (ADR 0003). The bridge now has a
+  **verified reachable target** (probe 8), so its language decision (.NET vs Python + pywin32) is
+  live again.
 - **One service-account API key with pooled sessions**, plus Alt-ALM's own app-level user model; the
   licence finding retires the seat-consumption concern (ADR 0004).
 - **Metadata-driven rendering** — no hardcoded schemas, list values, or root IDs anywhere (ADR 0005).

@@ -249,7 +249,17 @@ Cleanup CLEAN (all DELETEs 200 incl. Fast_Runs; orphan sweep zero, all 3 session
   license/permission-gated); `GET /business-components` → **404** (absent). BPT remains
   effectively out of REST reach here → OTA-fallback candidate.
 
-## Probe 7 — OTA/COM spike, 2026-08-12 (`scripts/probe/probe-ota-{1,2,3}.ps1`; READ-ONLY, zero records created)
+## Probe 7 — OTA/COM spike, 2026-08-12 — ⚠️ **ITS CONCLUSION IS SUPERSEDED BY PROBE 8**
+
+> **DO NOT ACT ON THIS SECTION'S CONCLUSIONS.** Probe 7 concluded "OTA is unreachable on this SaaS
+> instance". **That was wrong.** The cause was the *client*, not the server: Probe 7 ran against a
+> hand-extracted 4-DLL payload from the TDConnect installer. Once the **properly deployed** ALM
+> client was registered, **OTA connected on the first attempt** via `InitConnectionWithApiKeyEx`
+> and full read/write works. See **Probe 8** below for the corrected, verified picture. The
+> client-side environment facts recorded here (32-bit only, version matching, per-user registration,
+> WOW64 and typelib traps) remain accurate and useful.
+
+### Original Probe 7 record (`scripts/probe/probe-ota-{1,2,3}.ps1`; READ-ONLY, zero records created)
 
 Purpose: settle whether the OTA/COM fallback — on which **23 feasibility-matrix features and the
 step-parameter generator gap depend** — actually works against this instance. User supplied
@@ -321,6 +331,83 @@ front door refuses the OTA handshake. Details below, because the distinction mat
 newer than what it shadows and is required for any future OTA attempt. Files:
 `%LOCALAPPDATA%\AltALM\ota-client-26.1\`. To undo, from a **32-bit** PowerShell:
 `Remove-Item -Recurse 'HKCU:\Software\Classes\CLSID\{C5CBD7B2-490C-45F5-8C40-B8C3D108E6D7}','HKCU:\Software\Classes\TDApiOle80.TDConnection'`
+
+## Probe 8 — OTA/COM WORKS, 2026-08-13 (`scripts/probe/probe-ota-{4,5,6}.ps1`; sandbox writes, all cleaned up)
+
+**This supersedes Probe 7's conclusion.** After the user installed TDConnect 26.1, the machine-wide
+registration was left pointing at a deleted file; COM was repointed at ALM's **own deployed client**
+at `%LOCALAPPDATA%\HP\ALM-Client\20.00.0.0_952\OTAClient.dll` (v20.00.0.174 — the 26.1 line). With
+that client, **OTA connects and works.** The Probe 7 failure was the hand-extracted 4-DLL payload,
+not the server.
+
+**CONNECTION — VERIFIED.** `InitConnectionWithApiKeyEx(url, clientId, secret)` →
+`Connected=True, LoggedIn=True`; `Connect(domain, project)` → `ProjectConnected=True`.
+**An API key authenticates OTA — no username/password needed**, and the SaaS SSO front door is not
+an obstacle when the correct client is used.
+
+**WRITES — VERIFIED.** Created and deleted, via OTA only: a test folder under `Subject`
+(`TreeManager.NodeByPath("Subject").AddNode(name)` + `Post()`), and a test
+(`folder.TestFactory.AddItem(...)`, set `Name`/`Type="MANUAL"`, `Post()`).
+
+**⚠️ BPT IS REACHABLE AND WRITABLE VIA OTA — this reverses the REST-era conclusion.** REST returned
+`403 qccore.operation-forbidden` on `GET /components`, which we had read as a licence gate. It is
+**not** a licence gate: over OTA, `ComponentFactory` reads fine (4 component folders visible, root
+`id=1 "Components"`) and a **business component was successfully created and deleted**. The two
+errors along the way were structural, not permission-related: `"Invalid owner specified: 0"` (a
+component needs an owner) and then `"Components cannot be added directly under COMPONENTS folder"`
+(it needs a **sub-folder**). Working recipe: `ComponentFolderFactory` on the root folder →
+`AddItem` a subfolder → that subfolder's `.ComponentFactory.AddItem(...)` → `Post()`.
+
+**TEST PARAMETERS (Q18) — the mechanism is now understood.** `Test.Params` is **not** a factory: it
+is a parameter *collection* exposing `AddParam, ClearParam, Count, DeleteParam, ParamExist,
+ParamName, ParamType, ParamValue, BaseValue, Refresh, Save, Type` (there is **no**
+`TestParameterFactory` on this object model — that name from doc research is wrong for 26.1).
+Findings:
+- `Params.AddParam("name","value")` is **accepted** and `Params.Save()` returns OK, but the
+  parameter **does not persist** — `Count` stays 0 on the same handle, after `test.Post()`, and on a
+  fresh re-read (`HasParam=False`). Declaring a parameter directly appears to be a no-op.
+- **A design step containing a `<<<token>>>` DOES register the parameter**: after creating a design
+  step with `StepDescription = "Use <<<altalm_param>>> here"`, the test's parameter
+  `Count` went **0 → 1**. **The token in step text is the registration mechanism**, exactly as the
+  ALM docs describe — not an explicit "define parameter" call.
+- Setting a *value* on the now-registered parameter then failed with `"Invalid field type
+  definition."` — `UNVERIFIED` how to set the default value; needs one more probe.
+
+**Other OTA-only candidates — all factories ACQUIRED** (each `NewList("")` returned 0 items on this
+empty sandbox, i.e. reachable, not blocked): `BaselineFactory`, `LibraryFactory`, `HostFactory`,
+`HostGroupFactory`, `MilestoneFactory`, `KPIFactory`, `ScopeItemFactory`. Present on
+`TDConnection`: `PurgeRuns`, `PurgeRuns2`, `SynchronizeFollowUps`, `AlertManager`,
+`ExtendedStorage`. `DeniedFeatures` returns a per-licence-level denied-feature map (captured but not
+yet decoded — `UNVERIFIED` which row applies to our key).
+
+**Client-side environment (carried over from Probe 7, still true and now proven necessary):** OTA is
+**32-bit only**; the client must be **version-matched** to the server; per-user COM registration
+works without admin, but the keys **must be written from a 32-bit process** (WOW64 redirects to
+`Wow6432Node`) and the **type library must be registered separately** (`RegisterTypeLibForUser`),
+or every call fails `TYPE_E_ELEMENTNOTFOUND`. **Use ALM's own deployed client** under
+`%LOCALAPPDATA%\HP\ALM-Client\<version>\`, not a payload extracted from the installer.
+
+**PowerShell/COM gotchas:** `AddItem(Null)` must be passed as `[System.DBNull]::Value` — `$null` and
+`[Reflection.Missing]::Value` both fail with "Value does not fall within the expected range".
+`SysTreeNode.RemoveNode()` takes the **node object**, not its id (an id is read as a child index).
+**COM connect/login calls return project-list objects that PowerShell prints to stdout, bypassing a
+mask function — assign them to `$null`** (this leaked real project names into a console transcript
+during this probe; scripts were fixed).
+
+**⚠️ Cleanup caveat, learned the hard way:** deleting a test folder via OTA `RemoveNode` did **not**
+delete the tests inside it — 5 orphaned `ALTALM-OTA-*` tests were left behind across runs and had to
+be swept via REST `DELETE /tests/{id}`. **Always sweep by name prefix across `tests` *and*
+`test-folders` after any OTA folder delete.** Final sweep: 0 remaining in `tests`, `test-folders`,
+`design-steps`.
+
+**Consequences:** the ~23 OTA-verdict features are **back in play** on this deployment, BPT included.
+The Probe 7 write-off was wrong. ADR 0003's sidecar now has a **reachable target**, so the
+implementation-language decision (.NET vs Python + pywin32) becomes live again.
+
+**Next experiments:** (1) whether writing an entity-encoded `&lt;&lt;&lt;name&gt;&gt;&gt;` token via
+**REST** registers a parameter the same way (if so, `step-parameters` POST may finally succeed —
+this would close the gap without OTA at all); (2) how to set a parameter's default value
+(`Invalid field type definition`); (3) decode `DeniedFeatures`.
 
 ## Fixtures captured (redacted; under `tests/fixtures/`)
 

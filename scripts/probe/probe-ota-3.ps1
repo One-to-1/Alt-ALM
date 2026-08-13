@@ -52,7 +52,7 @@ foreach ($form in @(
         @{ l='all four';          v="JSESSIONID=$jsess; LWSSO_COOKIE_KEY=$lwsso; QCSession=$qcs; ALM_USER=$almu" })) {
     $td = New-Object -ComObject TDApiOle80.TDConnection
     try {
-        $td.ApplyCookie($form.v)
+        $null = $td.ApplyCookie($form.v)
         Say ("   ApplyCookie[{0}] accepted" -f $form.l)
         try { $td.InitConnectionEx($almUrl); Say "   InitConnectionEx returned" } catch { Say ("   InitConnectionEx FAILED: " + (Mask $_.Exception.Message)) }
         if (Report $form.l $td) {
@@ -72,7 +72,7 @@ foreach ($form in @(
         @{ l='LWSSO+QCSession'; v="LWSSO_COOKIE_KEY=$lwsso; QCSession=$qcs" })) {
     $td = New-Object -ComObject TDApiOle80.TDConnection
     try {
-        $td.InitConnectionWithCookies($almUrl, $form.v)
+        $null = $td.InitConnectionWithCookies($almUrl, $form.v)
         Say ("   InitConnectionWithCookies[{0}] returned" -f $form.l)
         [void](Report $form.l $td)
         try { $td.Connect($domain, $project); Say ("   Connect -> ProjectConnected=" + [bool]$td.ProjectConnected) }
