@@ -52,9 +52,39 @@ the source document was skipped.**
 > `TYPE_E_ELEMENTNOTFOUND`/"Invalid server response" failures [probe8]. This is still a real,
 > non-trivial sidecar to build (ADR 0003) — it is not a REST substitute, and REST itself still cannot
 > reach any of these features.
+>
+> ⚠️ **This "23" is superseded below — see the 2026-08-13 update.** The OTA-reachable row count grew
+> to 29 the same day (Probes 11–12).
+
+> **⚠️ UPDATE 2026-08-13 — Probes 11–12 re-check all 21 `NO` verdicts; 6 flip to `OTA`, 1 to `FULL*`,
+> 1 to `UNVERIFIED`**
+>
+> Driven by a web-research pass (`_raw/no-verdict-recheck.md`), Probe 11 (REST, read-only) and Probe 12
+> (OTA, read-only) re-checked every row this document had scored `NO`. **Six rows move `NO` → `OTA`**:
+> #129 Business View Graphs, #132/#133 Report authoring (template surface only — authoring new raw SQL
+> stays out of scope), #145 Scorecard/KPI, #166 Alerts row indicators (now aligned with siblings
+> #109/#196/#197, previously scored independently and inconsistently), and #205 Data-hiding per group
+> per module. **One row moves `NO` → `FULL*`**: #18 Analyze/Analyze and Apply to Children — the Testing
+> Policy matrix turned out to be a documented lookup table (not a hidden algorithm), fully readable via
+> `TDConnection.Customization.RBT`; Alt-ALM captures it once per project (OTA) and computes Testing
+> Level/Time client-side over the already-REST-writable `rbt-*` fields, same pattern as #13/#14. **One
+> row moves `NO` → `UNVERIFIED`**: #186 Per-attachment History (the sandbox has no attachment to test
+> against — genuinely unresolved, not confirmed absent). **Thirteen rows are CONFIRMED NO** on
+> stronger evidence than before (docs research, plus — for #209/#210 — direct OTA evidence rather than
+> inference): #20, #51, #52, #83, #107, #119, #130, #134, #170, #175, #209, #210, #214.
+>
+> ⚠️ **Probe 12 was READ-ONLY — do not read "OTA" as "write-verified" for any of the six newly-flipped
+> rows.** It confirmed the underlying COM sub-objects exist and are *readable* (KPI types, report
+> templates, business views, alert lists, module/permission objects) and that the documented
+> Add/Remove/Delete methods are *present*; it did not attempt a single write against any of them. Write
+> capability on all six is `UNVERIFIED` ("write test not yet run"), same caution already standing for
+> several of the original probe8 OTA rows. See `live-probe-log.md` Probe 11/Probe 12 for the full
+> per-row detail and `_raw/no-verdict-recheck.md` for the web-research trail that drove the re-check.
 
 Evidence citation shorthand: `[probeN]` = `live-probe-log.md` Probe *N*; `[api-ref §x]` =
-`alm-api-reference.md` section *x*; `[data-model §x]` = `alm-data-model.md` section *x*.
+`alm-api-reference.md` section *x*; `[data-model §x]` = `alm-data-model.md` section *x*;
+`[no-verdict-recheck]` = `_raw/no-verdict-recheck.md` (web-research pass over the `NO` verdicts,
+2026-08-13, driving Probes 11–12).
 
 ---
 
@@ -79,9 +109,9 @@ Evidence citation shorthand: `[probeN]` = `live-probe-log.md` Probe *N*; `[api-r
 | 15 | Add to Coverage (Without/Include Children) | FULL* [^composite] | `POST requirement-coverages` (looped) | [api-ref §6.2] 201 verified for one link | "Include children" = client-side recursive loop |
 | 16 | Coverage by Test Configuration | PARTIAL | `GET test-config-coverages` | [data-model §2.3] auto-create side effect confirmed; full CRUD unverified | View works; direct create/manage unconfirmed |
 | 17 | Risk Assessment questions | PARTIAL | `PUT rbt-*` fields | 27 `rbt-*` fields exist, LookupList-bound [api-ref §8]; generic requirement PUT mechanism verified, this specific field-write not individually probed | |
-| 18 | Analyze / Analyze and Apply to Children | NO | none found | No computation endpoint in resource-list/Swagger; scoring algorithm undocumented | Would require reverse-engineering OpenText's formula |
+| 18 | Analyze / Analyze and Apply to Children | FULL* [^clientside] | `PUT rbt-*` (REST, existing, see #17/#19) + one-time OTA read of `Customization.RBT` | [probe12 §12.1] `TestingPolicyMatrix`, `RiskCalculationMatrix`, `TestingLevelPercentage`, `TestingEffortForFCLevel` all read successfully; `rbt-*` fields already REST-writable [api-ref §8] | **UPDATED 2026-08-13 (Probe 12), retracts prior `NO`**: ~~No computation endpoint in resource-list/Swagger; scoring algorithm undocumented~~ — Analyze is a documented lookup table, not a hidden algorithm [no-verdict-recheck], and the table itself is OTA-readable. Alt-ALM reads the matrix once per project (admin config, changes rarely) via OTA, then computes Testing Level/Time client-side, same pattern as #13/#14. **Never hardcode the matrix values** — they are per-project admin config; the sandbox's own `TestingPolicyMatrix` happens to be risk-only (ignores functional complexity) while `RiskCalculationMatrix` genuinely combines both axes. Accessors are parameterized properties (2 indices for the matrices, 1 for the per-level arrays) — a "wrong number of parameters" error means wrong arity, not unsupported |
 | 19 | Override Testing Level/Time | PARTIAL | `PUT rbt-*` override fields | Same caveat as #17 | |
-| 20 | Risk export to Word | NO | none | Desktop-local document generation | Alt-ALM can build its own export instead |
+| 20 | Risk export to Word | NO | none | Desktop-local Word-COM automation — **reconfirmed** [no-verdict-recheck]: official docs state Word must be installed locally to generate the report; neither REST nor OTA has anything to reach here | Alt-ALM can build its own export instead; same category as #189/#193 |
 | 21 | Business Models Linkage | UNVERIFIED | `bpm-folders` + linkage fields | Collection exists [data-model §1]; linkage fields never probed | Exp: fetch requirement field metadata for BPM-linkage fields, then write-probe |
 | 22 | Version comparison | FULL* [^clientside] | `GET requirements/{id}/versions` | Sub-resource exists [api-ref §5] | Comparison is a client-side diff of two fetched versions, not a server endpoint |
 | 23 | Baseline capture/compare | OTA | none | Confirmed absent from REST — zero resource-list hits [probe3] | OTA fallback candidate |
@@ -163,7 +193,7 @@ Evidence citation shorthand: `[probeN]` = `live-probe-log.md` Probe *N*; `[api-r
 | 80 | *(View)* Execution Flow diagram | UNVERIFIED | Same as #76 | | |
 | 81 | *(View)* Timeslots sub-area | OTA | none | Confirmed absent from REST [probe3] | OTA `Host`/`HostTimeOut` fallback candidate |
 | 82 | *(View)* Last Run Report pane | PARTIAL | `GET runs/{id}` + attachments | Tool-specific binary report formats (Sprinter/UFT) readable as blobs; interpretation out of scope | |
-| 83 | *(View)* Live Analysis tab | NO | none | Never server-persisted, ALM Enterprise-only per inventory | |
+| 83 | *(View)* Live Analysis tab | NO | none | Never server-persisted, ALM Enterprise-only per inventory — **reconfirmed** [no-verdict-recheck]: docs describe dynamic on-the-fly charts by design, no REST/OTA persistence surface found anywhere | Alt-ALM's own dashboard layer (#125/#127/#128, `FULL*`) is the substitute, no OTA fallback needed |
 | 84 | *(View)* Web Client Test Lab equivalent | FULL | Same underlying REST as desktop | | |
 
 [^fastrun]: `POST runs` fails on this server with a reproducible, bimodal error (`"Fail to get a must number attribute 'TESTSET'"` or `"Failed to post step"` depending on field set — 8 attempts across 2 rounds, [data-model §2.9]). The only confirmed path is `PUT test-instances/{id}.status`, which makes the server synthesize a full `run` entity named `Fast_Run_<M>-<D>_<HH-MM-SS>` with auto-copied `run-steps` — verified reliably 3/3 sessions [probe6].
@@ -203,9 +233,9 @@ Evidence citation shorthand: `[probeN]` = `live-probe-log.md` Probe *N*; `[api-r
 | 104 | Select All / Invert Selection | FULL | none — client-side | | |
 | 105 | Find / Find Next / Replace | FULL | client-side search + `PUT` for replace | | |
 | 106 | Update Selected (bulk) | PARTIAL | `PUT .../defects;type=collection` | [api-ref §4.5] mechanism fully documented and structurally consistent with the verified single-write path (deterministic field order applies); **bulk endpoint itself not independently write-probed this session** | Downgraded from the UI inventory's FULL — stricter evidence bar applied here |
-| 107 | Text Search | NO | none | Server FTS index, opt-in, confirmed absent from REST | |
+| 107 | Text Search | NO | none | Server FTS index, opt-in, confirmed absent from REST — **reconfirmed** [no-verdict-recheck]: enabling it is a DB-schema-level SQL full-text-index operation, not an application feature; a guessed REST doc path 404'd | |
 | 108 | Find Similar Defects / Similar Text | OTA | none | OTA-only per doc [api-ref §6.5] | |
-| 109 | Alerts / Clear Alerts | OTA | none | Confirmed absent from REST [probe3] | |
+| 109 | Alerts / Clear Alerts | OTA | `TDConnection.AlertManager` | Confirmed absent from REST [probe3]; read-reachable via OTA — `AlertList(<filter>)` works (0 in this sandbox), `GetFilterText()`, `DeleteAlert`, `DeleteAlertsByFilter`, `CleanAllAlerts` all present [probe12 §12.2] | Write/delete capability UNVERIFIED — read-only probe |
 | 110 | Flag for Follow Up | OTA | none | No dedicated source located | |
 | 111 | Pin / Unpin | UNVERIFIED | unknown | No REST surface identified distinct from Favorites | Exp: capture stock-UI traffic on pin action |
 | 112 | Set / Clear Default Values | N/A | none | Pure client-side create-form convenience, no server concept | |
@@ -215,7 +245,7 @@ Evidence citation shorthand: `[probeN]` = `live-probe-log.md` Probe *N*; `[api-r
 | 116 | Select Columns / Refresh All | FULL | client-side | | |
 | 117 | Favorites | PARTIAL | `GET/POST favorites` | Confirmed [wave-1, cited in inventory] | Full CRUD/permissions UNVERIFIED |
 | 118 | Project Reports / Graphs from module | PARTIAL | `GET reports/{id}?alt={mime}` | FULL for existing shared reports | Create/design = NO (UI-only Report Wizard) |
-| 119 | Global Search | NO | none | No dedicated cross-project search endpoint identified | Bundled with Text Search FTS absence |
+| 119 | Global Search | NO | none | No dedicated cross-project search endpoint identified — **reconfirmed** [no-verdict-recheck]: "ALM Global Search" is a separately-branded legacy Windows/Linux add-in (versioned 12.53–15.51), not a built-in REST/OTA capability; no evidence it survived into 24.1+ | Bundled with Text Search FTS absence |
 | 120 | Share Analysis Item | FULL | `GET reports/{id}?authKey=…` | Read path exists once shared once in the stock UI | |
 | 121 | Drill-down on graph segment | FULL* [^clientside] | Filtered `GET` against the underlying entity collection | Stock UI computes this client-side from graph data; Alt-ALM implements the equivalent directly against raw entities | |
 | 122 | Linked Entities tab | FULL | `POST/GET defect-links` | [probe4] 201 for `defect`/`requirement` second-endpoint-types | |
@@ -232,12 +262,12 @@ Evidence citation shorthand: `[probeN]` = `live-probe-log.md` Probe *N*; `[api-r
 | 126 | Entity Graphs (read existing) | UNVERIFIED | `graphs/{ID}/layouts/{name}` | Tech-Preview endpoint 404'd this round | Exp: re-check live Swagger; try `reports/{id}?alt=mime` against an Entity-Graph item |
 | 127 | Create/configure new Entity Graph | FULL* [^clientside] | Client-side rendering from raw entity queries | | |
 | 128 | Composite Graphs | FULL* [^clientside] | Client-side composition of multiple entity queries | | |
-| 129 | Business View Graphs | NO | none | Business Views metadata out-of-scope family, no REST surface confirmed | |
-| 130 | PPT Graphs (Releases module) | NO | none | Depends on KPIs/scope items, confirmed largely absent from REST | |
+| 129 | Business View Graphs | OTA | `Customization.BusinessViews`, `GraphBuilder` | [probe12 §12.2] 37 views enumerable (Components, Defects, Defects_Assigned_to_me, …); `GraphBuilder` exposes `BuildGraph`, `BuildMultipleGraphs`, `CreateGraphDefinition`, `GetGraphResultFromString` | **UPDATED 2026-08-13 (Probe 12)**: ~~Business Views metadata out-of-scope family, no REST surface confirmed~~ retracted for OTA — REST itself stays `NO` (uncontested). Graph-build/render capability confirmed read-reachable only; UNVERIFIED for write/generate |
+| 130 | PPT Graphs (Releases module) | NO | none | Depends on KPIs/scope items, confirmed largely absent from REST | **Not re-probed** — the web-research pass flagged this as sharing #145's `KPIFactory`/`ScopeItemFactory` dependency, but Probe 12's actual read pass only exercised the Scorecard/KPI-types path (#145); verdict left as `NO` here pending a dedicated check |
 | 131 | Project Reports (read existing) | FULL | `GET reports/{ID}?alt={mime}` | Documented, consistently cited read path | Only for items already created+shared in UI |
-| 132 | Create/design new Project Report | NO | none | UI-only Report Wizard | |
-| 133 | Excel Reports (standard SQL) | NO | none | **Structurally out of scope by hard constraint** (raw SQL) | Not a gap to close |
-| 134 | Live Analysis Graphs | NO | none | Never server-persisted, no REST surface | |
+| 132 | Create/design new Project Report | OTA | `Customization.ReportProjectTemplates` | [probe12 §12.2] 79 templates enumerable, with Add/Get/Remove | **UPDATED 2026-08-13 (Probe 12)**: ~~UI-only Report Wizard~~ retracted for the *template* surface — reachable read-only via OTA. Authoring an entirely new report architecture from nothing is still `NO` — no OTA/REST path builds one. The forum-sourced `OtaReport80.Reporter`/`ReportConfig` render pipeline is `UNVERIFIED` — **not registered on this deployment** (`REGDB_E_CLASSNOTREG` on all three candidate ProgIDs) [probe12 §12.4], and not needed since templates are reachable directly via `Customization` |
+| 133 | Excel Reports (standard SQL) | OTA | `Customization.ReportProjectTemplates` | [probe12 §12.2] Same template surface as #132 | **UPDATED 2026-08-13 (Probe 12)**: template surface reachable read-only via OTA. Authoring *new* raw-SQL reports through Alt-ALM **remains out of scope by hard constraint** (`CLAUDE.md`) — now a "we choose not to," not "we structurally cannot," reason, but the constraint stands; not a gap to close |
+| 134 | Live Analysis Graphs | NO | none | Never server-persisted, no REST surface — **reconfirmed** [no-verdict-recheck], same evidence as #83 | |
 | 135 | Web Client Dashboard (25.1+ native) | PARTIAL | Same graph-read caveats as #124 | Create/edit NO via documented REST | |
 | 136 | 26.1 Tech-Preview "Web Graphs" | PARTIAL | Export-as-image confirmed existing in Tech Preview per inventory | Broader API surface UNVERIFIED | Exp: probe the Tech-Preview export endpoint directly |
 | 137 | Drill-down on graph segment (Dashboard) | FULL* [^clientside] | Same as #121 | | |
@@ -255,7 +285,7 @@ Evidence citation shorthand: `[probeN]` = `live-probe-log.md` Probe *N*; `[api-r
 | 142 | Milestones/KPIs (PPT) | PARTIAL | `POST milestones` | Core CRUD FULL [data-model §2.8] 201 verified, `parent-id=MS_RELEASE_ID` | KPI computation/thresholds = NO, no REST surface identified |
 | 143 | Release Scope items | UNVERIFIED | unknown | Linkage mechanism (req/test/test-set/defect → release) not identified; milestone response's `milestone-scopeitem-count` hints at a sub-structure | Exp: full field dump of milestone metadata; probe scope-item write |
 | 144 | Master Plan (Gantt) | FULL* [^clientside] | Client-side timeline from release/cycle/milestone dates | All three date sources REST-readable | Scope-item plotting blocked by #143's gap |
-| 145 | Scorecard (KPI readiness) | NO | none | Depends on KPI computation, absent from REST | |
+| 145 | Scorecard (KPI readiness) | OTA | `Customization.KPITypes.KPITypes`, `KPIFactory` | [probe12 §12.2] 11 KPI types readable by name (Automated Tests, Covered Requirements, Defects Fixed per Day, Passed Requirements, Passed Tests, …); `AddKPIType`/`RemoveKPIType` present; `KPIFactory.NewList('')` works (0 items — none defined in this sandbox) | **UPDATED 2026-08-13 (Probe 12)**: ~~Depends on KPI computation, absent from REST~~ retracted — REST stays `NO`, reachable read-only via OTA. Write/compute capability UNVERIFIED (no KPI item write-tested) |
 | 146 | Entity assignment to Release/Cycle | UNVERIFIED | Same as Requirements #7, extended to test-sets/defects | Not probed for any entity type | |
 | 147 | Libraries | OTA | none | Confirmed absent — zero resource-list/Swagger hits, 404s [probe3] | OTA support itself unconfirmed |
 | 148 | Baselines | OTA | none | Same | |
@@ -295,7 +325,7 @@ Evidence citation shorthand: `[probeN]` = `live-probe-log.md` Probe *N*; `[api-r
 | 163 | Multi-key sort | FULL | `order-by` supports multi-field server-side | [api-ref §4.3] | |
 | 164 | ≤3-level grouping | PARTIAL | client-side aggregation | Same as #157 | |
 | 165 | Update Selected bulk-edit | PARTIAL | Bulk `PUT ;type=collection` | Documented mechanism [api-ref §4.5], not independently probed this session | Same downgrade rationale as #106 |
-| 166 | Alerts row indicators | NO | none | Depends on Alerts data, absent from REST | Alt-ALM can substitute its own notification model |
+| 166 | Alerts row indicators | OTA | `TDConnection.AlertManager.AlertList(<filter>)` | [probe12 §12.2] Works, count 0 (sandbox has no alerts); `GetFilterText()` returns a real filter over `TableName:ALERT, ColumnName:AT_ALERT_TYPE`; `DeleteAlert`/`DeleteAlertsByFilter`/`CleanAllAlerts` present | **UPDATED 2026-08-13 (Probe 12)**: ~~Depends on Alerts data, absent from REST~~ retracted — now aligned with sibling rows #109/#196/#197 (same underlying Alerts data; this row had been scored independently and inconsistently). Read-reachable only; write UNVERIFIED. Alt-ALM can still substitute its own notification model if preferred |
 | 167 | Web Runner grid ceiling (25.1) | N/A | none | Documents OpenText's *own* web client's limitation | Not an Alt-ALM constraint — Alt-ALM builds its own grid against the same REST data desktop parity uses |
 
 ### D. Find/Replace & Search
@@ -304,7 +334,7 @@ Evidence citation shorthand: `[probeN]` = `live-probe-log.md` Probe *N*; `[api-r
 |---|---|---|---|---|---|
 | 168 | Find | FULL | client-side over fetched filtered set | | |
 | 169 | Replace | FULL | client-side + `PUT` to persist | | |
-| 170 | Text Search (project-wide FTS) | NO | none | Server FTS index, opt-in, confirmed absent from REST | |
+| 170 | Text Search (project-wide FTS) | NO | none | Server FTS index, opt-in, confirmed absent from REST — same reconfirmation as #107 [no-verdict-recheck] | |
 | 171 | Go-to-by-ID | FULL | `GET /{collection}/{id}` | | |
 | 172 | Dedicated web go-to-entity page | UNVERIFIED | unknown | Mechanics never fetched/confirmed | Exp: capture stock 25.1 web client's go-to-entity network request |
 
@@ -330,7 +360,7 @@ Evidence citation shorthand: `[probeN]` = `live-probe-log.md` Probe *N*; `[api-r
 | 183 | Save (attachment metadata) | PARTIAL | Same as #182 | | |
 | 184 | Delete (multi) | FULL | `DELETE` + bulk `?ids-to-delete=` | Single-attachment delete exercised during probe cleanup | |
 | 185 | Refresh | FULL | client-side re-`GET` | | |
-| 186 | Per-attachment History | NO | none | No dedicated audit trail identified for attachments | |
+| 186 | Per-attachment History | UNVERIFIED | `GET .../attachments/{id}/audits` (candidate, generic-contract pattern) | [probe11 §11.4] Sandbox contained no attachment to test against — endpoint never exercised. Not present in the offline resource-list, but that inventory has known false negatives (24-entity-type `/audits` pattern was itself missed there originally) | **UPDATED 2026-08-13 (Probe 11), downgraded from `NO`**: genuinely unverified, not confirmed absent. Exp: `GET .../attachments/{id}/audits` after P2 creates an attachment with at least one metadata edit |
 | 187 | Description field with formatting+spell-check | PARTIAL | attachment `description` field present | Spell-check is Alt-ALM's own editor concern, not an ALM API matter | |
 | 188 | Attach to Run/Step | PARTIAL | `POST .../runs/{id}/attachments`, `.../run-steps/{id}/attachments` | Generic contract applies identically [api-ref §5]; not separately probed on these two collections | |
 | 189 | Legacy_Rich_Content.doc attachment | N/A | none | Word add-in-specific artifact | Not applicable to Alt-ALM's own editor |
@@ -350,8 +380,8 @@ Evidence citation shorthand: `[probeN]` = `live-probe-log.md` Probe *N*; `[api-r
 | # | Feature | Verdict | API route(s) | Evidence | Notes |
 |---|---|---|---|---|---|
 | 195 | Follow-up flag | OTA | none | No dedicated REST source located | OTA support unconfirmed |
-| 196 | Alerts (4 admin rules) | OTA | none | Confirmed absent from REST [probe3] | Alt-ALM could alternatively build its own notification engine |
-| 197 | Clear per-record or globally | OTA | none | Depends on Alerts | |
+| 196 | Alerts (4 admin rules) | OTA | `TDConnection.AlertManager` | Confirmed absent from REST [probe3]; read-reachable via OTA — same evidence as #109/#166 [probe12 §12.2] | Alt-ALM could alternatively build its own notification engine; write UNVERIFIED |
+| 197 | Clear per-record or globally | OTA | `AlertManager.DeleteAlert` / `DeleteAlertsByFilter` / `CleanAllAlerts` | Depends on Alerts; delete/clear methods confirmed **present** [probe12 §12.2] | Not write-tested — UNVERIFIED whether a delete call actually succeeds |
 
 ### I. Send by Email
 
@@ -373,8 +403,8 @@ Evidence citation shorthand: `[probeN]` = `live-probe-log.md` Probe *N*; `[api-r
 
 | # | Feature | Verdict | API route(s) | Evidence | Notes |
 |---|---|---|---|---|---|
-| 204 | Per-module C/U/D permission grid per group | PARTIAL | `GET /permissions`, `GET /roles` (SA API) | Read confirmed reachable, not SaaS-gated [api-ref §6.9] | Write path for group permission grids UNVERIFIED |
-| 205 | Data-hiding tab per group per module | NO | none | No REST enforcement/config surface identified | |
+| 204 | Per-module C/U/D permission grid per group | PARTIAL | `GET /permissions`, `GET /permissions/metadata`, `GET /roles`, `GET domains/{d}/projects/{p}/groups` (SA API) | Read confirmed reachable, not SaaS-gated [api-ref §6.9]; **re-confirmed live** — all four return 200, including the category→sub-category permission tree and the five standard groups (TDAdmin, Project Manager, QATester, Developer, Viewer) [probe11 §11.2] | Write path for group permission grids UNVERIFIED |
+| 205 | Data-hiding tab per group per module | OTA | `Customization.Modules` (`IsVisibleForGroup`/`VisibleForGroups`), `Customization.Permissions` (`CanModifyField`/`CanAddItem`/`CanRemoveItem`/`TransitionRules`), `Customization.UsersGroups` | [probe12 §12.2] 11 modules enumerable; `Permissions` and `UsersGroups` objects acquired | **UPDATED 2026-08-13 (Probes 11–12)**: ~~No REST enforcement/config surface identified~~ retracted — REST stays `NO` for a dedicated data-hiding endpoint specifically (though the broader group/role/permission structure IS REST-readable, see #204 [probe11 §11.2]); data-hiding itself is reachable via OTA. **Per-module enumeration detail still `UNVERIFIED`** — the per-item read needs the correct accessor arity (these are parameterized properties, same note as #18); write UNVERIFIED |
 | 206 | CRITICAL TRAP: Viewer group bypass | N/A | none | Architectural note for Alt-ALM's own permission-mirroring logic | Not itself an API-reachable feature |
 | 207 | Module Access grid | UNVERIFIED | SA API (178 ops) | Group/role endpoints exist; this specific control's endpoint unidentified | Exp: search SA Swagger for module-access operations |
 | 208 | Site Admin Client Management | UNVERIFIED | SA API | Site-wide Web-Client gating control unconfirmed | |
@@ -383,8 +413,8 @@ Evidence citation shorthand: `[probeN]` = `live-probe-log.md` Probe *N*; `[api-r
 
 | # | Feature | Verdict | API route(s) | Evidence | Notes |
 |---|---|---|---|---|---|
-| 209 | Workflow-script field visibility (`Field.IsVisible`) | NO | none | **By design** — REST writes bypass workflow scripts entirely via `CLIENT_TYPES_BYPASS_REST_WF` [api-ref §6.8] | Permanent, honest gap |
-| 210 | "Required" checkbox rendering | NO | none | Same bypass | Alt-ALM must independently enforce `Required=true` from field metadata |
+| 209 | Workflow-script field visibility (`Field.IsVisible`) | NO | none | **By design** — REST writes bypass workflow scripts entirely via `CLIENT_TYPES_BYPASS_REST_WF` [api-ref §6.8]; **verdict SURVIVED the 2026-08-13 NO-verdict recheck on direct OTA evidence** — `Customization.Workflow` exposes only `ProjectScriptsUpdated`/`TemplateScriptsUpdated` (dirty flags), no route to script content [probe12 §12.3] | Permanent, honest gap, now resting on direct evidence rather than inference |
+| 210 | "Required" checkbox rendering | NO | none | Same bypass; same direct-evidence confirmation [probe12 §12.3] | Alt-ALM must independently enforce `Required=true` from field metadata |
 | 211 | Field presence contract instability | N/A | none | Architectural/documentation signal | Not a feature with a verdict |
 | 212 | Script Generators for defect dialogs | N/A | none | Desktop Project-Customization authoring tool | |
 
@@ -393,7 +423,7 @@ Evidence citation shorthand: `[probeN]` = `live-probe-log.md` Probe *N*; `[api-r
 | # | Feature | Verdict | API route(s) | Evidence | Notes |
 |---|---|---|---|---|---|
 | 213 | Masthead (switcher, username, Search, Tools, Help, Close) | FULL | `GET domains/projects` + session state | Mechanically trivial | |
-| 214 | Global Search ("Quality Insight") | NO | none | Inferred absent from Text Search's FTS-index gap | No dedicated cross-project search endpoint identified |
+| 214 | Global Search ("Quality Insight") | NO | none | Inferred absent from Text Search's FTS-index gap; same reconfirmation as #119 [no-verdict-recheck] | No dedicated cross-project search endpoint identified |
 | 215 | Tools menu | PARTIAL | Customization = `GET customization/*` FULL | Task Manager/spell-config UNVERIFIED; "quick defect" = ordinary `POST defects` FULL | |
 | 216 | Sidebar (module navigation) | FULL | none — Alt-ALM's own navigation shell | | |
 | 217 | Pinned Items panel | UNVERIFIED | unknown | Same as Defects #111 | |
@@ -458,11 +488,11 @@ correct in `alm-api-reference.md`:
 | Verdict | Count | % |
 |---|---|---|
 | FULL | 54 | 25% |
-| FULL* | 22 | 10% |
+| FULL* | 23 | 11% |
 | PARTIAL | 50 | 23% |
-| UNVERIFIED | 31 | 14% |
-| NO | 21 | 10% |
-| OTA | 23 | 11% |
+| UNVERIFIED | 32 | 15% |
+| NO | 13 | 6% |
+| OTA | 29 | 13% |
 | N/A | 17 | 8% |
 | **Total** | **218** | 100% |
 
@@ -470,29 +500,54 @@ correct in `alm-api-reference.md`:
 `step-parameters` gap that kept it at PARTIAL is closed over REST. FULL 53→54, PARTIAL 51→50; the
 FULL+FULL*+PARTIAL sum is unchanged.
 
-**"Achievable" (FULL + FULL* + PARTIAL) = 126 of 218 rows (58%).**
+**Updated 2026-08-13 (Probes 11–12, NO-verdict recheck):** starting from FULL 54 / FULL* 22 / PARTIAL 50
+/ UNVERIFIED 31 / NO 21 / OTA 23 / N/A 17 (= 218), eight rows changed verdict, all originating from `NO`:
 
-**Practical impact of the OTA spike (2026-08-13, `live-probe-log.md` Probe 8):** of the 218 features,
-the 23 `OTA`-verdict rows **are implementable** on this deployment via the OTA sidecar — the SaaS SSO
-front door is not an obstacle when ALM's own deployed client is used (see callout above) [probe8]. The
-REST-only achievable count remains **FULL + FULL* + PARTIAL = 126 of 218 rows (58%)**, unchanged — the
-`OTA` rows were never counted there, since REST itself still cannot reach them — but they are no longer
-closed: they are a real, buildable path gated on standing up the Windows-only 32-bit OTA sidecar
-(ADR 0003), not on an unreachable target [probe8].
+- #18 → `FULL*`: NO 21→20, FULL* 22→23
+- #129, #132, #133, #145, #166, #205 → `OTA` (six rows): NO 20→14, OTA 23→29
+- #186 → `UNVERIFIED`: NO 14→13, UNVERIFIED 31→32
+
+Net: **NO 21→13** (−8), **FULL* 22→23** (+1), **OTA 23→29** (+6), **UNVERIFIED 31→32** (+1). FULL,
+PARTIAL, and N/A are unchanged at 54 / 50 / 17. New total: 54+23+50+32+13+29+17 = **218** (unchanged,
+verdicts moved, no rows added or removed).
+
+**"Achievable" (FULL + FULL* + PARTIAL) = 54 + 23 + 50 = 127 of 218 rows (58.3%)**, up from 126/218
+(57.8%) because #18 moved into the `FULL*` bucket. **Caveat**: unlike the rest of the `FULL*` bucket,
+row #18's classification assumes a one-time OTA capture of the Testing Policy matrix (admin config,
+changes rarely) per project — it is not purely-REST the way #13/#14 are. See row #18 and
+`implementation-plan.md` P2 for how this is scheduled without making the feature depend on the OTA
+sidecar being deployed at runtime.
+
+**Practical impact of the OTA spike (2026-08-13, `live-probe-log.md` Probe 8) and the NO-verdict
+recheck (2026-08-13, Probes 11–12):** of the 218 features, **29** `OTA`-verdict rows (up from 23) **are
+implementable** on this deployment via the OTA sidecar — the SaaS SSO front door is not an obstacle
+when ALM's own deployed client is used (see callouts above) [probe8][probe12]. The REST-only achievable
+count is **FULL + FULL* + PARTIAL = 127 of 218 rows (58.3%)** — the `OTA` rows are still never counted
+there, since REST itself still cannot reach them — but they are no longer closed: they are a real,
+buildable path gated on standing up the Windows-only 32-bit OTA sidecar (ADR 0003), not on an
+unreachable target. **Of the 29 OTA rows, the original 23 (Probe 8) include write-verified BPT
+create/delete; the 6 added by Probe 12 are confirmed read-reachable only — write capability on those
+six is `UNVERIFIED`** ("write test not yet run"), per the read/write distinction called out in the
+Probe 12 callout above.
 
 ### By module
 
 | Module | Rows | FULL | FULL* | PARTIAL | UNVERIFIED | NO | OTA | N/A |
 |---|---|---|---|---|---|---|---|---|
-| 1. Requirements | 31 | 9 | 7 | 8 | 4 | 2 | 1 | 0 |
+| 1. Requirements | 31 | 9 | 8 | 8 | 4 | 1 | 1 | 0 |
 | 2. Test Plan+BPT+Resources | 28 | 8 | 2 | 2 | 8 | 2 | 5 | 1 |
 | 3. Test Lab | 25 | 5 | 1 | 4 | 8 | 1 | 5 | 1 |
 | 4. Test Runs | 11 | 2 | 3 | 6 | 0 | 0 | 0 | 0 |
 | 5. Defects | 28 | 11 | 3 | 6 | 1 | 2 | 3 | 2 |
-| 6. Dashboard/Analysis | 16 | 1 | 5 | 4 | 1 | 5 | 0 | 0 |
-| 7. Releases/Management | 14 | 1 | 1 | 2 | 2 | 1 | 6 | 1 |
-| 8. Cross-cutting | 65 | 17 | 0 | 18 | 7 | 8 | 3 | 12 |
-| **Total** | **218** | **54** | **22** | **50** | **31** | **21** | **23** | **17** |
+| 6. Dashboard/Analysis | 16 | 1 | 5 | 4 | 1 | 2 | 3 | 0 |
+| 7. Releases/Management | 14 | 1 | 1 | 2 | 2 | 0 | 7 | 1 |
+| 8. Cross-cutting | 65 | 17 | 0 | 18 | 8 | 5 | 5 | 12 |
+| **Total** | **218** | **54** | **23** | **50** | **32** | **13** | **29** | **17** |
+
+**Updated 2026-08-13 (Probes 11–12):** Module 1 (Requirements) NO 2→1, FULL* 7→8 (#18). Module 6
+(Dashboard/Analysis) NO 5→2, OTA 0→3 (#129, #132, #133). Module 7 (Releases/Management) NO 1→0,
+OTA 6→7 (#145). Module 8 (Cross-cutting) NO 8→5, OTA 3→5, UNVERIFIED 7→8 (#166, #205 → OTA;
+#186 → UNVERIFIED). Every column total above still ties to the grand-total row.
 
 ### Headline findings
 
@@ -516,6 +571,14 @@ closed: they are a real, buildable path gated on standing up the Windows-only 32
   `step-parameters` failures were a `parent-id` shape bug, not a real gap. Both entities, both creation
   routes, and setting a default value are all `[probe9]`-verified working over REST — see row #45 and
   the Generator-impact appendix.
+- **Six `NO` verdicts became `OTA`, and one became `FULL*`, in the 2026-08-13 NO-verdict recheck
+  (Probes 11–12)** — Analyze/Analyze and Apply to Children (#18) turned out to be a documented lookup
+  table, not a hidden algorithm, and the table itself (`Customization.RBT`) is OTA-readable. Scorecard/
+  KPI (#145), report-template authoring (#132/#133), Business View graphs (#129), Alerts row
+  indicators (#166, now aligned with siblings #109/#196/#197), and data-hiding/permissions (#205) are
+  all OTA-read-reachable via `Customization.*` sub-objects [probe12]. **All six are read-only
+  confirmations — write capability is `UNVERIFIED`** for every one of them. See `_raw/no-verdict-
+  recheck.md` for the web-research trail and `live-probe-log.md` Probes 11–12 for the live evidence.
 
 **Honestly impossible (or OTA-only, unconfirmed):**
 - ~~`step-parameters` (test-parameter value definitions) — no REST creation path found after 5 informed
@@ -523,11 +586,23 @@ closed: they are a real, buildable path gated on standing up the Windows-only 32
   form.~~ **RETRACTED — see the "Surprisingly possible" bullet above [probe9].**
 - Business Components/BPT — REST-blocked (403 / 404 absent, not a licence gate); **verified reachable
   and writable via the OTA sidecar** [probe8].
-- Libraries, Baselines, Alerts, Follow-up flags, Timeslots, Purge-runs, KPIs/Scope-items — all
-  confirmed absent from the 1,111-operation resource-list inventory.
+- Libraries, Baselines, Follow-up flags, Timeslots, Purge-runs — all confirmed absent from the
+  1,111-operation resource-list inventory (REST). Alerts and KPI types are also REST-absent, but
+  **confirmed OTA-read-reachable** [probe12 §12.2] — see rows #109/#166/#196/#197 (Alerts) and #145
+  (KPI types); write capability is `UNVERIFIED` for all of them.
 - Workflow-script field visibility/required-ness — REST writes bypass workflow scripts *by design*
   (`CLIENT_TYPES_BYPASS_REST_WF`); this is not a probing gap, it's an architectural fact Alt-ALM must
-  design around (independent field-metadata-driven validation).
+  design around (independent field-metadata-driven validation). **Confirmed on direct OTA evidence**
+  in the 2026-08-13 recheck — `Customization.Workflow` exposes only dirty-flag properties
+  (`ProjectScriptsUpdated`/`TemplateScriptsUpdated`), no route to script content [probe12 §12.3] —
+  this verdict rests on evidence now, not just inference.
+- Risk export to Word (#20), Live Analysis tab/graphs (#83/#134), Text Search (#107/#170), Global
+  Search (#119/#214) — all independently reconfirmed absent from REST and OTA in the 2026-08-13
+  recheck [no-verdict-recheck]: desktop-local Word-COM automation, session-transient charts with no
+  persistence surface, a DB-schema-level opt-in FTS feature, and a separately-branded legacy add-in,
+  respectively. None were re-probed live (not recommended — see `_raw/no-verdict-recheck.md`'s
+  "Recommended probe order" section), so this reconfirmation is web-research-only, one layer short of
+  the direct-evidence bar the other rows above meet.
 - Direct `POST runs` — fails definitively (8/8 attempts); the entire Test Lab execution chain depends
   on the Fast_Run indirect route.
 - Entity History/Audit is only partially exposed — status-field changes are logged, but creates and

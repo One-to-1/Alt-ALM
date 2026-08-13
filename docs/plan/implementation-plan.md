@@ -112,12 +112,14 @@ requirements/tests/design-steps/defects; coverage, traceability, defect-links; t
 layer that substitutes for bypassed workflow scripts.
 
 **In scope** (`matrix` rows): requirement create/delete/rename #1–#3; requirement traceability #12;
-add-to-coverage #15/#16; test/design-step create #33, #36, #39; **test-parameter definition and
-step-parameter value recording #45** (moved here 2026-08-13 — see below, this was previously believed
-REST-unreachable and deferred to OTA/P6, retracted by `live-probe-log.md` Probe 9); defect
-create/detail/delete #96, #99, #103; defect-links #122; bulk update #106 (PARTIAL — bulk endpoint
-itself unverified until its own contract test passes); basic non-embedded-image attachments #25,
-#180–185; filter-state persistence #154–156, #158.
+add-to-coverage #15/#16; **Risk Assessment `rbt-*` field writes and Testing Level/Time computation
+#17–#19** (Analyze/Analyze and Apply to Children moved here 2026-08-13 — see below, retracted from
+`NO` by `live-probe-log.md` Probe 12); test/design-step create #33, #36, #39; **test-parameter
+definition and step-parameter value recording #45** (moved here 2026-08-13 — see below, this was
+previously believed REST-unreachable and deferred to OTA/P6, retracted by `live-probe-log.md` Probe 9);
+defect create/detail/delete #96, #99, #103; defect-links #122; bulk update #106 (PARTIAL — bulk
+endpoint itself unverified until its own contract test passes); basic non-embedded-image attachments
+#25, #180–185; filter-state persistence #154–156, #158.
 
 **Out of scope**: Test Lab/runs, releases/cycles/milestones (P3), generator, rich-text editor UI and
 embedded images (P5 — memo fields are writable here as plain/pre-canonicalized HTML only, no editor
@@ -139,6 +141,15 @@ UX).
 - Attachments: octet-stream+`Slug` upload (`ref-subtype=0` only) and a basic multipart client
   (full `ref-subtype=1` embed flow deferred to P5, but multipart must be integration-tested against
   the real server now per D2's named risk).
+- Risk-Based Testing (RBT) matrix (`matrix #17–#19`, `live-probe-log.md` Probe 12 §12.1): Testing
+  Level/Time computation ("Analyze"/"Analyze and Apply to Children") is a client-side lookup over the
+  already-REST-writable `rbt-*` fields (`api-ref §8`) — `TestingPolicyMatrix`, `RiskCalculationMatrix`,
+  `TestingLevelPercentage`, `TestingEffortForFCLevel` are the lookup tables. **The tables themselves
+  need a one-time OTA read per project** (`TDConnection.Customization.RBT`) — since they are per-project
+  admin config that rarely changes, capture them manually (or via the OTA sidecar once it exists in P6)
+  rather than making this feature depend on the sidecar being deployed at runtime. **Never hardcode the
+  captured values** — they are project-specific (this sandbox's own `TestingPolicyMatrix` happens to be
+  risk-only, ignoring functional complexity, which will not generalize to another project).
 - Test-parameter/step-parameter CRUD (`api-ref §6.4`, `live-probe-log.md` Probe 9): `POST
   tests/{testId}/test-parameters` to **define** a parameter (`name` + `ref-count` — `parent-id` comes
   from the URL, read-only in the body); `POST step-parameters` to **record a value**, with
@@ -307,17 +318,36 @@ deferred-probe follow-ups.
 (OTA, license-gated — `GET /components` 403, `GET /business-components` 404, `data-model §6.7b`);
 pinned test sets #63/#64 (OTA); purge runs #66 (OTA — per-id delete already works as a REST substitute
 per-item); automatic runner infra #75 (out of reach without lab hosts); timeslots #81 (OTA); similar
-defects #108 (OTA); alerts/follow-up flags #109/#110/#195–197 (OTA); favorites #117/#160 (PARTIAL,
-full CRUD/permissions to confirm); libraries #147/#153 (OTA); history/audit views #173/#176 (PARTIAL —
+defects #108 (OTA); alerts/follow-up flags #109/#110/#166/#195–197 (OTA — #166 aligned with its
+siblings 2026-08-13, `live-probe-log.md` Probe 12 §12.2); favorites #117/#160 (PARTIAL, full
+CRUD/permissions to confirm); libraries #147/#153 (OTA); Business View graphs #129 (OTA — added
+2026-08-13, Probe 12; `Customization.BusinessViews`/`GraphBuilder`, read-verified only); Scorecard/KPI
+#145 (OTA — added 2026-08-13, Probe 12; `Customization.KPITypes`/`KPIFactory`, read-verified only);
+Report template authoring/execution #132/#133 (OTA — added 2026-08-13, Probe 12;
+`Customization.ReportProjectTemplates`, read-verified only; authoring *new raw SQL* stays out of scope
+by hard constraint regardless); data-hiding per group per module #205 (OTA — added 2026-08-13,
+Probe 12; `Customization.Modules`/`Permissions`/`UsersGroups`, read-verified only, per-module accessor
+arity still open — `risks-and-open-questions.md` Q37); history/audit views #173/#176 (PARTIAL —
 UI must state the partial-coverage caveat, not imply full history); versions/VC UI #174/#177
 (PARTIAL — check-out/in write sequence unprobed until this phase). *(Step-parameters via OTA
 [`StepFactory`] removed from this list 2026-08-13 — retracted by `live-probe-log.md` Probe 9, which
-closed parameter definition and values over documented REST; see P2. ADR 0003's OTA justification now
-rests on BPT and similar-defects only.)*
+closed parameter definition and values over documented REST; see P2. Analyze/Analyze and Apply to
+Children [`matrix #18`] does NOT belong in this phase either — it needs only a one-time OTA capture of
+the RBT matrix, not a live sidecar dependency, and its client-side computation lands in P2; see P2's
+Key technical tasks. ADR 0003's OTA justification now rests on eight named surfaces, not two — see
+ADR 0003 Addendum 3 for the full current scope and the read-vs-write distinction.)*
 
-**Out of scope**: anything requiring a REST surface this project has confirmed absent (KPIs/scope-item
-computation, text search/global search, business-view graphs, report authoring — all `NO` verdicts in
-the matrix and not revisited here).
+⚠️ **Five of the newly-added rows above (#129, #132/#133, #145, #166/#109/#196/#197, #205) are
+confirmed read-reachable only** — Probe 12 was a read-only pass that verified the underlying COM
+objects exist and documented Add/Remove/Delete methods are present, but never called one. Write
+capability is `UNVERIFIED` for all of them (`risks-and-open-questions.md` Q39); a dedicated write probe
+against each is a prerequisite before this phase implements anything beyond a read-only view for them.
+
+**Out of scope**: anything requiring a REST surface this project has confirmed absent, with no OTA
+path either (text search/global search #107/#119/#170/#214, risk export to Word #20, Live Analysis
+#83/#134 — all `NO` verdicts reconfirmed 2026-08-13, Probes 11–12, `_raw/no-verdict-recheck.md`).
+**Business-view graphs, Scorecard/KPI, and report authoring are no longer out of scope** — corrected
+2026-08-13; they were reclassified `NO`→`OTA` by Probe 12 and are listed in-scope above.
 
 **Key technical tasks**:
 - OTA bridge sidecar (D3): small internal HTTP API for REST-unreachable operations only (BPT

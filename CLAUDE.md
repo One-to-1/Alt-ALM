@@ -55,6 +55,9 @@ scripts.
 | Path | Contents |
 |---|---|
 | `CLAUDE.md` | This file — durable project context. |
+| `bff/` | Spring Boot BFF (Java 25). Maven **wrapper** — use `./mvnw`, no local Maven needed. |
+| `spa/` | React + TypeScript SPA (Vite). |
+| `.github/workflows/` | CI: builds both halves + asserts `Secrets/` is never tracked. |
 | `docs/prompts/` | Kickoff prompts for agent sessions. |
 | `docs/research/` | Verified findings about the ALM API, UI, and data model. |
 | `docs/plan/` | Architecture, implementation plan, generator spec, test strategy, risks. |
@@ -161,9 +164,15 @@ every conflict**), [alm-api-reference.md](docs/research/alm-api-reference.md),
 
 - **BFF is required**, not optional — browsers cannot call `/qcbin` (CORS + cookie session + XSRF).
   The BFF is the single enforcement point for the write hazards above (ADR 0001).
-- **Stack: Java 25 (LTS) + Spring Boot 4.x** (BFF) and **React + TypeScript** (SPA); probe scripts
-  stay PowerShell (ADR 0002). Spring Framework 7 recommends JDK 25+ for production; Boot 3.x
-  predates JDK 25, so pin **Boot 4.0.x or later**. No `--enable-preview`.
+- **Stack: Java 25 (LTS) + Spring Boot 4.1.0** (BFF) and **React + TypeScript / Vite** (SPA); probe
+  scripts stay PowerShell (ADR 0002). Spring Framework 7 recommends JDK 25+ for production; Boot 3.x
+  predates JDK 25. No `--enable-preview`. **Boot 4 gotchas already hit** (all verified by building):
+  the starter is `spring-boot-starter-webmvc` (not `-web`), test deps are **per-starter**
+  (`spring-boot-starter-webmvc-test`) rather than one `spring-boot-starter-test`, **Jackson is not
+  transitive** — add `spring-boot-starter-json` — and it is **Jackson 3**, whose package is
+  **`tools.jackson.*`** (not `com.fasterxml.jackson.*`) with **unchecked** exceptions. Spring
+  Initializr's `/metadata/client` reports legacy ids like `4.1.0.RELEASE`; the real artifact version
+  is plain `4.1.0`.
 - **OTA/COM is isolated in an optional Windows-only sidecar** — mainline never touches COM; features
   degrade behind capability flags when the bridge is absent (ADR 0003). The bridge has a **verified
   reachable target** (probe 8), but probe 9 cut its scope from three gaps to **two** (BPT components,

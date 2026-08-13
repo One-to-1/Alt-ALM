@@ -1,7 +1,79 @@
 # ADR 0003 — OTA/COM fallback isolated in an optional Windows sidecar
 
-- Status: **Accepted — reachable target verified, but the scope has shrunk from three gaps to two**
-- Date: 2026-08-12 (addenda 2026-08-13 ×2)
+- Status: **Accepted — reachable target verified. Scope shrank from three REST gaps to two (Probe 9),
+  then grew to eight named surfaces via the 2026-08-13 NO-verdict recheck (Probes 11–12). The sidecar
+  is now load-bearing for the product's feature surface, though still not on the generator's critical
+  path — see Addendum 3.**
+- Date: 2026-08-12 (addenda 2026-08-13 ×3)
+
+## Addendum 3, 2026-08-13 — scope grows from two gaps to eight named surfaces; the sidecar is now load-bearing
+
+Probes 11 (REST, read-only) and 12 (OTA, read-only) re-checked every one of the 21 rows this project's
+feasibility matrix had scored `NO`, driven by a web-research pass (`_raw/no-verdict-recheck.md`). The
+result reverses Addendum 2's direction: instead of the sidecar's scope continuing to shrink, it grew
+substantially in the same session.
+
+**Six matrix rows move `NO` → `OTA`** (on top of the original 23 rows identified by the first OTA
+spike, Addendum 1):
+
+| Row(s) | Feature | OTA surface |
+|---|---|---|
+| #129 | Business View graphs | `Customization.BusinessViews` (37 views enumerable); `GraphBuilder.BuildGraph`/`BuildMultipleGraphs`/`CreateGraphDefinition`/`GetGraphResultFromString` |
+| #132/#133 | Report template authoring/execution | `Customization.ReportProjectTemplates` (79 templates, Add/Get/Remove); authoring *new raw SQL* reports stays out of scope by `CLAUDE.md`'s hard constraint regardless |
+| #145 | Scorecard/KPI | `Customization.KPITypes.KPITypes` (11 types readable by name); `AddKPIType`/`RemoveKPIType`; `KPIFactory` |
+| #166 (aligned with siblings #109/#196/#197) | Alerts row indicators / admin rules | `TDConnection.AlertManager.AlertList`/`GetFilterText`/`DeleteAlert`/`DeleteAlertsByFilter`/`CleanAllAlerts` |
+| #205 | Data-hiding per group per module | `Customization.Modules` (`IsVisibleForGroup`/`VisibleForGroups`, 11 modules); `Customization.Permissions` (`CanModifyField`/`CanAddItem`/`CanRemoveItem`/`TransitionRules`); `Customization.UsersGroups` |
+
+**One matrix row moves `NO` → `FULL*`, and does not add sidecar scope at runtime**: #18 Analyze /
+Analyze and Apply to Children. `TDConnection.Customization.RBT` exposes the entire Testing Policy
+matrix (`TestingPolicyMatrix`, `RiskCalculationMatrix`, `TestingLevelPercentage`,
+`TestingEffortForFCLevel`) — a documented lookup table, not a hidden algorithm. Because the `rbt-*`
+fields are already REST-writable, this needs only a **one-time OTA read per project** (admin config,
+changes rarely), not a live runtime dependency on the deployed sidecar — see `implementation-plan.md`
+P2 for where the client-side computation lands.
+
+⚠️ **Probe 12 was READ-ONLY — this addendum does not add write capability anywhere.** It confirmed the
+underlying COM objects/collections exist and are readable, and that documented Add/Remove/Delete
+methods are present on them — it never called one. **Write capability on all six newly-added rows
+remains `UNVERIFIED`** ("write test not yet run" — `risks-and-open-questions.md` Q39). Treat every row
+in the table above as read-only until a dedicated write probe runs.
+
+**The sidecar's full current scope**, combining Addenda 1/2's findings with this one — **eight named
+surfaces, not two**:
+
+1. BPT components (`ComponentFactory` — read **and write**-verified, Probe 8).
+2. Similar-defects (OTA-only per `resource-list.html`'s own disclaimer; not itself write-probed).
+3. Analyze/Testing Policy matrix read (`Customization.RBT` — one-time per-project capture; arithmetic
+   and writes are pure REST, so this is a one-time dependency, not a live one).
+4. Scorecard/KPI types (`Customization.KPITypes`, `KPIFactory` — read-verified only).
+5. Report templates (`Customization.ReportProjectTemplates` — read-verified only).
+6. Business View graphs (`Customization.BusinessViews`, `GraphBuilder` — read-verified only).
+7. Alerts (`AlertManager` — read-verified only; delete/clear methods present but untested).
+8. Data-hiding/permissions (`Customization.Modules`/`Permissions`/`UsersGroups` — read-verified only;
+   per-module accessor arity still open, `risks-and-open-questions.md` Q37).
+
+That is a **4x growth in named scope in one day**, via the same failure mode this project has now
+named three times: a confident `NO` verdict rested on an unexamined assumption about the shape of the
+question (here: that these features had no OTA surface at all, when the actual gap was that OTA's
+`Customization` sub-object tree was never enumerated for them) rather than a genuine absence.
+
+**Do not overstate this: the mainline REST product still works fully without the bridge.** Every
+`FULL`/`FULL*`/`PARTIAL` matrix row is unaffected, and — critically — **none of the eight surfaces
+above sit on the generator's critical path** (P4's creation-order DAG). What changed is the size of the
+*product feature* gap when the bridge is absent: eight named areas degrade to "unavailable" behind
+`otaBridgeAvailable`, not two. The decision to isolate OTA in an optional sidecar (§ Decision, unchanged)
+is reinforced, not undermined, by this growth — a larger surface behind one capability flag is exactly
+what the isolation strategy was designed to absorb without touching the mainline stack.
+
+**Consequence for scheduling: the deferred implementation-language decision (.NET vs Python +
+`pywin32`) is worth settling before P6, not during it.** ADR 0002's own comparison table scored .NET
+5/5 on COM interop and Python + `pywin32` 3/5 on the same criterion — a gap that mattered less when the
+sidecar covered two narrow, already-write-tested gaps, and now carries proportionally more weight
+covering eight surfaces, several of which still need their own write probes built on whatever language
+is chosen. This addendum does not make that call — it is still deferred pending the user supplying
+`tdconnect.exe`, per the original Decision — but it changes the recommendation from "revisit when
+convenient" to "resolve at P6 kickoff, before writing sidecar code": a language switch mid-build across
+eight surfaces costs more than across two.
 
 ## Addendum 2, 2026-08-13 — one of the three justifying gaps is CLOSED over REST
 
@@ -132,11 +204,17 @@ that criterion there, deliberately) — this ADR is the reason that tradeoff is 
 OTA/COM capability is confined to a small, optional **"OTA bridge" sidecar service** — a separate
 Windows-only process exposing a minimal internal HTTP API, reachable only from the BFF (never from the
 SPA or the public network — `architecture.md` §1 diagram: internal HTTP, localhost/LAN only). It covers
-**exactly the gaps above and nothing else** — originally three, now **two** after Probe 9:
+**exactly the gaps above and nothing else** — originally three, then **two** after Probe 9:
 
 - ~~test-parameter *definition*~~ — **removed; documented REST handles this** (Addendum 2)
 - BPT components (OTA `BusinessComponentFactory`-family objects)
 - similar-defects (OTA-only per `resource-list.html`'s own disclaimer)
+
+⚠️ **This list is superseded — see Addendum 3.** The 2026-08-13 NO-verdict recheck (Probes 11–12) grew
+this to **eight** named surfaces (five more OTA-read-reachable feature areas, plus #18's one-time
+matrix capture, which is scheduled outside the sidecar's runtime scope). "Exactly the gaps above and
+nothing else" still holds as a *principle* — the sidecar remains scoped to named, evidenced gaps, never
+a general escape hatch — but the enumerated list below is historical, not current.
 
 Implementation language is deferred until the user supplies `tdconnect.exe` (candidate languages named
 in D3: .NET, for the strongest COM interop per ADR 0002's own comparison table where .NET scored 5/5 on

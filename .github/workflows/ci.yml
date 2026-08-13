@@ -1,0 +1,93 @@
+name: CI
+
+# P0 gate: both halves must build and their tests must pass on every push/PR.
+# Deliberately does NOT touch a live ALM instance. Contract tests that write to the sandbox are
+# run manually (see docs/plan/test-strategy.md) because they need Secrets/ and a designated
+# sandbox project, neither of which belongs in CI.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  bff:
+    name: BFF (Java 25 / Spring Boot 4)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 25 (Temurin)
+        uses: actions/setup-java@v4
+        with:
+          java-version: '25'
+          distribution: 'temurin'
+          cache: maven
+
+      # ./mvnw, not mvn: the wrapper pins the Maven version so CI and local builds agree.
+      - name: Build and test
+        working-directory: bff
+        run: ./mvnw -B --no-transfer-progress verify
+
+      - name: Upload test reports on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bff-surefire-reports
+          path: bff/target/surefire-reports/
+          retention-days: 7
+
+  spa:
+    name: SPA (React + TypeScript)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: spa/package-lock.json
+
+      - name: Install
+        working-directory: spa
+        run: npm ci
+
+      - name: Typecheck and build
+        working-directory: spa
+        run: npm run build
+
+  secret-scan:
+    name: No credentials committed
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # CLAUDE.md hard constraint: Secrets/ is git-ignored and must never be committed.
+      # This fails the build if it ever is, rather than relying on gitignore alone.
+      - name: Assert Secrets/ is not tracked
+        run: |
+          if git ls-files --error-unmatch Secrets/ 2>/dev/null; then
+            echo "::error::Secrets/ is tracked by git. It must never be committed."
+            exit 1
+          fi
+          echo "Secrets/ is not tracked - OK"
+
+      - name: Assert no credential-shaped files are tracked
+        run: |
+          matches=$(git ls-files | grep -Ei '(^|/)(ALM_API_credentials|credentials|secrets)\.json$' || true)
+          if [ -n "$matches" ]; then
+            echo "::error::credential-shaped files are tracked:"
+            echo "$matches"
+            exit 1
+          fi
+          echo "no credential-shaped files tracked - OK"

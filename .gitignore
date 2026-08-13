@@ -20,6 +20,12 @@ venv/
 __pycache__/
 *.py[cod]
 
+# Java / Maven build output. The Maven wrapper (mvnw, mvnw.cmd, .mvn/wrapper/) IS committed
+# on purpose - it is what lets the build run without a local Maven install.
+target/
+*.class
+!.mvn/wrapper/maven-wrapper.properties
+
 # Tooling caches
 .cache/
 coverage/
