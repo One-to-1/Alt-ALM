@@ -575,15 +575,74 @@ measures the server's per-key session cap, not any per-IP or per-machine binding
 suggests ALM binds a session to a client IP, but multi-machine behaviour is not directly evidenced.
 Experiment that would settle it: run the same probe simultaneously from two hosts on different IPs.
 
-**Site Admin session visibility is not reachable on this deployment**: `v2/sa/api/site-params` → 403
-(despite the key holding Customer Admin), `v2/sa/api/connections` and `v2/sa/api/site-sessions` →
-500, `rest/site-session/connections` → 404. So no server-side cap could be read from configuration
-to corroborate the empirical result — the 50-session observation stands on its own.
+~~**Site Admin session visibility is not reachable on this deployment**~~ ⚠️ **RETRACTED within the
+hour by Probe 11 — this was wrong, and wrong the same way as the other two retractions: I guessed
+three endpoint paths, none of which exist, and concluded the capability was absent instead of
+checking the Swagger inventory we already had on disk.** The real path is
+**`GET /qcbin/v2/sa/api/site-connections` → HTTP 200**. What is genuinely true: `v2/sa/api/site-params`
+→ 403 despite Customer Admin, and the guessed paths `v2/sa/api/connections` / `v2/sa/api/site-sessions`
+→ 500, `rest/site-session/connections` → 404. No configured session *cap* was found, so the
+50-session observation still stands on its own — but server-side session *visibility* exists.
 
 **Consequence for ADR 0004**: the single-service-account pooled-session design is safe. Pool sizing
 is bounded by politeness and `REST_SESSION_MAX_IDLE_TIME` (60 min default) keepalive cost, not by a
 licence or session cap. Multiple Alt-ALM instances, multiple developer machines, and CI can all use
 the same key concurrently.
+
+## Probe 11 — re-checking the 21 `NO` verdicts, 2026-08-13 (`scripts/probe/probe-no-recheck.ps1`)
+
+Driven by `_raw/no-verdict-recheck.md` (web-research pass over every `NO` row). **READ-ONLY — no
+records created or modified.** Results below are the live half; the desk-research half is in that
+report.
+
+### 11.1 ⚠️ Server-side session visibility EXISTS — retracts Probe 10's claim
+
+**`GET /qcbin/v2/sa/api/site-connections` → HTTP 200.** Returns `total-results` plus a
+`site-connection[]` array with `login-session-id`, `project-session-id`, `domain`, `project`, `host`,
+`username`, `last-ping`, `last-action`, `login-time`, `client-type`, `session-data`.
+
+Probe 10 declared this unreachable after three *guessed* paths returned 500/404. The correct path was
+in `tests/fixtures/api-doc-sa-v2-paths.txt` — already on disk — the whole time. **Third instance of
+the same failure mode in three days: concluding absence from failed guesses instead of consulting the
+inventory.** `v2/sa/api/site-params` → 403 is still genuinely true.
+
+Useful properties: `client-type` distinguishes clients and **shows `OTAClient` for COM sessions**, so
+the OTA bridge is observable in production. Sessions from the whole tenant are visible (the key holds
+Customer Admin).
+
+⚠️ **PRIVACY**: this endpoint returns **third-party identities** — usernames, client hostnames and
+project names belonging to other projects in the same tenant. No credential-derived mask can
+anticipate those values, so `probe-no-recheck.ps1` masks them **structurally by JSON key**
+(`username`, `host`, `project`, `domain`, `session-data`). Any Alt-ALM feature or probe touching
+this endpoint must do the same. Nothing was persisted to any file.
+
+### 11.2 Data-hiding / permissions (matrix #205) — upgrade from `NO`
+
+All 200: `v2/sa/api/permissions` (role + permission-name list), `v2/sa/api/permissions/metadata`
+(category → sub-category → permission tree with display names), `v2/sa/api/roles`, and
+`v2/sa/api/domains/{d}/projects/{p}/groups` (returned the five standard groups: TDAdmin, Project
+Manager, QATester, Developer, Viewer). Group/role/permission structure is therefore REST-readable.
+**Still `UNVERIFIED`**: whether per-group, per-module *data-hiding filter rules* specifically are
+exposed — the SA permission tree is site-level, not the project data-hiding grid.
+
+### 11.3 Testing Policy matrix (matrix #18, "Analyze") — partially located
+
+`customization` root → 404, `customization/riskbasedqualitymanagement` → 404,
+`customization/testing-policy` → 404, and the offline resource-list contains **zero** paths matching
+`risk`, `rbt`, `testing-polic` or `assessment`. **But** `customization/entities/requirement/types`
+→ 200 exposes a per-type **`risk-analysis-type`** field (values `0`/`2` observed). So RBQM
+configuration is partly REST-visible, while the Testing Policy lookup grid itself is not.
+Web research established Analyze is a documented table lookup, not a hidden algorithm — so the
+remaining task is locating the grid (OTA `TDConnection.Customization`, or a one-time manual capture,
+since it rarely changes) rather than reverse-engineering a formula.
+
+`customization/extensions` → 200: Sprinter, Analysis Extension, Quality Center (all v20.00).
+
+### 11.4 Per-attachment history (matrix #186) — inconclusive, not negative
+
+The sandbox contains no attachment to test against, so `attachments/{id}/audits` was never exercised.
+The offline resource-list has no `attachments/.../audits` path, but that inventory has known false
+negatives. Re-run after P2 creates an attachment.
 
 ## Fixtures captured (redacted; under `tests/fixtures/`)
 
