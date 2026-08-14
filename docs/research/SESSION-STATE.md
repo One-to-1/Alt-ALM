@@ -373,18 +373,40 @@ folder**: it locks `bff/target` and breaks `mvnw clean`. Run without `clean`.
    live auth + keepalive (probe 13), the metadata cache (verified live: **15 entities, 432 fields,
    all 8 types**, independently reproducing the original probe's count), the fixture suite,
    write-safety unit tests, and `@ConfigurationProperties` bean wiring.
-2. **START HERE — P1** (read-only Alt-ALM) per
+2. ~~P1's phase-start deferred probe~~ ✅ **DONE 2026-08-14 (probe 15)** — see §15.1–15.4 in the
+   probe log. It settled the `alm-web` dialect, **corrected a wrong tree-root rule that was written
+   into the plan, the data model and three skills**, and surfaced a sequencing problem (Q45).
+3. **START HERE — P1 implementation** (read-only Alt-ALM) per
    [../plan/implementation-plan.md](../plan/implementation-plan.md). This is the first phase with
    **visible output**: metadata-driven grids for requirements/tests/defects, the Core query builder,
    tree navigation with runtime root discovery.
+
    **Suggested shape** (raised with the user, not yet decided): take a **thin vertical slice first**
    — one entity, one grid, live data end-to-end through BFF → SPA — before building out the query
    builder, tree nav, and the other two entities. It de-risks the BFF↔SPA seam early and puts a real
-   screen up far sooner, since nothing has been visible for the whole of P0.
-   Two known traps waiting in P1: the `page-size` **2000 silent cap** (the grid must detect it and
-   surface "more results than shown", never trust `TotalResults` against a capped page), and the
-   Core query grammar's **undocumented null-test/escaping rules** — flag as a risk, do not silently
-   "handle" them.
+   screen up far sooner, since nothing has been visible for the whole of P0. **Probe 15 sharpens
+   this**: the slice should be **requirements**, because it is the only entity in the sandbox with
+   any rows at all.
+
+   ⚠️ **Decide this before starting (Q45)**: the sandbox has **0 tests and 0 defects**, so P1's
+   stated exit criterion — grids rendering live for requirements/tests/defects — cannot be met as
+   written. Either pull a minimal seeding step forward from P4, or consciously close P1 on fixtures
+   plus a requirements-only live read and re-validate after the generator exists.
+
+   Traps waiting in P1, now with probe-15 detail:
+   - **Tree roots**: use `{parent-id[-1]}` then fall back to `{parent-id[0]}`. The old
+     `{parent-id[0]}`-only rule returns **`Recycle Bin`** as the `test-set-folders` root and looks
+     completely successful doing it (R16).
+   - **Paging**: `page-size=max` exists; out-of-range is a **404**; `page-size=0` reports
+     `TotalResults=0` on a non-empty collection. Whether over-cap silently clamps is still
+     UNVERIFIED — the grid must still surface "more results than shown" rather than trusting
+     `TotalResults`.
+   - **Group-by is server-side after all** — plain JSON carries `size` and `expression`; the
+     client-side aggregation fallback is dropped.
+   - **Do not reach for `schema=alm-web`** even though it returns much nicer flat entities — it is
+     undocumented on collection reads and drops `children-count` (R15).
+   - The Core query grammar's **undocumented null-test/escaping rules** — flag as a risk, do not
+     silently "handle" them.
 
 ### Deployment + credentials — asked and answered 2026-08-13, decision: **no change**
 
@@ -427,3 +449,15 @@ SA session visibility absent (three guessed paths); and six `NO` rows that simpl
 unexamined assumption about the shape of the question.** Before recording an impossibility: grep the
 per-instance `resource-list` and the on-disk Swagger fixtures for sibling collections, confirm every
 id in a body means what you assume, and check whether an error is about *arity* rather than support.
+
+**Probe 15 (2026-08-14) adds the mirror-image failure — a confident *positive*.** The tree-root rule
+`?query={parent-id[0]}` was verified on two trees, written down as general, and copied into the
+implementation plan, the data model and three skills. It is wrong for four of six trees, and for
+`test-set-folders` it returns **`Recycle Bin`** — HTTP 200, exactly one row, structurally identical
+to a correct answer. Nothing would have looked broken.
+
+So the lesson generalizes past impossibility claims: **a rule verified on a subset is a rule about
+that subset.** Two specific habits fall out. Verify a rule against *every* instance it claims to
+cover, not the first two that work — the marginal probe is cheap and this one was six queries. And
+distrust discovery queries that can return a plausible wrong answer as loudly as ones that error:
+`{parent-id[0]}` failing loudly on three trees is what made it *look* trustworthy on the fourth.

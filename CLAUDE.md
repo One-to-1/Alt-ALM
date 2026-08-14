@@ -116,8 +116,24 @@ finding in the project surfaced by product code under test rather than a hand-wr
   is what lets CI start it with no credentials. Actuator exposes **health only** — `/env` and
   `/configprops` would render the API secret.
 
-**Next: P1** (read-only Alt-ALM — the first real screens). See
-[docs/plan/implementation-plan.md](docs/plan/implementation-plan.md).
+🟡 **P1 STARTED 2026-08-14** — its phase-start deferred probe (probe 15) is done and changed the plan:
+
+- ⚠️ **Tree-root discovery was wrong everywhere it was written down.** `{parent-id[0]}` resolves only
+  2 of 6 trees, and for `test-set-folders` it silently returns **`Recycle Bin`** — HTTP 200, one row,
+  indistinguishable from correct. **Correct rule: `{parent-id[-1]}` first, fall back to
+  `{parent-id[0]}`.** All six roots now verified, closing the release-folder root (id 1 "Releases").
+  A *discovery* query is not automatically safer than a hardcoded id — it can be confidently wrong.
+- **`alm-web` dialect settled** (Q2/R11 closed). Group-by goes **server-side on plain JSON** —
+  `groups/{field}` already returns `size` and `expression`, so P1's client-side aggregation fallback
+  is dropped. The dialect *does* return flat, envelope-free entities on ordinary collection reads,
+  but that op doesn't advertise it → **undocumented, so R15, not an implementation.**
+- **Paging**: 2000 is server-stated, **`page-size=max` exists**, out-of-range is **404 not 400**, and
+  ⚠️ `page-size=0` reports `TotalResults=0` on a non-empty collection.
+- ⚠️ **The sandbox is effectively empty** — 0 tests, 0 defects, 0 runs; 1 requirement (the root
+  itself). P1 can be *built* but not *validated*: its exit criterion names grids for
+  requirements/tests/defects. The generator (P4) is a prerequisite for validating P1 (**Q45**).
+
+See [docs/plan/implementation-plan.md](docs/plan/implementation-plan.md) for P1's scope.
 
 ✅ **Toolchain ready**: Node 24.13.1, git 2.54, **JDK 25.0.4 Temurin** (machine-level `JAVA_HOME`
 set by its installer — do NOT add user-level Java env vars, they shadow it). No local Maven/Gradle
@@ -126,7 +142,7 @@ needed; the wrapper handles it. ⚠️ The repo sits in a **OneDrive-synced fold
 `spa/node_modules` from sync.
 
 Key artifacts: [live-probe-log.md](docs/research/live-probe-log.md) (empirical ground truth — **wins
-every conflict**; probes 1–12), [alm-api-reference.md](docs/research/alm-api-reference.md),
+every conflict**; probes 1–15), [alm-api-reference.md](docs/research/alm-api-reference.md),
 [alm-data-model.md](docs/research/alm-data-model.md),
 [feasibility-matrix.md](docs/research/feasibility-matrix.md) (218 features scored),
 [architecture.md](docs/plan/architecture.md) + `docs/adr/0001–0005`,

@@ -25,7 +25,7 @@ fetched at runtime and cached per project.
 | Field lists / form layouts | `customization/entities/{e}/fields` via BFF metadata endpoint |
 | Dropdown values | the field's own `List-Id` → list values |
 | User pickers | live project user list |
-| Tree root IDs | runtime discovery `?query={parent-id[0]}` |
+| Tree root IDs | runtime discovery — `?query={parent-id[-1]}`, falling back to `{parent-id[0]}` ⚠️ |
 | Requirement types / test subtypes | `customization/entities/{e}/types` |
 
 The default root table (requirements `0`, test-folders `2` "Subject", test-set-folders `0` "Root") is a
@@ -73,8 +73,12 @@ same registry with no separate code path.
 
 - **Grid columns** come from metadata (`Visible`, `Label`), with user-configurable column sets
   persisted per user+entity in Alt-ALM's own store — not in ALM.
-- **Paging**: server-side. `page-size` is silently capped at 2000 by ALM; `start-index` is **1-based**.
-  Always show total from `TotalResults`. Prefer narrowing the query over deep offsets.
+- **Paging**: server-side. `page-size` max is **2000** (`page-size=max` requests the largest allowed
+  page); `start-index` is **1-based**. Show the total from `TotalResults` — but ⚠️ it reflects the
+  *page*, not the collection, and reads `0` when `page-size=0`. Prefer narrowing over deep offsets.
+- **Group-by is server-side**: `GET {collection}/groups/{field}` on plain JSON returns `size` (count)
+  and `expression` (the filter that drills into that group) per group — no client-side aggregation
+  needed, and no need for the `alm-web` media type.
 - **Trees**: build breadcrumbs client-side by walking `parent-id` — ALM does **not** return the
   desktop client's "Subject\..." path. Lazy-load children; `no-of-sons` tells you whether to show an
   expander without fetching.

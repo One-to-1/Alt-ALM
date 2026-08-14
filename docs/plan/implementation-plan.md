@@ -95,12 +95,17 @@ execution flow, generator.
   Core (`api-ref §4.4`) — grid must detect and surface a "more results than shown" state rather than
   trusting `TotalResults` against a capped page.
 - Tree navigation: client-side walk over `parent-id` per entity (no server-side breadcrumb/path
-  field — `matrix #27`); runtime root discovery via `?query={parent-id[0]}`, never hardcoded roots
-  (D5, `data-model §2.1`).
+  field — `matrix #27`); runtime root discovery, never hardcoded roots (D5, `data-model §2.1`).
+  ⚠️ **Use the corrected rule: `{parent-id[-1]}` first, fall back to `{parent-id[0]}`.** The rule
+  this plan previously specified (`{parent-id[0]}` alone) works for only 2 of the 6 trees and
+  **silently returns `Recycle Bin` as the root of `test-set-folders`** — HTTP 200, one row, looks
+  correct (probe 15 §15.1, R16). All six roots are now verified, including release-folders.
 - Metadata-driven grid/form renderer registry keyed off the 8-type system (D5, `api-ref §8`).
-- Group-by view stub: `groups/{field}` (`alm-web` dialect) body shape is UNVERIFIED — client-side
-  aggregation fallback first (`matrix #157/#164`); wire server-side only after the deferred probe
-  below settles it.
+- Group-by view: **the client-side aggregation fallback is no longer required** (probe 15 §15.2).
+  Plain `application/json` on `groups/{field}` already returns `size` (the group count) and
+  `expression` (the filter that drills into the group), which is everything the Group tab needs — so
+  implement it server-side against plain JSON (`matrix #157/#164`). Do **not** use
+  `schema=alm-web` for it: the dialect adds nothing here, and adopting it elsewhere is R15.
 
 **Dependencies**: P0 (session manager, metadata service).
 
@@ -112,9 +117,26 @@ fixtures and a live smoke read; page-size-cap behavior has a regression test.
 prefix/cleanup/orphan-sweep N/A); verify query grammar returns match expected row sets for known
 sandbox content.
 
-**Deferred probe executed at phase start**: `alm-web` dialect body shape (`live-probe-log.md` §Open
-items #10) — request `groups/{field}` with `Accept: application/json;schema=alm-web` and diff against
-plain JSON before committing to a server-side group-by implementation.
+**Deferred probe — ✅ DONE 2026-08-14 (probe 15, `scripts/probe/probe-grids{,-2}.ps1`).** Three
+results, two of which changed this phase's plan:
+
+1. **`alm-web` dialect** — settled (Q2/R11 closed). Group-by goes server-side on plain JSON; the
+   dialect's flat-entity body on ordinary collection reads is tempting but undocumented there → R15,
+   not adopted.
+2. ⚠️ **Root discovery was wrong in this plan** — `{parent-id[0]}` resolves only 2 of 6 trees and
+   silently returns `Recycle Bin` for `test-set-folders`. Corrected rule above; R16. Release-folder
+   root also now verified (id=1 `Releases`), closing a long-standing UNVERIFIED.
+3. **Paging** — the 2,000 bound is server-stated, **`page-size=max` exists** (previously unknown),
+   out-of-range returns **404 not 400**, and `page-size=0` reports `TotalResults=0` on a non-empty
+   collection. Whether over-cap is *silently clamped* is still UNVERIFIED — untestable until there
+   is data (Q45).
+
+⚠️ **Phase-validation caveat (Q45): the sandbox holds 0 tests and 0 defects.** This phase's exit
+criterion says grids render live for requirements/tests/defects; two of those three cannot be
+meaningfully demonstrated. P1 can be **built** without the generator but cannot be fully
+**validated** without it. Either pull a minimal seeding step forward or close P1 on fixtures plus a
+thin live smoke read and re-validate after P4 — an explicit decision, not a detail to discover at the
+phase gate.
 
 ---
 
@@ -414,7 +436,7 @@ the phase that needs the answer):
 
 | Deferred probe | Executed in |
 |---|---|
-| `alm-web` dialect body shape | P1 (grouping/aggregation views) |
+| ~~`alm-web` dialect body shape~~ ✅ **DONE (probe 15)** | ~~P1~~ closed — Q2/R11 closed, R15 opened |
 | Comments-append banner convention | P2 (write core, memo-field writes) |
 | Release-folder root id | P3 (releases/cycles/milestones) |
 | Test-set → release/cycle assignment field (`matrix #61`) | P3 |

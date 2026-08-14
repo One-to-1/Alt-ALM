@@ -829,6 +829,122 @@ only the missing response header reveals it.
 Redaction = host/domain/project/key strings replaced with `REDACTED` before write. User data and
 entity data are not captured.
 
+---
+
+## Probe 15 — P1 phase-start: grids, tree roots, paging. 2026-08-14 (`scripts/probe/probe-grids.ps1` + `probe-grids-2.ps1`)
+
+Read-only. The three questions P1 (read-only Alt-ALM) could not be designed around: the `alm-web`
+dialect body shape (open item #10, R11, Q2), tree-root discovery including the UNVERIFIED
+release-folder root (open item #10), and whether the page-size cap is silent.
+
+Two of the three came back differently than the plan assumed, and one of those was a planned
+implementation that would have shipped a visible bug.
+
+### 15.1 ⚠️ `{parent-id[0]}` is NOT the universal root-discovery rule — and it silently returns the WRONG node
+
+`implementation-plan.md` P1 and `alm-data-model.md` §2.1 both specify runtime root discovery via
+`?query={parent-id[0]}`. That rule was generalized from the two trees it was tested on. Probed across
+all six trees:
+
+| Tree | `{parent-id[0]}` returns | `{parent-id[-1]}` returns | The **actual** root |
+|---|---|---|---|
+| `requirements` | *(none)* | id=0 `Requirements` | id=0, parent `-1` |
+| `test-folders` | id=2 `Subject` ✅ | *(none)* | id=2, parent `0` |
+| `test-set-folders` | id=1 **`Recycle Bin`** ❌ | id=0 `Root` | id=0, parent `-1` |
+| `release-folders` | *(none)* | id=1 `Releases` | id=1, parent `-1` |
+| `bpm-folders` | *(none)* | id=1 `Models` | id=1, parent `-1` |
+| `resource-folders` | id=1 `Resources` ✅ | *(none)* | id=1, parent `0` |
+
+**The rule works for 2 of 6 trees.** For three it returns nothing, which is a loud failure. For
+`test-set-folders` it returns **`Recycle Bin`** — a real node, one row, HTTP 200, indistinguishable
+from success. Alt-ALM's Test Lab tree would have rendered the recycle bin as the root of the tree and
+nothing would have looked broken.
+
+**Verified discovery rule — query `{parent-id[-1]}` first, fall back to `{parent-id[0]}`.** That
+resolves the correct root for all six trees. Root *parents* are not consistent across trees (`-1` for
+four, `0` for two) and root *ids* are not consistent either (`0`, `1`, `2`), which is exactly why
+ADR 0005 forbids hardcoding them — but the previously-documented discovery query was not a safe
+substitute for hardcoding, because it fails silently on one tree.
+
+**This also closes the release-folder root question** (open item #10): root is id=1 `Releases`,
+parent `-1` — and confirms that every past release probe using `parent-id=1` was accidentally
+correct, having skipped the discovery query that would have returned nothing.
+
+### 15.2 The `alm-web` dialect is real, materially different, and broader than advertised
+
+**Q2/R11 answered.** `Accept: application/json;schema=alm-web` returns a genuinely different body,
+not a cosmetic variant.
+
+On `groups/{groupsFields}` the difference is a **rename and an unwrap** — same information:
+
+```
+plain  : {"subLevel":[{"subLevel":[],"Expression":"1","ReferenceValue":"Folder","Name":"type-id","Value":"1","size":1}]}
+alm-web: [{"name":"type-id","value":"1","expression":"1","referenceValue":"Folder","size":1,"subGroups":[]}]
+```
+
+Both carry `size` (the group count) and `expression` (the filter expression that drills into the
+group), so **server-side group-by is viable on either media type** — P1's client-side aggregation
+fallback is no longer forced. The plain form is sufficient; the dialect is not required for grouping.
+
+**The significant result is on a plain collection read**, which is not one of the 42 operations that
+advertise the dialect:
+
+```
+plain  : {"entities":[{"Fields":[{"Name":"name","values":[{"value":"Requirements"}]},
+                                 {"Name":"id","values":[{"value":"0"}]}],
+                       "Type":"requirement","ErrorMessage":"","EntityStatus":"Success",
+                       "children-count":0}],"TotalResults":1}
+alm-web: {"results":[{"entity":{"$entityType":"requirement","name":"Requirements","id":"0"}}],
+          "total-count":1}
+```
+
+The dialect returns **flat, denormalized entities** — no `Fields`/`values` envelope at all. That is
+the single most tedious piece of ALM's wire format, and this collapses it.
+
+⚠️ **Do not adopt it in the mainline yet, for two reasons.** First, `children-count` is present in the
+plain body and **absent** from the alm-web body — the dialect is not a strict superset, and a tree UI
+needs `children-count`. Second and decisively: the collection GET does **not** advertise this media
+type in the resource-list inventory, so relying on it here is **undocumented behaviour**, which
+`CLAUDE.md` routes to the risk register rather than to an implementation. Recorded as **R15**.
+`api-ref` §3.5's "42 of 1,111 operations" now reads as *what is advertised*, not *what responds*.
+
+### 15.3 Paging — the 2,000 bound is real, `max` exists, and `page-size=0` is a trap
+
+`page-size=-1` → **HTTP 404** `qccore.invalid-query-value`:
+
+> *"Page size values can be either integer between 0 and 2,000 or `"max"` to get the maximum
+> available page size."*
+
+Three things fall out. The 2,000 bound is **server-enforced and stated by the server**, not merely a
+`REST_API_MAX_PAGE_SIZE` site parameter we inferred. A **`page-size=max` keyword exists** — untested
+in any previous probe, accepted here (HTTP 200) — which is a cleaner way to request a full page than
+guessing 2000. And an out-of-range value returns **404**, not 400, so error handling must not key off
+the status code (consistent with §3.4's "always parse `Id`/`Title`").
+
+⚠️ **`page-size=0` returns `HTTP 200` with `TotalResults=0` on a collection that has 2 rows.** The
+total is not a property of the collection — it reflects the page. A grid that reads `TotalResults` to
+decide "this collection is empty" will be wrong whenever page-size is 0.
+
+**Whether an over-cap `page-size` is silently clamped remains `UNVERIFIED`** — `2001`, `5000` and
+`max` were all accepted with HTTP 200, but the sandbox's largest collection has **2 rows**, so no
+value could be distinguished from any other. The experiment that would settle it: generate >2,000
+rows in one collection, request `page-size=5000`, and check whether the returned entity count is
+2,000 (silent clamp) or 5,000. **This is blocked on the record generator**, not on API access.
+
+### 15.4 ⚠️ The sandbox is effectively empty — this blocks P1's exit criteria
+
+Row counts observed: `requirements` **1** (the root node itself), `test-sets` **1**, `test-folders`
+**2** (Subject + Recycle Bin), and **0** each for `tests`, `defects`, `test-instances`, `runs`,
+`design-steps`, `releases`, `release-cycles`.
+
+P1's exit criterion is *"grids render live for requirements/tests/defects"*. Against 0 tests and 0
+defects a grid cannot be meaningfully demonstrated, paging cannot be exercised, and §15.3's clamp
+question cannot be answered. This is a **sequencing finding, not an API finding**: the record
+generator (P4) is a prerequisite for *validating* P1, even though P1 does not depend on it to be
+built. Raised as **Q45**.
+
+---
+
 ## Open items for the next probe round
 
 1. ~~Map `SiteVersion 20.0 (20.00.0.143)` → marketing version~~ **DONE: ALM 26.1** (probe 3).
@@ -847,6 +963,10 @@ entity data are not captured.
 8. ~~`test-executions` semantics~~ **DONE: dispatch, not ingest** (probe 5).
 9. ~~Offline fixture mining~~ **DONE** (probe 3 mining reports).
 10. **Deferred to post-planning**: mail body shape (capture stock-UI traffic); step-parameters via
-    OTA (needs tdconnect.exe); release-folder root id; `alm-web` dialect body shape; comments
-    append banner convention; audit coverage isolation (plain-field PUT vs memo PUT); versions
-    check-in/check-out write probe; `IMAGE_COMPRESSION_LEVEL` round-trip.
+    OTA (needs tdconnect.exe); ~~release-folder root id~~ **DONE: id=1 `Releases`, parent `-1`**
+    (probe 15); ~~`alm-web` dialect body shape~~ **DONE: flat/denormalized, and it responds on ops
+    that do not advertise it — see R14** (probe 15); comments append banner convention; audit
+    coverage isolation (plain-field PUT vs memo PUT); versions check-in/check-out write probe;
+    `IMAGE_COMPRESSION_LEVEL` round-trip.
+11. **NEW (probe 15), blocked on the record generator**: is an over-cap `page-size` silently clamped
+    to 2,000? Untestable while the sandbox's largest collection holds 2 rows. See Q45.

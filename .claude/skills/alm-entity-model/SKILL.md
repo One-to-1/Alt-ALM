@@ -16,13 +16,18 @@ runtime:
 - Subtype/type enumerations: `GET customization/entities/{entity}/types`
 - List values: `GET customization/used-lists/{list-id}/items` (NOT the unrelated `list-items`
   project-entity collection — see §6 trap table)
-- Tree roots: `GET {collection}?query={parent-id[0]}`
+- ⚠️ **Tree roots: `GET {collection}?query={parent-id[-1]}`, and only if that returns nothing, retry
+  with `{parent-id[0]}`.** Probe 15 verified this against all six trees. **`{parent-id[0]}` alone —
+  which this skill previously taught — resolves only 2 of 6, and for `test-set-folders` it returns
+  `Recycle Bin` (HTTP 200, one row, looks entirely correct).** A tree UI built on it shows users the
+  recycle bin as the root.
 
-**Sanity-check-only defaults** (user-supplied, probe-confirmed on our sandbox, but discover fresh
-per target project): requirements root = id `0` "Requirements" `[probe]`; test-folders root = id
-`2` "Subject" `[probe]`; test-set-folders root = id `0` "Root" `[probe]`. **Release-folder root is
-UNVERIFIED** — every probed release create used `parent-id=1` without a prior `{parent-id[0]}`
-discovery query; do not assume `1` or any other value is the root [data-model §2.1, §7].
+**Sanity-check-only defaults** (probe-confirmed on our sandbox, but discover fresh per target
+project — ids are project-specific): requirements `0` "Requirements" (parent `-1`); test-folders `2`
+"Subject" (parent `0`); test-set-folders `0` "Root" (parent `-1`); release-folders `1` "Releases"
+(parent `-1`, verified probe 15 — previously UNVERIFIED); bpm-folders `1` "Models" (parent `-1`);
+resource-folders `1` "Resources" (parent `0`). Note neither the ids nor the root parent-ids are
+consistent across trees [data-model §2.1, live-probe-log Probe 15 §15.1].
 
 ## 2. Entity catalog — 62 collections
 
@@ -99,7 +104,7 @@ Branches join only at `requirement-coverage` (needs a requirement AND a test) an
 test tree are otherwise **independent branches**, not one linear chain [gen-spec §4].
 
 ```
-release-folder (root: UNVERIFIED — discover via {parent-id[0]}, never hardcode)
+release-folder (root: id 1 "Releases", parent -1 [probe15] — still discover at runtime, never hardcode)
   └─ release            name, start-date, end-date, parent-id            VERIFIED
        ├─ release-cycle name, start-date, end-date, parent-id            VERIFIED
        │                (dates MUST fall inside parent release's window — server-enforced 500)
@@ -216,7 +221,7 @@ attachment (any entity id; octet-stream+Slug always works; multipart ref-subtype
 | `target-rel`/`target-rcyc` write path | UNVERIFIED — unclear whether the requirement's own multivalue field or the separate `requirement-target-releases`/`-cycles` collections are the real join surface. |
 | Direct `POST runs` | Definitively FAILS (8 attempts, 2 distinct 500 modes) — not open, a closed door. Fast_Run synthesis (`PUT test-instances/{id}.status`) is the only path. |
 | `defect-links` endpoint types | Only `defect`/`requirement` confirmed for `second-endpoint-type`; test/run/test-instance UNVERIFIED. |
-| release-folder root | UNVERIFIED — discover via `{parent-id[0]}` before any hardcoded create. |
+| Tree-root discovery | ⚠️ `{parent-id[0]}` alone is WRONG — silently returns `Recycle Bin` for `test-set-folders`. Query `{parent-id[-1]}` first, fall back to `{parent-id[0]}` [probe15]. |
 | `mail` | Body shape genuinely undocumented — 3 JSON + 1 XML shapes all failed. |
 
 ## See also

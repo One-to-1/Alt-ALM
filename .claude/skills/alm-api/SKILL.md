@@ -101,9 +101,14 @@ parens nest.
   filterable fields via `.../customization/entities/{entity}/fields?can-filter=true`.
 - `order-by={field[,field…]}` — collections only, no-op on single GET. Default sort = id ascending.
   Reference fields sort by referenced value, not id. `[…,CI]` = case-insensitive (ALM 17.0+).
-- **Paging**: `page-size` (default 100, max 2000 **silently capped**), `start-index` (**1-based**).
-  Deprecated API uses `limit`/`offset` (0-based) instead and **throws** on overflow instead of capping.
-  `TotalResults` in the collection envelope gives the total count.
+- **Paging**: `page-size` (default 100, max **2000**), `start-index` (**1-based**). Deprecated API
+  uses `limit`/`offset` (0-based) instead and **throws** on overflow.
+  - **`page-size=max` is a supported keyword** — use it instead of guessing `2000` [probe15].
+  - An out-of-range value returns **HTTP 404** `qccore.invalid-query-value` (not 400) whose message
+    states the bound — parse `Id`/`Title`, never the status code.
+  - ⚠️ **`page-size=0` returns 200 with `TotalResults=0` on a non-empty collection.** `TotalResults`
+    describes the *page*, not the collection — never read it as "this collection is empty".
+  - Whether an over-cap size is *silently clamped* is `UNVERIFIED` (untestable on a 2-row sandbox).
 
 ## 5. Bulk operations
 
@@ -133,7 +138,9 @@ modes each — always parse `Id`/`Title`, never infer cause from status code alo
 
 **Requirement create** — root `parent-id=0` ("Requirements"), `type-id` required (8 types: 0 Undefined,
 1 Folder, 2 Group, 3 Functional, 4 Business, 5 Testing, 6 Performance, 66 Business Model). **Always
-discover the root at runtime** (`?query={parent-id[0]}`) — id values are project-specific.
+discover the root at runtime** — id values are project-specific. ⚠️ Use `?query={parent-id[-1]}`
+first and fall back to `{parent-id[0]}`; `{parent-id[0]}` alone is wrong for 4 of 6 trees and
+silently returns `Recycle Bin` for `test-set-folders` [probe15].
 
 ```json
 {"Fields":[{"Name":"name","values":[{"value":"<name>"}]},

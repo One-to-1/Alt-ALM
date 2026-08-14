@@ -79,12 +79,30 @@ metadata layer.
 
 ### 2.1 Root/parent-id defaults — VERIFIED and one correction
 
-| Tree | Root id | Status |
-|---|---|---|
-| Requirements | **`0`** ("Requirements") | `[probe]` VERIFIED round 2, clean state (`requirements/0` → 200, `name:"Requirements"`; `POST requirements parent-id=0` → 201, `father-name` returned `"Requirements"`) — round 1's `parent-id=1` was a **contaminated orphan**, not the root (see §2.4) |
-| Test Plan (test-folders) | **`2`** ("Subject") | `[probe]` VERIFIED (`test-folders?query={parent-id[0]}` → exactly one hit, id=2, name="Subject") — **project-specific, discover at runtime, never hardcode** |
-| Test Lab (test-set-folders) | **`0`** ("Root") | `[probe]` VERIFIED (`test-set-folders/0` → 200, name="Root") |
-| Release folders | **UNVERIFIED** | Every release create probed so far used `parent-id=1` without a prior `parent-id[0]` discovery query (unlike the other three trees) — root value not confirmed; discover via `release-folders?query={parent-id[0]}` before hardcoding |
+⚠️ **The discovery query documented here was wrong until probe 15.** It is corrected below; read the
+rule, not just the ids.
+
+| Tree | Root id | Root's `parent-id` | Status |
+|---|---|---|---|
+| Requirements | **`0`** ("Requirements") | `-1` | `[probe]` VERIFIED round 2, clean state (`requirements/0` → 200, `name:"Requirements"`; `POST requirements parent-id=0` → 201, `father-name` returned `"Requirements"`) — round 1's `parent-id=1` was a **contaminated orphan**, not the root (see §2.4) |
+| Test Plan (test-folders) | **`2`** ("Subject") | `0` | `[probe]` VERIFIED — **project-specific, discover at runtime, never hardcode** |
+| Test Lab (test-set-folders) | **`0`** ("Root") | `-1` | `[probe]` VERIFIED (`test-set-folders/0` → 200, name="Root") |
+| Release folders | **`1`** ("Releases") | `-1` | `[probe]` VERIFIED probe 15 — was UNVERIFIED; past release probes using `parent-id=1` were accidentally correct |
+| BPM folders | **`1`** ("Models") | `-1` | `[probe]` VERIFIED probe 15 |
+| Resource folders | **`1`** ("Resources") | `0` | `[probe]` VERIFIED probe 15 |
+
+**Discovery rule — query `{parent-id[-1]}` first; if it returns no rows, query `{parent-id[0]}`.**
+Verified against all six trees (probe 15 §15.1).
+
+⚠️ **The old rule — `{parent-id[0]}` alone — is not merely incomplete, it fails silently.** It
+resolves correctly for only `test-folders` and `resource-folders`. For `requirements`,
+`release-folders` and `bpm-folders` it returns zero rows (a loud failure). For **`test-set-folders` it
+returns `Recycle Bin` (id=1)** — one row, HTTP 200, structurally indistinguishable from a correct
+answer. A Test Lab tree built on it would render the recycle bin as the tree root and look fine.
+
+Note that neither root ids (`0`, `1`, `2`) nor root parent-ids (`-1`, `0`) are consistent across
+trees, which is why ADR 0005 forbids hardcoding them — but the discovery query is not automatically
+a safe substitute for hardcoding, as the above demonstrates.
 
 **Conflict resolved — the "test-set parent-id=2 discrepancy" in `alm-api-reference.md` §6.1 is
 spurious.** That document states the round-2 test-set create fixture shows `parent-id=2` "not the
@@ -329,7 +347,7 @@ this document adds detail (physical names, naming traps) the API reference omits
 | defect | `detected-by`, `creation-time`, `severity`, `name` | **Yes** [probe] | n/a | no hierarchy/`parent-id` field at all — defects are a flat list, not a tree |
 | release | `end-date`, `name`, `parent-id`, `start-date` | **Yes** [probe] | n/a | none identified |
 | release-cycle | `end-date`, `name`, `parent-id`, `start-date` | **Yes** [probe] | n/a | dates validated inside parent release's window (§2.11) |
-| release-folder | `name`, `parent-id` | **No** — never directly write-probed; root `UNVERIFIED` (§2.1) | n/a | — |
+| release-folder | `name`, `parent-id` | **No** — never directly write-probed; root now VERIFIED id=1 "Releases" (§2.1, probe 15) | n/a | — |
 | resource | `parent-id`, `name`, `subtype-id` | **No** — never directly write-probed this session | n/a | fully versioned (full `vc-*` set), like requirement/test |
 | test-parameter *(added Probe 9, own fixture `r4-test-parameter-fields.json`, not the `customization-fields-*.json` set — 16th entity, not ★-marked in §1)* | `name` | **Yes** [probe] — Route A `POST tests/{testId}/test-parameters`, or Route B (design-step `<<<token>>>` side effect) | n/a | `ref-count` is metadata `editable:false, required:false` but **required on create anyway** (§6, `alm-api-reference.md` §3.6); `parent-id`/`TP_TEST_ID` is read-only (owner comes from the URL on Route A) |
 

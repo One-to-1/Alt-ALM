@@ -240,7 +240,7 @@ explicitly documented as **catch-alls** covering several distinct failure modes 
 `[docs-research]` (wave1-01 §9) — do not infer a single specific cause from the status code alone;
 always parse `Id`/`Title`.
 
-### 3.5 The `alm-web` dialect — UNVERIFIED shape
+### 3.5 The `alm-web` dialect — VERIFIED (probe 15)
 
 `application/json;schema=alm-web` is a distinct, narrower JSON media type advertised by only **42 of
 1,111** operations in the resource-list inventory `[resource-list]` (probe3-mining-swagger §3c). It
@@ -248,10 +248,35 @@ clusters into (1) all `GET …/{collection}/groups/{groupsFields}` aggregation/"
 endpoints, and (2) a handful of customization-metadata write/read endpoints (`PUT
 customization/entities/{entity}/fields`, `PUT …/types`, `GET customization/groups`, avatar
 upload/read) plus the `GET /resource-list` and `GET /sa/site-params/metadata` meta-endpoints
-themselves. `INFERRED` (not directly probed): this is the schema dialect the stock Angular/GWT web
-client itself consumes for its grids — a richer/denormalized shape distinct from plain
-`application/json`. **The actual body shape difference is `UNVERIFIED`** — no probe has requested this
-media type; worth a live probe before Alt-ALM considers piggy-backing on it for grid/aggregation views.
+themselves.
+
+**Probe 15 requested it. The inference was right: it is a flat, denormalized shape**, and it is the
+dialect the stock web client's grids consume.
+
+On `groups/{groupsFields}` the difference is a rename plus an unwrap — the same information:
+
+```
+plain  : {"subLevel":[{"subLevel":[],"Expression":"1","ReferenceValue":"Folder","Name":"type-id","Value":"1","size":1}]}
+alm-web: [{"name":"type-id","value":"1","expression":"1","referenceValue":"Folder","size":1,"subGroups":[]}]
+```
+
+Both carry `size` (group count) and `expression` (the filter expression that drills into the group),
+so **server-side group-by works on plain JSON** — the dialect is not needed for grouping.
+
+On a **plain collection read** it drops the `Fields`/`values` envelope entirely:
+
+```
+plain  : {"entities":[{"Fields":[{"Name":"name","values":[{"value":"Requirements"}]},…],
+                       "Type":"requirement","ErrorMessage":"","EntityStatus":"Success","children-count":0}],
+          "TotalResults":1}
+alm-web: {"results":[{"entity":{"$entityType":"requirement","name":"Requirements","id":"0"}}],"total-count":1}
+```
+
+⚠️ **Two reasons not to build on this** (tracked as R15). It is **not a strict superset** —
+`children-count` is present in the plain body and absent from the alm-web one, and tree UIs need it.
+And a plain collection GET is **not among the 42 operations that advertise the dialect**, so using it
+there is undocumented behaviour, which `CLAUDE.md` routes to the risk register, not to an
+implementation. Read "42 of 1,111" as *what is advertised*, not *what responds*.
 
 ### 3.6 ⚠️ Field metadata `editable:false`/`required:false` does not describe write requirements — probe-verified
 
@@ -330,6 +355,24 @@ query/fields/order-by — violations silently produce wrong results, not errors.
 
 `[docs-research]` (wave1-02 §6). Deep paging degrades on large collections — prefer query narrowing
 over large `start-index` offsets.
+
+**Probe-verified additions (probe 15 §15.3)** — the server states its own bound. `page-size=-1`
+returns **HTTP 404** `qccore.invalid-query-value`:
+
+> *"Page size values can be either integer between 0 and 2,000 or `"max"` to get the maximum
+> available page size."*
+
+- The 2,000 bound is **server-enforced**, not just a site parameter we read.
+- **`page-size=max` is a supported keyword** (accepted, HTTP 200) — previously unknown. Prefer it
+  over guessing `2000`.
+- An out-of-range page size returns **404, not 400** — do not key error handling off the status code
+  (§3.4: always parse `Id`/`Title`).
+- ⚠️ **`page-size=0` → HTTP 200 with `TotalResults=0` on a collection that has rows.**
+  `TotalResults` describes the *page*, not the collection. A grid that reads it to decide "this
+  collection is empty" is wrong whenever page-size is 0.
+- Whether an over-cap size is **silently clamped** stays `UNVERIFIED`: `2001`, `5000` and `max` were
+  all accepted, but the sandbox's largest collection has 2 rows so nothing distinguishes them.
+  Settles when the record generator can produce >2,000 rows (Q45).
 
 ### 4.5 Bulk operations
 
