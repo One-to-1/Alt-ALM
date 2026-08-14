@@ -386,7 +386,31 @@ folder**: it locks `bff/target` and breaks `mvnw clean`. Run without `clean`.
    Core query grammar's **undocumented null-test/escaping rules** — flag as a risk, do not silently
    "handle" them.
 
+### Deployment + credentials — asked and answered 2026-08-13, decision: **no change**
+
+The user asked whether Alt-ALM could be hosted on **GitHub Pages** with ALM credentials kept in a
+browser cookie, motivated by **not wanting to pay for hosting**. Probed rather than inferred:
+
+- **Probe 14 closed it by mechanism.** CORS preflight → **501**; even a *successful* credentialed
+  `POST oauth2/login` returns **no `Access-Control-Allow-Origin`**. A browser cannot call `/qcbin`
+  cross-origin. ⚠️ The trap: the server handles these requests fine, so curl/Postman "prove" it works
+  — only a browser enforces CORS. This upgraded ADR 0001's premise from *not observed* to verified.
+- **The cookie idea fails on three independent counts**, recorded in ADR 0004 Addendum 1: cookies are
+  origin-scoped so ALM would never receive it; a JS-readable cookie is exposed to any XSS or
+  compromised dependency; and an ALM API key inherits its user's **full permission scope** — it is not
+  a scoped token.
+- **New hard constraint: only ONE ALM user seat for testing.** This makes per-user credentials
+  untestable and confirms ADR 0004's single-service-account model (Q44).
+
+**User's decision: keep the current implementation; hosting is deferred (Q42).** Local-first (BFF +
+SPA on `localhost`, GitHub hosting source only) costs nothing and is what P1 needs anyway. When it
+does need to be reachable, prefer the **single-deployable / single-origin** shape — Spring Boot
+serving the built SPA as static resources — which needs no CORS config and no cross-site cookies.
+Worth settling **before** any cloud choice: **Q43, whether the tenant IP-restricts API access** — never
+tested, every probe so far came from one host on one network.
+
 Worth doing soon, cheap now that the harness exists:
+
 - **OTA write probes** for the six newly-flipped rows — converts `UNVERIFIED` writes into fact and
   de-risks P6's scope *before* the sidecar language is chosen.
 - Re-probe `attachments/{id}/audits` (#186) once P2 creates an attachment — currently inconclusive,

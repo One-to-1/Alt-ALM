@@ -111,3 +111,31 @@ carry, and does that matter?** Two more research findings bear on this:
   (identity-provider integration, ALM-side SSO configuration which itself has separately-documented,
   lower-confidence session-timeout behaviour — api-ref §2.2's `SSO_EXPIRATION_TIME` note is `UNVERIFIED`)
   that does not belong in the same decision as "should Alt-ALM pool one service-account session."
+
+## Addendum 1 — one test seat confirms the single-service-account decision (2026-08-13)
+
+**New constraint from the user: the ALM instance has only ONE user seat available for testing.**
+
+This is recorded because it settles the "evolve to per-user sessions later" path's near-term status,
+and because it arrived alongside a hosting question that briefly made per-user credentials look
+attractive (each browser supplying its own ALM key, so no shared secret sits on a server).
+
+- **The decision above is unchanged and now better supported.** With one seat there is exactly one ALM
+  identity to pool sessions for, so the service-account model is not merely the simpler choice — it is
+  the only one that can be exercised at all.
+- **Per-user credentials are now UNTESTABLE, not merely unscoped.** Any multi-identity behaviour —
+  per-credential pool keying, per-user attribution in `detected-by`/`owner`, permission differences
+  between users — cannot be verified on this instance. Building it would mean shipping unexercised
+  code paths, which this project's standing rule treats as a fabrication risk, not a head start.
+- **What does NOT change**: probe 10's finding that one API key holds 50+ concurrent sessions with no
+  licence seat consumed. Seats and REST sessions are different resources — one seat does not mean one
+  session, and the pool's bound remains our own politeness limit.
+
+**If per-user credentials are revisited** (the natural trigger is a second seat, or a real multi-user
+deployment), the shape is already known and should be written down before it is built: the ALM secret
+is posted **once** over TLS to the BFF, held **in memory only**, and the browser receives the BFF's
+own `HttpOnly; Secure; SameSite=Strict` session cookie — never the ALM credential itself. Storing an
+ALM key in browser-readable storage is rejected outright on three independent grounds: cookies are
+origin-scoped so ALM would never receive it anyway; a JS-readable cookie is exposed to any XSS or
+compromised dependency; and an ALM API key inherits its user's full permission scope rather than being
+a scoped token (api-ref §2.4).

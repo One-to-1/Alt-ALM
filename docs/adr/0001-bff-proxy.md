@@ -80,3 +80,26 @@ consumer and still failing on the credential-exposure and same-origin/XSRF probl
   session pooling and keepalive scheduling (ADR 0002, ADR 0004) are naturally long-lived-process
   concerns; a stateless-per-invocation model would need external session storage for no offsetting
   benefit given the BFF's other duties (metadata caching, generator engine).
+
+## Addendum 1 — the CORS premise is now probe-verified (2026-08-13)
+
+This ADR's context said "no CORS allowance for arbitrary third-party origins is **documented or
+observed**". That was an absence of evidence. Probe 14 tested it directly, prompted by a hosting
+question (could the SPA live on GitHub Pages and skip the server entirely?):
+
+- `OPTIONS` preflight for a cross-origin login POST → **501 Not Implemented**, no CORS headers.
+- `GET is-authenticated` with an `Origin` header → 302 to the login form, no CORS headers.
+- `POST oauth2/login` with an `Origin` header → **200, and still no `Access-Control-Allow-Origin`**.
+
+**The decision stands, now on evidence rather than expectation.** The third result is the trap worth
+recording: the server processes a cross-origin request perfectly well, so anyone testing with curl or
+Postman sees 200 and concludes direct browser access works. Only a real browser enforces CORS, and
+only the *missing response header* reveals the problem. A static-SPA-only deployment is closed off by
+mechanism, not by preference.
+
+**Deployment consequence.** Because there must be a server process, the cheapest correct shape is a
+**single deployable on a single origin** — Spring Boot serving the built SPA as static resources.
+That needs no CORS configuration at all, whereas splitting the SPA onto static hosting with the BFF
+elsewhere would require owning a CORS config *and* cross-site cookie handling (`SameSite=None`, plus
+Safari tracking-prevention behaviour) for no benefit. Running both on `localhost` is the same shape
+and costs nothing, which is the current plan (see `risks-and-open-questions.md` Q42).

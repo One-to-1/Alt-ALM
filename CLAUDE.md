@@ -235,8 +235,14 @@ every conflict**; probes 1–12), [alm-api-reference.md](docs/research/alm-api-r
 
 ## Design decisions (see `docs/adr/`)
 
-- **BFF is required**, not optional — browsers cannot call `/qcbin` (CORS + cookie session + XSRF).
-  The BFF is the single enforcement point for the write hazards above (ADR 0001).
+- **BFF is required**, not optional — browsers cannot call `/qcbin`. **Probe-verified 2026-08-13**
+  (probe 14): the CORS preflight returns **501** and *even a successful* `POST oauth2/login` carries
+  **no `Access-Control-Allow-Origin`**. ⚠️ The trap: the server processes cross-origin requests fine,
+  so curl/Postman show 200 and look like proof it works — only a real browser enforces CORS. A
+  static-SPA-only deployment (GitHub Pages etc.) is closed off **by mechanism**. Cheapest correct
+  shape is therefore **one deployable on one origin** — Spring Boot serving the built SPA as static
+  resources, no CORS config needed. Running both on localhost is the same shape and free (Q42).
+  The BFF is also the single enforcement point for the write hazards above (ADR 0001).
 - **Stack: Java 25 (LTS) + Spring Boot 4.1.0** (BFF) and **React + TypeScript / Vite** (SPA); probe
   scripts stay PowerShell (ADR 0002). Spring Framework 7 recommends JDK 25+ for production; Boot 3.x
   predates JDK 25. No `--enable-preview`. **Boot 4 gotchas already hit** (all verified by building):
@@ -252,7 +258,12 @@ every conflict**; probes 1–12), [alm-api-reference.md](docs/research/alm-api-r
   similar-defects) — it no longer blocks the generator, so P6 is genuinely optional. Language
   decision (.NET vs Python + pywin32) is still open.
 - **One service-account API key with pooled sessions**, plus Alt-ALM's own app-level user model; the
-  licence finding retires the seat-consumption concern (ADR 0004).
+  licence finding retires the seat-consumption concern (ADR 0004). ⚠️ **Only ONE ALM user seat is
+  available for testing** (user, 2026-08-13) — so per-user credentials are **untestable**, not merely
+  unscoped, and multi-identity code paths must not be built until a second seat exists (Q44). This
+  does *not* contradict probe 10: seats and REST sessions are different resources, and one key still
+  holds 50+ concurrent sessions. If revisited, the ALM secret goes to the BFF **once** over TLS and
+  lives in memory only — the browser gets the BFF's own `HttpOnly` cookie, never the ALM key.
 - **Metadata-driven rendering** — no hardcoded schemas, list values, or root IDs anywhere (ADR 0005).
 
 ## Standing problems (not solved, just honestly scoped)

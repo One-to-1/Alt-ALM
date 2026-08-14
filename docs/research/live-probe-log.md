@@ -792,6 +792,31 @@ It reports on the LWSSO token, not the site session, and there is a real state w
 while every project-scoped call says 401. Pool liveness must use `GET /rest/site-session` (the
 keepalive), which tests the thing that determines whether a request will actually work.
 
+## Probe 14 — CORS: can a static SPA call `/qcbin` directly? 2026-08-13 (`scripts/probe/probe-cors.ps1`)
+
+**Trigger**: a hosting question — *could the SPA live on GitHub Pages and talk to ALM directly, so no
+server has to be paid for?* ADR 0001 rejected direct browser access partly on "no CORS allowance for
+arbitrary third-party origins is documented or observed", which is an **absence of evidence, not a
+test**. This is the test.
+
+| Request (as a browser would send it) | Result |
+|---|---|
+| `OPTIONS /rest/oauth2/login` + `Origin` + `Access-Control-Request-Method: POST` | **501 Not Implemented**, no CORS headers |
+| `GET /v2/rest/is-authenticated` + `Origin` | **302** to the login form, no CORS headers |
+| `POST /rest/oauth2/login` + `Origin` (credentialed) | **200 — and still no `Access-Control-Allow-Origin`** |
+
+**Verdict: a browser cannot call `/qcbin` cross-origin. Definitive.** Two independent failures — the
+preflight is rejected outright (501), so the real request never leaves the browser; and even the call
+that *does* succeed server-side returns no `Access-Control-Allow-Origin`, so the browser would refuse
+to let JS read the response.
+
+The third row is the one worth remembering: **the server processes the request fine.** Anyone testing
+this with curl or Postman will see 200 and conclude it works. Only a real browser enforces CORS, and
+only the missing response header reveals it.
+
+**This upgrades ADR 0001's central premise from "not observed" to probe-verified**, and closes the
+"static SPA, no server" option permanently — not on cost or preference, but on mechanism.
+
 ## Fixtures captured (redacted; under `tests/fixtures/`)
 
 - `customization-fields-<entity>.json` × 15
