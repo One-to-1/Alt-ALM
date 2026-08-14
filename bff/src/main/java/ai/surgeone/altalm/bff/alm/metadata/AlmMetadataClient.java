@@ -1,5 +1,6 @@
 package ai.surgeone.altalm.bff.alm.metadata;
 
+import ai.surgeone.altalm.bff.alm.read.AlmProjectRef;
 import ai.surgeone.altalm.bff.alm.session.AlmCredentials;
 import ai.surgeone.altalm.bff.alm.session.AlmSession;
 import ai.surgeone.altalm.bff.alm.session.AlmSessionPool;
@@ -37,11 +38,29 @@ public final class AlmMetadataClient {
     }
 
     /**
+     * Fetches field metadata for the credentialed (sandbox) project.
+     *
      * @param entity wire entity name, e.g. {@code requirement} or {@code test-parameter}
      * @return descriptors in server order
      */
     public List<FieldDescriptor> fetchFields(String entity) {
-        String path = credentials.projectBase() + "/customization/entities/"
+        return fetchFields(new AlmProjectRef(credentials.domain(), credentials.project()), entity);
+    }
+
+    /**
+     * Fetches field metadata for a specific project.
+     *
+     * <p>The project parameter is not a generalisation for its own sake. ALM customization is
+     * per project — field sets, labels and list bindings all differ — so rendering one project's
+     * grid from another's metadata produces a plausible-looking, wrong grid. That became a live
+     * risk the moment P1 started reading a project nobody here configured (probe 16), which is
+     * exactly the failure ADR 0005 exists to prevent.
+     *
+     * @param project which project's customization to read; access-checked by the caller's policy
+     * @param entity  wire entity name
+     */
+    public List<FieldDescriptor> fetchFields(AlmProjectRef project, String entity) {
+        String path = project.restBase(credentials.baseUrl()) + "/customization/entities/"
                 + URLEncoder.encode(entity, StandardCharsets.UTF_8) + "/fields";
 
         AlmSession session;

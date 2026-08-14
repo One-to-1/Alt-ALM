@@ -1,0 +1,146 @@
+.data-grid {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.grid-note {
+  margin: 0;
+  font-size: 13px;
+  color: var(--warning);
+}
+
+.data-grid-scroll {
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+
+.data-grid table {
+  border-collapse: collapse;
+  width: 100%;
+  min-width: 640px;
+  font-size: 13px;
+}
+
+.data-grid thead th {
+  position: sticky;
+  top: 0;
+  background: var(--surface-alt);
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+
+.sort-button {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-weight: 600;
+  color: var(--text-h);
+  cursor: pointer;
+  text-align: left;
+  padding: 10px 12px;
+}
+
+.sort-button:hover {
+  color: var(--accent);
+}
+
+.sort-indicator {
+  font-size: 10px;
+}
+
+.data-grid tbody td {
+  padding: 0 12px;
+  height: var(--row-height, 44px);
+  border-bottom: 1px solid var(--border);
+  vertical-align: middle;
+}
+
+.data-grid tbody tr:hover td {
+  background: var(--surface-alt);
+}
+
+.data-grid tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.row-degraded td {
+  background: var(--danger-bg);
+}
+
+.cell-empty {
+  color: var(--text);
+  opacity: 0.5;
+}
+
+.cell-number {
+  display: block;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.cell-memo {
+  color: var(--text);
+}
+
+.cell-reference-list {
+  margin: 0;
+  padding-left: 16px;
+}
+
+.cell-row-status {
+  width: 1%;
+  white-space: nowrap;
+}
+
+.grid-refresh-banner {
+  font-size: 13px;
+  color: var(--text);
+}
+
+.grid-inline-error {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--danger);
+  border-radius: var(--radius-sm);
+  background: var(--danger-bg);
+  color: var(--danger);
+}
+
+.grid-footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  font-size: 13px;
+}
+
+.grid-pager {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.grid-pager button {
+  padding: 6px 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-h);
+  cursor: pointer;
+  font: inherit;
+}
+
+.grid-pager button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}

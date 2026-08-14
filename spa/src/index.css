@@ -11,6 +11,30 @@
   --shadow:
     rgba(0, 0, 0, 0.1) 0 10px 15px -3px, rgba(0, 0, 0, 0.05) 0 4px 6px -2px;
 
+  /* Data-grid / density tokens (alt-alm-ui skill §6) */
+  --surface: #fff;
+  --surface-alt: #f7f6f9;
+  --danger: #b3261e;
+  --danger-bg: rgba(179, 38, 30, 0.12);
+  --warning: #8a5a00;
+  --warning-bg: rgba(255, 193, 7, 0.18);
+  --success: #1e7d34;
+  --success-bg: rgba(30, 125, 52, 0.12);
+  --focus-ring: var(--accent);
+
+  --row-height-comfortable: 44px;
+  --row-height-compact: 36px;
+  --row-height-condensed: 28px;
+
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+
+  --radius-sm: 4px;
+  --radius-md: 8px;
+
   --sans: system-ui, 'Segoe UI', Roboto, sans-serif;
   --heading: system-ui, 'Segoe UI', Roboto, sans-serif;
   --mono: ui-monospace, Consolas, monospace;
@@ -43,6 +67,15 @@
     --social-bg: rgba(47, 48, 58, 0.5);
     --shadow:
       rgba(0, 0, 0, 0.4) 0 10px 15px -3px, rgba(0, 0, 0, 0.25) 0 4px 6px -2px;
+
+    --surface: #1c1d24;
+    --surface-alt: #23242c;
+    --danger: #ff8a80;
+    --danger-bg: rgba(255, 138, 128, 0.16);
+    --warning: #ffd54a;
+    --warning-bg: rgba(255, 213, 74, 0.14);
+    --success: #7ee08a;
+    --success-bg: rgba(126, 224, 138, 0.14);
   }
 
   #social .button-icon {
@@ -51,11 +84,10 @@
 }
 
 #root {
-  width: 1126px;
+  width: 100%;
   max-width: 100%;
-  margin: 0 auto;
-  text-align: center;
-  border-inline: 1px solid var(--border);
+  margin: 0;
+  text-align: left;
   min-height: 100svh;
   display: flex;
   flex-direction: column;

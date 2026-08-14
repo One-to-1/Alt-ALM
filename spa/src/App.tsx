@@ -1,121 +1,158 @@
-import { useState } from 'react'
-import reactLogo from './assets/react.svg'
-import viteLogo from './assets/vite.svg'
-import heroImg from './assets/hero.png'
+import { useEffect, useState } from 'react'
+import type { Project } from './api/client.ts'
+import { ApiError, fetchProjects } from './api/client.ts'
+import { DataGrid } from './grid/DataGrid.tsx'
 import './App.css'
 
+const COLLECTIONS = ['requirements', 'tests', 'defects', 'test-sets', 'runs'] as const
+type Collection = (typeof COLLECTIONS)[number]
+
+const COLLECTION_LABELS: Record<Collection, string> = {
+  requirements: 'Requirements',
+  tests: 'Tests',
+  defects: 'Defects',
+  'test-sets': 'Test Sets',
+  runs: 'Runs',
+}
+
+const DENSITIES = ['comfortable', 'compact', 'condensed'] as const
+type Density = (typeof DENSITIES)[number]
+const DENSITY_STORAGE_KEY = 'alt-alm.density'
+
+function isDensity(value: string | null): value is Density {
+  return value !== null && (DENSITIES as readonly string[]).includes(value)
+}
+
+function loadStoredDensity(): Density {
+  try {
+    const stored = window.localStorage.getItem(DENSITY_STORAGE_KEY)
+    return isDensity(stored) ? stored : 'comfortable'
+  } catch {
+    // localStorage can throw in locked-down environments; fall back quietly.
+    return 'comfortable'
+  }
+}
+
+function projectKey(project: Project): string {
+  return `${project.domain}/${project.project}`
+}
+
+type ProjectsStatus = 'loading' | 'ready' | 'error' | 'empty'
+
 function App() {
-  const [count, setCount] = useState(0)
+  const [projects, setProjects] = useState<Project[]>([])
+  const [projectsStatus, setProjectsStatus] = useState<ProjectsStatus>('loading')
+  const [projectsError, setProjectsError] = useState<ApiError | null>(null)
+  const [selectedProjectKey, setSelectedProjectKey] = useState<string | null>(null)
+  const [collection, setCollection] = useState<Collection>('requirements')
+  const [density, setDensity] = useState<Density>(loadStoredDensity)
+
+  useEffect(() => {
+    let cancelled = false
+    setProjectsStatus('loading')
+
+    fetchProjects()
+      .then((result) => {
+        if (cancelled) return
+        setProjects(result)
+        setProjectsStatus(result.length === 0 ? 'empty' : 'ready')
+        if (result.length > 0) {
+          setSelectedProjectKey(projectKey(result[0]))
+        }
+      })
+      .catch((err: unknown) => {
+        if (cancelled) return
+        setProjectsError(err instanceof ApiError ? err : null)
+        setProjectsStatus('error')
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(DENSITY_STORAGE_KEY, density)
+    } catch {
+      // Non-fatal: density just won't persist across reloads.
+    }
+  }, [density])
+
+  const selectedProject = projects.find((p) => projectKey(p) === selectedProjectKey) ?? null
 
   return (
-    <>
-      <section id="center">
-        <div className="hero">
-          <img src={heroImg} className="base" width="170" height="179" alt="" />
-          <img src={reactLogo} className="framework" alt="React logo" />
-          <img src={viteLogo} className="vite" alt="Vite logo" />
-        </div>
-        <div>
-          <h1>Get started</h1>
-          <p>
-            Edit <code>src/App.tsx</code> and save to test <code>HMR</code>
-          </p>
-        </div>
-        <button
-          type="button"
-          className="counter"
-          onClick={() => setCount((count) => count + 1)}
-        >
-          Count is {count}
-        </button>
-      </section>
+    <div className="app-shell" data-density={density}>
+      <header className="app-header">
+        <h1>Alt-ALM</h1>
+        <div className="app-controls">
+          <label className="field">
+            <span>Project</span>
+            <select
+              value={selectedProjectKey ?? ''}
+              onChange={(e) => setSelectedProjectKey(e.target.value)}
+              disabled={projectsStatus !== 'ready'}
+            >
+              {projects.map((p) => (
+                <option key={projectKey(p)} value={projectKey(p)}>
+                  {projectKey(p)}
+                </option>
+              ))}
+            </select>
+          </label>
 
-      <div className="ticks"></div>
+          <label className="field">
+            <span>Collection</span>
+            <select value={collection} onChange={(e) => setCollection(e.target.value as Collection)}>
+              {COLLECTIONS.map((c) => (
+                <option key={c} value={c}>
+                  {COLLECTION_LABELS[c]}
+                </option>
+              ))}
+            </select>
+          </label>
 
-      <section id="next-steps">
-        <div id="docs">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#documentation-icon"></use>
-          </svg>
-          <h2>Documentation</h2>
-          <p>Your questions, answered</p>
-          <ul>
-            <li>
-              <a href="https://vite.dev/" target="_blank">
-                <img className="logo" src={viteLogo} alt="" />
-                Explore Vite
-              </a>
-            </li>
-            <li>
-              <a href="https://react.dev/" target="_blank">
-                <img className="button-icon" src={reactLogo} alt="" />
-                Learn more
-              </a>
-            </li>
-          </ul>
-        </div>
-        <div id="social">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#social-icon"></use>
-          </svg>
-          <h2>Connect with us</h2>
-          <p>Join the Vite community</p>
-          <ul>
-            <li>
-              <a href="https://github.com/vitejs/vite" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#github-icon"></use>
-                </svg>
-                GitHub
-              </a>
-            </li>
-            <li>
-              <a href="https://chat.vite.dev/" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#discord-icon"></use>
-                </svg>
-                Discord
-              </a>
-            </li>
-            <li>
-              <a href="https://x.com/vite_js" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#x-icon"></use>
-                </svg>
-                X.com
-              </a>
-            </li>
-            <li>
-              <a href="https://bsky.app/profile/vite.dev" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#bluesky-icon"></use>
-                </svg>
-                Bluesky
-              </a>
-            </li>
-          </ul>
-        </div>
-      </section>
+          <label className="field">
+            <span>Density</span>
+            <select value={density} onChange={(e) => setDensity(e.target.value as Density)}>
+              <option value="comfortable">Comfortable</option>
+              <option value="compact">Compact</option>
+              <option value="condensed">Condensed</option>
+            </select>
+          </label>
 
-      <div className="ticks"></div>
-      <section id="spacer"></section>
-    </>
+          {selectedProject && !selectedProject.writable && (
+            <span className="badge badge-readonly" role="status">
+              Read-only project
+            </span>
+          )}
+        </div>
+      </header>
+
+      <main className="app-main">
+        {projectsStatus === 'loading' && (
+          <div className="grid-status" role="status" aria-live="polite">
+            Loading projects…
+          </div>
+        )}
+
+        {projectsStatus === 'error' && (
+          <div className="grid-status grid-status-error" role="alert">
+            {projectsError?.message ?? 'Could not load projects.'}
+          </div>
+        )}
+
+        {projectsStatus === 'empty' && (
+          <div className="grid-status" role="status">
+            No projects are configured.
+          </div>
+        )}
+
+        {projectsStatus === 'ready' && selectedProject && (
+          <DataGrid project={projectKey(selectedProject)} collection={collection} />
+        )}
+      </main>
+    </div>
   )
 }
 

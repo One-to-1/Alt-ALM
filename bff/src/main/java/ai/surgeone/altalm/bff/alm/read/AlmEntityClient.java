@@ -110,7 +110,7 @@ public final class AlmEntityClient {
         }
         try {
             ResponseEntity<String> response = http.get()
-                    .uri(URI.create(url))
+                    .uri(almUri(url))
                     .header(HttpHeaders.COOKIE, session.cookieHeader())
                     .accept(MediaType.APPLICATION_JSON)
                     .retrieve()
@@ -133,6 +133,43 @@ public final class AlmEntityClient {
         } finally {
             pool.release(session);
         }
+    }
+
+    /**
+     * Percent-encodes the characters ALM's query grammar is built from, so the result is a legal URI.
+     *
+     * <p>This is not cosmetic. ALM's grammar uses {@code { } [ ] ;} as structural characters, all of
+     * which RFC 3986 forbids in a query unencoded. {@link URI#create} enforces that and throws —
+     * which is how this was found, by a contract test failing with <em>"Illegal character in query at
+     * index 121"</em> rather than by anything the server said. Every query-bearing read was broken;
+     * the metadata client never hit it because its paths contain no braces.
+     *
+     * <p>The obvious escape — handing {@code RestClient} the URL as a String — is worse, because it
+     * treats braces as URI template variables and ALM's grammar is made of braces.
+     *
+     * <p>So: encode them, which required knowing whether ALM accepts the encoded form. Probe 18 asked
+     * directly, and raw versus percent-encoded produced identical results (HTTP 200, same
+     * {@code TotalResults}) for {@code order-by}, multi-field {@code order-by}, and a {@code query}
+     * filter containing brackets and a negative number.
+     *
+     * <p>Only structural grammar characters are touched — {@code ? & =} must survive as themselves,
+     * and values were already encoded by {@link AlmQuery}.
+     */
+    static URI almUri(String url) {
+        int q = url.indexOf('?');
+        if (q < 0) {
+            return URI.create(url);
+        }
+        String base = url.substring(0, q);
+        String query = url.substring(q + 1)
+                .replace("{", "%7B")
+                .replace("}", "%7D")
+                .replace("[", "%5B")
+                .replace("]", "%5D")
+                .replace(";", "%3B")
+                .replace("|", "%7C")
+                .replace(" ", "%20");
+        return URI.create(base + "?" + query);
     }
 
     /** Trims an error body for a message without dumping a whole HTML page into a log. */

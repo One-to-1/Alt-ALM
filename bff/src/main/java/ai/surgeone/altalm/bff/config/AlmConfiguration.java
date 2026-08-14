@@ -1,6 +1,7 @@
 package ai.surgeone.altalm.bff.config;
 
 import ai.surgeone.altalm.bff.alm.metadata.AlmMetadataCache;
+import ai.surgeone.altalm.bff.alm.metadata.AlmMetadataCatalog;
 import ai.surgeone.altalm.bff.alm.metadata.AlmMetadataClient;
 import ai.surgeone.altalm.bff.alm.read.AlmAccessPolicy;
 import ai.surgeone.altalm.bff.alm.read.AlmEntityClient;
@@ -122,6 +123,19 @@ public class AlmConfiguration {
     @Bean
     public AlmMetadataCache almMetadataCache(AlmCredentials creds, AlmMetadataClient client) {
         return new AlmMetadataCache(creds.domain(), creds.project(), client::fetchFields);
+    }
+
+    /**
+     * One metadata cache per project.
+     *
+     * <p>Needed the moment the BFF reads more than one project: ALM customization is per project, so
+     * serving the sandbox's field set for another project's grid produces a wrong grid that looks
+     * right (ADR 0005). The single-project {@link AlmMetadataCache} bean above is kept for callers
+     * that only ever mean the sandbox.
+     */
+    @Bean
+    public AlmMetadataCatalog almMetadataCatalog(AlmMetadataClient client, AlmAccessPolicy policy) {
+        return new AlmMetadataCatalog(client, policy);
     }
 
     /**

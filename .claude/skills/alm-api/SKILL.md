@@ -99,6 +99,11 @@ parens nest.
   free-text fields.
 - `fields=<name>[,…]` — **no effect on a single-entity GET** in Core (works on collections). Discover
   filterable fields via `.../customization/entities/{entity}/fields?can-filter=true`.
+- ⚠️ **The grammar's `{ } [ ] ;` are illegal in a URI query unencoded** — Java's `URI.create`,
+  and any standards-compliant client, will reject them before a request is sent. **ALM accepts the
+  percent-encoded forms identically** (`%7B %7D %5B %5D %3B`) — verified raw-vs-encoded, same status
+  and same result sets [probe18]. Encode the structural characters; leave `? & =` alone. PowerShell's
+  `Invoke-WebRequest` sends raw braces happily, which is why 13 probe rounds never hit this.
 - `order-by={field[;field…]}` — ⚠️ **SEMICOLON-separated** [probe17]. A comma yields **HTTP 404**
   `not existing field: "a,b"` — the server reads the whole string as one field name, so a bad
   separator is indistinguishable from a typo'd column and there is no syntax error to catch.

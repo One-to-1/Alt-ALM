@@ -1068,6 +1068,41 @@ times. Worth remembering when the next "the docs say X" argument comes up.
 
 ---
 
+## Probe 18 — does ALM accept percent-encoded grammar characters? 2026-08-14
+
+Read-only, sandbox. Six requests.
+
+**Origin**: a contract test failed with `IllegalArgumentException: Illegal character in query at
+index 121`. Not a server error — the request never left the JVM. ALM's query grammar is built from
+`{ } [ ] ;`, every one of which RFC 3986 forbids unencoded in a query, so `URI.create` rejects it.
+Every filtered, sorted or paged read was broken, while the unit tests stayed green because they
+asserted on the query *string* and never constructed a URI.
+
+The two obvious escapes are both bad: handing the URL to `RestClient` as a `String` makes it treat
+braces as URI template variables (and the grammar is made of braces), and hand-rolling a permissive
+URI type is worse. That leaves percent-encoding — which is only viable if the server accepts it.
+
+| Request | Result |
+|---|---|
+| `order-by={id}` | 200, `TotalResults=1` |
+| `order-by=%7Bid%7D` | **200, `TotalResults=1`** |
+| `order-by={type-id;id}` | 200, `TotalResults=1` |
+| `order-by=%7Btype-id%3Bid%7D` | **200, `TotalResults=1`** |
+| `query={parent-id[-1]}` | 200, `TotalResults=1` |
+| `query=%7Bparent-id%5B-1%5D%7D` | **200, `TotalResults=1`** |
+
+**Percent-encoded and raw are equivalent** — identical status and identical result sets, including a
+filter containing brackets and a negative number. `AlmEntityClient.almUri` therefore encodes the
+structural characters and leaves `? & =` alone.
+
+**Worth noting for anyone porting this**: every probe script in this repo is PowerShell, and
+`Invoke-WebRequest` happily sends raw braces. So thirteen probe rounds never encountered this, and a
+grammar that "obviously works" turned out to be unusable from a standards-compliant HTTP client
+without a translation step. A finding about the *client*, not the server — and one that only appeared
+because product code was put under a live test.
+
+---
+
 ## Open items for the next probe round
 
 1. ~~Map `SiteVersion 20.0 (20.00.0.143)` → marketing version~~ **DONE: ALM 26.1** (probe 3).

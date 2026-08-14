@@ -123,6 +123,11 @@ public final class AlmAccessPolicy {
         return sandbox;
     }
 
+    /** Every project this deployment may read, sandbox included. */
+    public Set<AlmProjectRef> readableProjects() {
+        return readable;
+    }
+
     /** True when this project may be written — for capability flags in the UI, not for gating. */
     public boolean isWritable(AlmProjectRef project) {
         return sandbox.equals(project);
