@@ -131,12 +131,24 @@ results, two of which changed this phase's plan:
    collection. Whether over-cap is *silently clamped* is still UNVERIFIED — untestable until there
    is data (Q45).
 
-⚠️ **Phase-validation caveat (Q45): the sandbox holds 0 tests and 0 defects.** This phase's exit
-criterion says grids render live for requirements/tests/defects; two of those three cannot be
-meaningfully demonstrated. P1 can be **built** without the generator but cannot be fully
-**validated** without it. Either pull a minimal seeding step forward or close P1 on fixtures plus a
-thin live smoke read and re-validate after P4 — an explicit decision, not a detail to discover at the
-phase gate.
+✅ **Phase-validation resolved (probe 16, Q45).** The sandbox holds 0 tests and 0 defects, but the
+user granted **read-only access to the tenant's other projects** on 2026-08-14, and one of them
+(`PROJECT-5`) holds 233 requirements / 129 tests / 80 defects / 227 test-instances / 178 runs. P1
+validates against live data **without** the record generator, which stays a P4 concern for write
+testing. Real project name is in git-ignored `Secrets/alm-read-projects.json`.
+
+⚠️ **Read-only means read-only, and it is a code constraint, not a convention.** The BFF must refuse
+non-GET requests to any project other than the designated sandbox, using the same explicit-allowlist
+mechanism the generator already requires (`CLAUDE.md`). These are other teams' live projects in the
+same tenant. Additionally: **their data must never enter the repo** — no names, requirement text,
+owners or field values in fixtures, logs or docs; counts and shapes only, pseudonymized. The sandbox
+may be **seeded** from that data (user-authorized), but a seeded record is sandbox state, not a
+committed artifact.
+
+**Add to this phase's scope as a result**: a bounded **retry on 5xx reads** (Q46). A plain `GET`
+returned HTTP 500 once and never reproduced; a grid must not surface a transient read failure as a
+hard error. This is distinct from — and additional to — the existing 5xx-on-write verify-by-query
+rule.
 
 ---
 

@@ -945,6 +945,88 @@ built. Raised as **Q45**.
 
 ---
 
+## Probe 16 — other projects are readable; Q45 dissolves. 2026-08-14 (`scripts/probe/probe-projects.ps1` + `-2.ps1`)
+
+**Authorization**: the user granted read access to other projects on 2026-08-14 — *"you can use
+other projects as a read ONLY"* — and separately allowed their data to seed sandbox records. Writes
+remain restricted to the designated sandbox; this probe issues **GETs only**.
+
+⚠️ **Disclosure rules applied here, and they are not optional.** These are other teams' projects in
+the same tenant. Real domain/project names are **pseudonymized** (`PROJECT-5`) in all output and in
+this log; the mapping is written to **`Secrets/alm-read-projects.json`**, which is git-ignored.
+Foreign node names, requirement text, owners and every other field value are **counted, never
+printed and never captured to a fixture**. The sandbox may be seeded from this data, but the **repo
+never receives it** — the repo is the artifact that outlives the sandbox.
+
+### 16.1 Eight readable projects, and one is properly populated
+
+One domain, nine projects, all readable with the existing key:
+
+| Project | requirements | tests | defects | test-sets | test-instances | runs |
+|---|---|---|---|---|---|---|
+| `PROJECT-5` | 233 | 129 | 80 | 22 | 227 | 178 |
+| `PROJECT-3` | 69 | 1 | 343 | 2 | 1 | 1 |
+| `PROJECT-1` | 15 | 34 | 28 | 3 | 2 | 1 |
+| `PROJECT-8` | 12 | 15 | 9 | 15 | 9 | 14 |
+| `PROJECT-7` | 18 | 6 | 2 | 5 | 7 | 11 |
+| *(our sandbox)* | 1 | 0 | 0 | 1 | 0 | 0 |
+
+**`PROJECT-5` (847 rows) is the P1 read target.** It has real trees, real coverage, real runs.
+
+**Q45 dissolves.** P1's exit criterion — grids rendering live for requirements/tests/defects — is
+satisfiable *now*, against live data, without the record generator. The generator returns to being a
+P4 concern needed for **write** testing, which is where the plan always had it. No phase reordering
+is required after all.
+
+### 16.2 ⚠️ A plain GET returned HTTP 500 once and never again
+
+Probe 16's first pass got `HTTP 500` on `GET test-sets?fields=id&page-size=1` for `PROJECT-5`, while
+every other collection on that same project returned 200 in the same session.
+
+Probe 16b tried to characterize it: **5 query variants, the parent tree, sibling collections, and
+the same collection across all 9 projects — 13 requests, all HTTP 200.** `PROJECT-5/test-sets` reads
+fine and holds 22 rows.
+
+**Observed once, not reproduced. Cause `UNVERIFIED`.** Recorded because of what it implies, not
+because it is understood: the project already treats a 5xx on a *write* as "unknown outcome, verify
+by query" (§3.3), and this is the first evidence that a plain **read** can also fail transiently.
+P1's grid needs a bounded retry on 5xx reads rather than surfacing a hard error on the first one.
+
+Plausible link, not a claim: this matches the intermittency pattern behind **Q40** (a 6/8 vs 2/8
+split on a project read after teardown, hypothesized to be SaaS load-balancing across nodes that
+disagree). Two independent intermittency observations now point the same way. Tracked as **Q46**.
+
+### 16.3 The corrected tree-root rule re-verified on a populated project — and now explained
+
+Probe 15 derived the `{parent-id[-1]}` → `{parent-id[0]}` fallback rule from a **near-empty**
+project, which is precisely the subset-generalization mistake probe 15 itself was about. Re-run
+against `PROJECT-5`:
+
+| Tree | `{parent-id[-1]}` | `{parent-id[0]}` |
+|---|---|---|
+| `requirements` | **1** (the root) | 4 |
+| `test-folders` | 0 | **1** (the root) |
+| `test-set-folders` | **1** (the root) | 6 |
+| `release-folders` | **1** | 0 |
+| `bpm-folders` | **1** | 0 |
+| `resource-folders` | 0 | **1** |
+
+**The rule holds** — 12 tree instances across 2 projects now.
+
+More usefully, the populated project **explains the earlier bug**. `{parent-id[0]}` does not mean
+"find the root". It means *"rows whose parent is node 0"* — i.e. **the children of node 0**. For
+`requirements` and `test-set-folders`, whose root **is** id 0, it therefore returns the root's
+children: here 4 and 6 rows, obviously not roots. In the empty sandbox `test-set-folders` had exactly
+**one** child — `Recycle Bin` — so "children of the root" and "the root" were indistinguishable, and
+the wrong rule looked correct. It only ever worked for `test-folders` and `resource-folders` by
+coincidence: their roots happen to be parented to a node `0` that does not exist.
+
+So the honest statement of the rule is a statement about the data model: **a tree root is parented to
+`-1` or to `0`, varying by tree; query `{parent-id[-1]}` first because no real node has id `-1`, and
+fall back to `{parent-id[0]}` only for the trees whose roots use `0`.**
+
+---
+
 ## Open items for the next probe round
 
 1. ~~Map `SiteVersion 20.0 (20.00.0.143)` → marketing version~~ **DONE: ALM 26.1** (probe 3).

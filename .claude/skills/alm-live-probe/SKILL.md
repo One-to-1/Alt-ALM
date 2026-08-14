@@ -10,7 +10,19 @@ Load `alm-api` first for API behaviour. This skill covers *how to safely talk to
 - **Read-only by default.** Writes are permitted ONLY against a project the user has explicitly
   designated a sandbox — currently confirmed for the project referenced in
   `Secrets/ALM_API_credentials.json` (confirmed 2026-08-12). Never assume any other project/instance is
-  writable. CLAUDE.md hard constraint: the record generator refuses any target not on an explicit
+  writable.
+- ⚠️ **The tenant's OTHER projects are readable, and that is a narrow grant** (user, 2026-08-14).
+  Eight are reachable with the same key; `PROJECT-5` is the populated one used for P1 validation.
+  Rules, all three of which apply every time:
+  1. **GET only.** Never issue a non-GET against any project but the sandbox — not even a "harmless"
+     one. Probe scripts that touch foreign projects should have no write helper defined at all.
+  2. **Nothing from them enters the repo.** Counts and structural shapes only — never a node name,
+     requirement text, owner, or any other field value, in fixtures, docs, logs or commits.
+     Pseudonymize the projects themselves (`PROJECT-5`); the real names live only in git-ignored
+     `Secrets/alm-read-projects.json`. Their project names are *themselves* other teams' data.
+  3. **Seeding the sandbox from their data is allowed** (user-authorized) — but a seeded record is
+     sandbox state, not a committed artifact. The repo outlives the sandbox; that asymmetry is the
+     whole reason for rule 2. CLAUDE.md hard constraint: the record generator refuses any target not on an explicit
   allowlist; the same discipline applies to ad-hoc probe scripts.
 - **Never print, log, or commit the contents of `Secrets/`.** Load credentials at runtime; reference the
   file by path in docs/code, never its values.

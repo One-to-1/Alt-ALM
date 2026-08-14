@@ -388,10 +388,16 @@ folder**: it locks `bff/target` and breaks `mvnw clean`. Run without `clean`.
    this**: the slice should be **requirements**, because it is the only entity in the sandbox with
    any rows at all.
 
-   ⚠️ **Decide this before starting (Q45)**: the sandbox has **0 tests and 0 defects**, so P1's
-   stated exit criterion — grids rendering live for requirements/tests/defects — cannot be met as
-   written. Either pull a minimal seeding step forward from P4, or consciously close P1 on fixtures
-   plus a requirements-only live read and re-validate after the generator exists.
+   ✅ **Q45 resolved by probe 16 — no decision needed.** The user granted **read-only access to the
+   tenant's other projects** (2026-08-14) and allowed their data to seed sandbox records. Eight are
+   readable; **`PROJECT-5` has 233 reqs / 129 tests / 80 defects / 227 test-instances / 178 runs**.
+   Point P1's read paths there and the phase validates against live data with no generator. Real
+   names live in git-ignored `Secrets/alm-read-projects.json` — **never paste one into a doc,
+   fixture, commit or log**; use the `PROJECT-N` pseudonyms.
+
+   ⚠️ **Read-only is a code constraint, not a habit**: the BFF must refuse every non-GET to any
+   project but the sandbox, via the same explicit allowlist the generator uses. Other teams' live
+   projects are on the other end of it.
 
    Traps waiting in P1, now with probe-15 detail:
    - **Tree roots**: use `{parent-id[-1]}` then fall back to `{parent-id[0]}`. The old

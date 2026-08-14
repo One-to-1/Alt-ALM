@@ -42,6 +42,14 @@ scripts.
   `Secrets/ALM_API_credentials.json` holds **live working credentials** (keys: `alm_adress`,
   `api_key`, `api_secret`, `domain`, `project`). Reference it by path; read at runtime only; mask
   host/domain/project/keys/usernames in every output and fixture.
+- **Other projects in the tenant are READ-ONLY** (user, 2026-08-14). Eight are reachable with the
+  same key; `PROJECT-5` (233 reqs / 129 tests / 80 defects / 227 test-instances / 178 runs) is the
+  P1 read target — real names in git-ignored `Secrets/alm-read-projects.json`. Three rules:
+  **GET only** outside the sandbox, enforced in code via the same explicit allowlist the generator
+  uses; **their data never enters the repo** — no names, text, owners or field values in fixtures,
+  docs or logs, only counts and shapes, pseudonymized (`PROJECT-5`, not the real name); and while
+  their data **may seed sandbox records** (user-authorized), a seeded record is sandbox state, not a
+  committed artifact. These are other teams' live projects.
 - **Never write to a live ALM project** unless the user has explicitly designated it a sandbox.
   The project in `Secrets/ALM_API_credentials.json` **was designated a disposable sandbox by the
   user on 2026-08-12** — writes allowed there, with `ALTALM-*` name prefixes and mandatory cleanup.
@@ -129,9 +137,13 @@ finding in the project surfaced by product code under test rather than a hand-wr
   but that op doesn't advertise it → **undocumented, so R15, not an implementation.**
 - **Paging**: 2000 is server-stated, **`page-size=max` exists**, out-of-range is **404 not 400**, and
   ⚠️ `page-size=0` reports `TotalResults=0` on a non-empty collection.
-- ⚠️ **The sandbox is effectively empty** — 0 tests, 0 defects, 0 runs; 1 requirement (the root
-  itself). P1 can be *built* but not *validated*: its exit criterion names grids for
-  requirements/tests/defects. The generator (P4) is a prerequisite for validating P1 (**Q45**).
+- ✅ **P1 validation is unblocked** (probe 16). The sandbox is effectively empty — 0 tests, 0
+  defects, 1 requirement — but the tenant's **other projects are readable** (see hard constraints),
+  and `PROJECT-5` has 847 rows of real data. **Q45 dissolved: the generator is NOT a P1
+  prerequisite** and stays a P4 write-testing concern.
+- ⚠️ **A plain `GET` returned HTTP 500 once and never reproduced** (13 follow-up requests, all 200).
+  Cause UNVERIFIED, possibly the same load-balancer intermittency as Q40. P1's grid needs a
+  **bounded retry on 5xx reads** — separate from the 5xx-on-*write* verify-by-query rule (**Q46**).
 
 See [docs/plan/implementation-plan.md](docs/plan/implementation-plan.md) for P1's scope.
 
