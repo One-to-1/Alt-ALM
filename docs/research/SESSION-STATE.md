@@ -475,7 +475,7 @@ not wired to anything.
 - **Column picker, view toggle (Tree|Grid), resizable detail pane** — all persisted to
   `localStorage`, per project+collection for columns.
 
-**147 tests green** (`./mvnw test`), plus 7 live contract tests with `-Pcontract`.
+**159 tests green** (`./mvnw test`), plus 7 live contract tests with `-Pcontract`.
 
 ### UI decisions worth not re-litigating
 
@@ -485,9 +485,27 @@ not wired to anything.
 - **Grid defaults to ~8 columns, not all of them.** 76 columns is unreadable and mostly empty.
   `defaultColumns()` prefers the fields people scan (`id, name, status, owner…`) and tops up in
   metadata order.
-- **Tree nodes always claim to be expandable** — `children-count` is uselessly 0 (probe 19).
+- ~~**Tree nodes always claim to be expandable**~~ **SUPERSEDED 2026-08-14 (probe 20).** ALM's
+  `children-count` is still uselessly 0, but `hasChildren` no longer depends on it: the server asks
+  which of a level's ids appear as a `parent-id` one level down, batched into one query by
+  `{parent-id[a OR b …]}`. Verified over the whole 232-node tree — **6 levels, zero mismatches**.
+  It degrades to the old optimistic answer only when a page fills to the 2,000 cap, and says so via
+  `Children.exact`.
+- **One request per tree LEVEL, not per node.** `GET /api/tree/{collection}/children` takes a
+  repeated `parentId`. The client also prefetches one level ahead, so expanding is usually instant.
+  Chunked at 120 ids per query (Q48: no probed ceiling on query length).
+- **A tree click selects, it does not navigate.** Clicking a node shows it in the detail pane and
+  opens it; it never swaps the main pane to the grid. Double-click (or the crumb) scopes the grid to
+  that folder. Clicking a row never *collapses* it — closing is the twisty's job.
 - **Memo fields render as truncated plain text, never HTML.** No `dangerouslySetInnerHTML` anywhere;
   sanitisation is a later phase and the data belongs to other teams.
+- **One CSS token vocabulary, defined in `index.css`.** An earlier pass had two — `--border`/`--surface`
+  (defined) and `--color-border`/`--color-focus` (never defined, silently falling back to inline
+  literals), so the app rendered two palettes at once and unfallbacked rules rendered unstyled. If a
+  component needs a colour that is not a token, the token is missing, not the component. A scan
+  asserting every `var(--x)` resolves is cheap: 36 defined, 36 referenced.
+- **Icons are authored SVG** (`spa/src/shell/icons.tsx`), one 16-unit geometry at 1.5 stroke. The
+  first pass used Unicode glyphs (`▸ ▾ ▲ ▼`), whose weight and availability vary per platform.
 
 ### Known gaps / next steps
 
@@ -500,8 +518,16 @@ not wired to anything.
    400. Correct, but the UI should explain it.
 5. **Tests/Defects/Test Sets/Runs modules** share the grid and detail but are untested beyond
    requirements.
-6. **Design pass not done.** `impeccable` is installed; the current look is functional, not designed.
-   PRODUCT.md / DESIGN.md were deliberately **not** written (user: "nothing too complex").
+6. **Design pass: first round done 2026-08-14, not finished.** One token system, an authored icon
+   set, computed-contrast text (every colour ≥4.5:1 on every surface it lands on, both schemes),
+   skeleton loading, real empty states, themed scrollbars/selection/focus. PRODUCT.md / DESIGN.md
+   are still **not** written, so there is no recorded visual world to check future work against —
+   that is the next design step, not more component polish.
+7. **The UI has not been looked at in a browser by the agent** — no screenshot tool in this
+   environment. Correctness was verified by API-level checks and a token-resolution scan; *visual*
+   verification has only ever been the user's eye. Treat layout regressions as unguarded.
+8. **`Children.exact=false` is untested against real data.** It needs a folder with >2,000 direct
+   children, which no reachable project has. The fallback path is unit-tested only.
 
 ### Running it
 

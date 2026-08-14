@@ -81,6 +81,48 @@ public final class AlmQuery {
     }
 
     /**
+     * Adds one {@code field[a OR b OR c]} clause — "this field equals any of these values".
+     *
+     * <p>This exists as a first-class method rather than a {@link #filterRaw} call at each site
+     * because {@code OR} is a <em>grammar keyword</em>, and routing user-supplied values through
+     * {@code filterRaw} to get it would mean the values arrive unencoded and unchecked. Here each
+     * value is encoded and delimiter-checked exactly as {@link #filter} does; only the separator
+     * this method controls is structural.
+     *
+     * <p><strong>Probe 20 verified this against the live server</strong>, not merely the docs
+     * (api-ref §4.3 carried {@code OR} as {@code [docs-research]} until then): 8, 16, 32, 63, 100
+     * and 233 terms all returned exactly the union of the equivalent one-value-at-a-time queries,
+     * checked against a parent→children map built independently from a full-page read.
+     *
+     * <p>⚠️ <strong>Callers must chunk (Q48).</strong> The longest query probed was 1,625 characters
+     * — the largest project available, not a demonstrated ceiling. ALM's own URL limit is unknown and
+     * intermediaries commonly cap around 8 KB, so a caller with an unbounded id list must split it.
+     * This method deliberately does <em>not</em> chunk internally: an {@code AlmQuery} is one request
+     * by definition, and silently becoming several would break that.
+     *
+     * @throws IllegalArgumentException if {@code values} is null or empty
+     * @throws UnsupportedOperationException if any value contains {@link #UNESCAPABLE_FILTER_CHARS}
+     */
+    public AlmQuery filterAnyOf(String field, List<String> values) {
+        requireNonBlank(field, "filter field");
+        if (values == null || values.isEmpty()) {
+            throw new IllegalArgumentException("filterAnyOf needs at least one value");
+        }
+        List<String> encoded = new ArrayList<>(values.size());
+        for (String value : values) {
+            if (value == null) {
+                throw new IllegalArgumentException("filterAnyOf values must not be null");
+            }
+            checkEscapable(value);
+            encoded.add(encodeValue(value));
+        }
+        // %20 rather than a literal space: the value halves are already percent-encoded, so leaving
+        // real spaces here would make the separator the only unencoded whitespace in the URL.
+        String clause = encodeValue(field) + "[" + String.join("%20OR%20", encoded) + "]";
+        return new AlmQuery(append(filterClauses, clause), fieldNames, orderByClauses, pageSize, startIndex);
+    }
+
+    /**
      * Escape hatch for a raw {@code field[condition]} clause: operators ({@code GT}, {@code AND},
      * {@code NOT}, ...), wildcards, quoted literals with embedded delimiters, or anything else
      * {@link #filter} would reject. {@code rawCondition} is inserted <strong>verbatim, unencoded</strong>

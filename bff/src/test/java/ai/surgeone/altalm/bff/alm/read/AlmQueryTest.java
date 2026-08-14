@@ -192,6 +192,43 @@ class AlmQueryTest {
     }
 
     @Test
+    @DisplayName("filterAnyOf builds the probe-20 OR form with an encoded separator")
+    void filterAnyOfBuildsTheOrForm() {
+        String q = AlmQuery.none().filterAnyOf("parent-id", java.util.List.of("1", "2", "3")).toQueryString();
+
+        assertThat(q).isEqualTo("?query={parent-id[1%20OR%202%20OR%203]}");
+    }
+
+    @Test
+    @DisplayName("filterAnyOf with a single value is a plain equality, not a degenerate OR")
+    void filterAnyOfSingleValue() {
+        assertThat(AlmQuery.none().filterAnyOf("parent-id", java.util.List.of("42")).toQueryString())
+                .isEqualTo("?query={parent-id[42]}");
+    }
+
+    @Test
+    @DisplayName("filterAnyOf encodes each value, so a value cannot inject grammar of its own")
+    void filterAnyOfEncodesValues() {
+        String q = AlmQuery.none().filterAnyOf("owner", java.util.List.of("a b", "c&d")).toQueryString();
+
+        assertThat(q).isEqualTo("?query={owner[a%20b%20OR%20c%26d]}");
+    }
+
+    @Test
+    @DisplayName("filterAnyOf applies the same unescapable-character refusal as filter()")
+    void filterAnyOfRejectsDelimiters() {
+        assertThatThrownBy(() -> AlmQuery.none().filterAnyOf("name", java.util.List.of("ok", "b[ad]")))
+                .isInstanceOf(UnsupportedOperationException.class);
+    }
+
+    @Test
+    @DisplayName("filterAnyOf refuses an empty list rather than emitting an empty bracket pair")
+    void filterAnyOfRejectsEmpty() {
+        assertThatIllegalArgumentException()
+                .isThrownBy(() -> AlmQuery.none().filterAnyOf("parent-id", java.util.List.of()));
+    }
+
+    @Test
     @DisplayName("AlmQuery is immutable - each call returns a new instance, the original is untouched")
     void immutability() {
         AlmQuery base = AlmQuery.none().filter("status", "Passed");

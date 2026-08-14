@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { GridColumn, Project, TreeNode } from './api/client.ts'
 import { ApiError, fetchProjects } from './api/client.ts'
 import { DataGrid } from './grid/DataGrid.tsx'
@@ -6,6 +6,7 @@ import { ColumnPicker } from './grid/ColumnPicker.tsx'
 import { FolderTree } from './tree/FolderTree.tsx'
 import { DetailPane } from './detail/DetailPane.tsx'
 import { Splitter } from './shell/Splitter.tsx'
+import { ChevronLeft, Close, GridView, Search, TreeView } from './shell/icons.tsx'
 import {
   clearKey,
   defaultColumns,
@@ -42,8 +43,17 @@ type Density = (typeof DENSITIES)[number]
 const VIEWS = ['tree', 'grid'] as const
 type View = (typeof VIEWS)[number]
 
-const DETAIL_MIN = 260
+const DETAIL_MIN = 280
 const DETAIL_MAX = 900
+
+/** Everything a Back step restores. */
+interface NavPoint {
+  view: View
+  collection: Collection
+  folder: TreeNode | null
+  rowId: string | null
+  search: string
+}
 
 function projectKey(project: Project): string {
   return `${project.domain}/${project.project}`
@@ -61,7 +71,7 @@ function App() {
   const [density, setDensity] = useState<Density>(() =>
     readString<Density>('density', 'compact', DENSITIES),
   )
-  const [view, setView] = useState<View>(() => readString<View>('view', 'grid', VIEWS))
+  const [view, setView] = useState<View>(() => readString<View>('view', 'tree', VIEWS))
   const [detailWidth, setDetailWidth] = useState(() =>
     readNumber('detailWidth', 460, DETAIL_MIN, DETAIL_MAX),
   )
@@ -71,6 +81,30 @@ function App() {
   const [searchDraft, setSearchDraft] = useState('')
   const [search, setSearch] = useState('')
   const [columns, setColumns] = useState<string[] | null>(null)
+
+  // Back history. A ref, not state, because pushing must never itself trigger a render — the push
+  // happens inside the same handler that changes what it is recording.
+  const historyRef = useRef<NavPoint[]>([])
+  const [canGoBack, setCanGoBack] = useState(false)
+
+  const pushHistory = useCallback(() => {
+    historyRef.current.push({ view, collection, folder, rowId: selectedRowId, search })
+    // 50 steps is far more than anyone walks back through, and bounds the memory.
+    if (historyRef.current.length > 50) historyRef.current.shift()
+    setCanGoBack(true)
+  }, [view, collection, folder, selectedRowId, search])
+
+  const goBack = useCallback(() => {
+    const previous = historyRef.current.pop()
+    if (!previous) return
+    setView(previous.view)
+    setCollection(previous.collection)
+    setFolder(previous.folder)
+    setSelectedRowId(previous.rowId)
+    setSearch(previous.search)
+    setSearchDraft(previous.search)
+    setCanGoBack(historyRef.current.length > 0)
+  }, [])
 
   useEffect(() => {
     let cancelled = false
@@ -104,15 +138,27 @@ function App() {
   useEffect(() => writeString('view', view), [view])
   useEffect(() => writeNumber('detailWidth', detailWidth), [detailWidth])
 
-  // Project or module change invalidates folder, row and the chosen columns: field sets are
-  // per-project, so one project's column choice is meaningless in another.
+  // A project switch invalidates everything, history included: those nodes and rows do not exist
+  // in the new project, so a Back into them would 404.
   useEffect(() => {
     setFolder(null)
     setSelectedRowId(null)
     setSearch('')
     setSearchDraft('')
     setColumns(null)
-  }, [selectedProjectKey, collection])
+    historyRef.current = []
+    setCanGoBack(false)
+  }, [selectedProjectKey])
+
+  // A module switch keeps history (Back to the previous module is useful) but drops the scope,
+  // since a requirements folder means nothing in Defects.
+  useEffect(() => {
+    setFolder(null)
+    setSelectedRowId(null)
+    setSearch('')
+    setSearchDraft('')
+    setColumns(null)
+  }, [collection])
 
   const activeProject = useMemo(
     () => projects.find((p) => projectKey(p) === selectedProjectKey) ?? null,
@@ -129,7 +175,6 @@ function App() {
     return f
   }, [folder, search])
 
-  // Resolve the column choice once the grid reports what this project actually has.
   const resolveColumns = useCallback(
     (available: GridColumn[]) => {
       if (columns !== null) return
@@ -158,12 +203,54 @@ function App() {
     [columnsKey],
   )
 
-  if (projectsStatus === 'loading') return <div className="app-boot">Connecting to ALM…</div>
+  /** Tree click: show the record, never navigate away from the tree. */
+  const handleTreeSelect = useCallback(
+    (node: TreeNode | null) => {
+      if (!node) return
+      pushHistory()
+      setSelectedRowId(node.id)
+    },
+    [pushHistory],
+  )
+
+  /** Double-click, or the explicit action: show this folder's rows in the grid. */
+  const handleOpenInGrid = useCallback(
+    (node: TreeNode) => {
+      pushHistory()
+      setFolder(node)
+      setSelectedRowId(null)
+      setView('grid')
+    },
+    [pushHistory],
+  )
+
+  const handleSelectRow = useCallback(
+    (id: string) => {
+      pushHistory()
+      setSelectedRowId(id)
+    },
+    [pushHistory],
+  )
+
+  const clearScope = useCallback(() => {
+    pushHistory()
+    setFolder(null)
+    setSearch('')
+    setSearchDraft('')
+  }, [pushHistory])
+
+  if (projectsStatus === 'loading') {
+    return (
+      <div className="app-boot" role="status">
+        <strong>Connecting to ALM…</strong>
+      </div>
+    )
+  }
 
   if (projectsStatus === 'error') {
     return (
-      <div className="app-boot app-boot-error">
-        <strong>Could not reach the Alt-ALM server.</strong>
+      <div className="app-boot app-boot-error" role="alert">
+        <strong>Could not reach the Alt-ALM server</strong>
         <span>{projectsError?.message}</span>
         <span className="app-boot-hint">
           Is the BFF running on :8080? Start it with <code>./mvnw spring-boot:run</code>.
@@ -175,7 +262,7 @@ function App() {
   if (projectsStatus === 'empty' || !activeProject || !selectedProjectKey) {
     return (
       <div className="app-boot">
-        <strong>No projects are configured.</strong>
+        <strong>No projects are configured</strong>
         <span className="app-boot-hint">
           Set <code>alt-alm.alm.readable-projects</code> to enrol one.
         </span>
@@ -199,7 +286,11 @@ function App() {
               type="button"
               className={`app-module${c === collection ? ' is-active' : ''}`}
               aria-current={c === collection ? 'page' : undefined}
-              onClick={() => setCollection(c)}
+              onClick={() => {
+                if (c === collection) return
+                pushHistory()
+                setCollection(c)
+              }}
             >
               {COLLECTION_LABELS[c]}
             </button>
@@ -207,25 +298,10 @@ function App() {
         </nav>
 
         <div className="app-bar-right">
-          {treeCollection && (
-            <div className="app-viewtoggle" role="group" aria-label="Main view">
-              {VIEWS.map((v) => (
-                <button
-                  key={v}
-                  type="button"
-                  className={`app-viewbtn${view === v ? ' is-active' : ''}`}
-                  aria-pressed={view === v}
-                  onClick={() => setView(v)}
-                >
-                  {v === 'tree' ? 'Tree' : 'Grid'}
-                </button>
-              ))}
-            </div>
-          )}
-
           <label className="app-field">
             <span className="sr-only">Project</span>
             <select
+              className="field"
               value={selectedProjectKey}
               onChange={(e) => setSelectedProjectKey(e.target.value)}
             >
@@ -239,14 +315,18 @@ function App() {
           </label>
 
           {!activeProject.writable && (
-            <span className="app-ro-badge" title="Writes are not implemented yet (P2)">
-              read only
+            <span className="badge badge-ro" title="Alt-ALM has no write path yet (P2)">
+              Read only
             </span>
           )}
 
           <label className="app-field">
-            <span className="sr-only">Density</span>
-            <select value={density} onChange={(e) => setDensity(e.target.value as Density)}>
+            <span className="sr-only">Row density</span>
+            <select
+              className="field"
+              value={density}
+              onChange={(e) => setDensity(e.target.value as Density)}
+            >
               {DENSITIES.map((d) => (
                 <option key={d} value={d}>
                   {d}
@@ -257,69 +337,112 @@ function App() {
         </div>
       </header>
 
+      {/* Second bar: where you are and how you got here, separate from what module you are in. */}
+      <div className="app-subbar">
+        <button
+          type="button"
+          className="btn btn-quiet"
+          onClick={goBack}
+          disabled={!canGoBack}
+          title={canGoBack ? 'Back to the previous view' : 'Nothing to go back to'}
+        >
+          <ChevronLeft />
+          Back
+        </button>
+
+        {treeCollection && (
+          <div className="app-viewtoggle" role="group" aria-label="Main view">
+            {VIEWS.map((v) => (
+              <button
+                key={v}
+                type="button"
+                className={`app-viewbtn${view === v ? ' is-active' : ''}`}
+                aria-pressed={view === v}
+                onClick={() => setView(v)}
+              >
+                {v === 'tree' ? <TreeView /> : <GridView />}
+                {v === 'tree' ? 'Tree' : 'Grid'}
+              </button>
+            ))}
+          </div>
+        )}
+
+        <nav className="app-crumbs" aria-label="Scope">
+          <span className="app-crumb-module">{COLLECTION_LABELS[collection]}</span>
+          {folder && (
+            <>
+              <span className="app-crumb-sep" aria-hidden="true">
+                /
+              </span>
+              <span className="app-crumb" title={folder.name}>
+                {folder.name}
+              </span>
+              <button
+                type="button"
+                className="app-crumb-clear"
+                onClick={clearScope}
+                aria-label={`Clear folder scope ${folder.name}`}
+                title="Clear folder scope"
+              >
+                <Close />
+              </button>
+            </>
+          )}
+        </nav>
+
+        {!showTree && (
+          <form
+            className="app-search"
+            onSubmit={(e) => {
+              e.preventDefault()
+              pushHistory()
+              setSearch(searchDraft)
+              setSelectedRowId(null)
+            }}
+          >
+            <span className="app-search-icon" aria-hidden="true">
+              <Search />
+            </span>
+            <label className="sr-only" htmlFor="grid-search">
+              Filter by name
+            </label>
+            <input
+              id="grid-search"
+              className="field app-search-input"
+              type="search"
+              placeholder="Filter by name…"
+              value={searchDraft}
+              onChange={(e) => setSearchDraft(e.target.value)}
+            />
+            {search !== '' && (
+              <button
+                type="button"
+                className="btn btn-quiet"
+                onClick={() => {
+                  pushHistory()
+                  setSearch('')
+                  setSearchDraft('')
+                }}
+              >
+                Clear
+              </button>
+            )}
+          </form>
+        )}
+      </div>
+
       <div className="app-body">
         <section
           className="app-pane app-pane-main"
           aria-label={showTree ? 'Folders' : COLLECTION_LABELS[collection]}
         >
-          <div className="pane-head">
-            <span className="pane-title">
-              {showTree ? 'Folders' : COLLECTION_LABELS[collection]}
-              {!showTree && folder && <span className="pane-scope"> in {folder.name}</span>}
-            </span>
-
-            {showTree && folder && (
-              <button type="button" className="pane-action" onClick={() => setFolder(null)}>
-                clear scope
-              </button>
-            )}
-
-            {!showTree && (
-              <form
-                className="pane-search"
-                onSubmit={(e) => {
-                  e.preventDefault()
-                  setSearch(searchDraft)
-                  setSelectedRowId(null)
-                }}
-              >
-                <label className="sr-only" htmlFor="grid-search">
-                  Filter by name
-                </label>
-                <input
-                  id="grid-search"
-                  type="search"
-                  placeholder="Filter by name…"
-                  value={searchDraft}
-                  onChange={(e) => setSearchDraft(e.target.value)}
-                />
-                <button type="submit">Filter</button>
-                {search !== '' && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setSearch('')
-                      setSearchDraft('')
-                    }}
-                  >
-                    Clear
-                  </button>
-                )}
-              </form>
-            )}
-          </div>
-
           {showTree && treeCollection ? (
             <FolderTree
               project={selectedProjectKey}
               collection={treeCollection}
-              selectedId={folder?.id ?? null}
-              onSelect={(node) => {
-                setFolder(node)
-                setSelectedRowId(null)
-                // Choosing a folder is a request to see its contents.
-                setView('grid')
-              }}
+              selectedId={selectedRowId}
+              onSelect={handleTreeSelect}
+              onOpenInGrid={handleOpenInGrid}
             />
           ) : (
             <DataGrid
@@ -327,21 +450,17 @@ function App() {
               collection={collection}
               filters={filters}
               selectedId={selectedRowId}
-              onSelectRow={setSelectedRowId}
+              onSelectRow={handleSelectRow}
+              onClearFilters={clearScope}
               visibleColumns={columns ?? undefined}
               renderToolbar={(available) => {
                 resolveColumns(available)
                 return (
                   <>
-                    {folder && (
-                      <button
-                        type="button"
-                        className="pane-action"
-                        onClick={() => setFolder(null)}
-                      >
-                        clear folder scope
-                      </button>
-                    )}
+                    <span className="grid-toolbar-label">
+                      {COLLECTION_LABELS[collection]}
+                      {folder && <span className="grid-toolbar-scope"> in {folder.name}</span>}
+                    </span>
                     <div className="grid-toolbar-right">
                       <ColumnPicker
                         columns={available}
@@ -366,7 +485,11 @@ function App() {
           label="Resize detail pane"
         />
 
-        <section className="app-pane app-pane-detail" style={{ width: `${detailWidth}px` }} aria-label="Detail">
+        <section
+          className="app-pane app-pane-detail"
+          style={{ width: `${detailWidth}px` }}
+          aria-label="Detail"
+        >
           <DetailPane
             project={selectedProjectKey}
             collection={collection}

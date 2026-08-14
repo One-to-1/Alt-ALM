@@ -85,8 +85,11 @@ export interface TreeRoot {
 
 export interface TreeChildren {
   collection: string
-  parentId: string
+  /** The parents actually queried, after the server dropped blanks and duplicates. */
+  parentIds: string[]
   nodes: TreeNode[]
+  /** False when a page hit the 2,000-row cap, so `hasChildren` fell back to optimistic. */
+  exact: boolean
 }
 
 /** One server-side group-by bucket. `size` here IS a real count, unlike GridPage.reportedTotal. */
@@ -248,13 +251,22 @@ export function fetchTreeRoots(project: string): Promise<TreeRoot[]> {
   return apiGet<TreeRoot[]>(`/api/tree/roots?project=${encodeURIComponent(project)}`)
 }
 
-/** Children of one folder, for lazy expansion. */
+/**
+ * Children of one or more folders.
+ *
+ * Pass a whole level's ids to get it in one request. The server needs the batch anyway to answer
+ * `hasChildren` exactly — ALM's own `children-count` is always 0 (probe 19) — so asking node by
+ * node costs more requests *and* yields a worse answer.
+ */
 export function fetchTreeChildren(
   project: string,
   collection: string,
-  parentId: string,
+  parentIds: string | string[],
 ): Promise<TreeChildren> {
-  const params = new URLSearchParams({ project, parentId })
+  const params = new URLSearchParams({ project })
+  for (const id of Array.isArray(parentIds) ? parentIds : [parentIds]) {
+    params.append('parentId', id)
+  }
   return apiGet<TreeChildren>(
     `/api/tree/${encodeURIComponent(collection)}/children?${params.toString()}`,
   )

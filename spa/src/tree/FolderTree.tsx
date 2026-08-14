@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type { TreeNode } from '../api/client.ts'
 import { ApiError, fetchTreeChildren, fetchTreeRoots } from '../api/client.ts'
+import { ChevronDown, ChevronRight, Doc, Folder } from '../shell/icons.tsx'
 import './FolderTree.css'
 
 interface Props {
@@ -8,13 +9,16 @@ interface Props {
   /** Tree collection, e.g. "requirements". */
   collection: string
   selectedId: string | null
+  /** Fires on every node click — the detail pane follows the tree cursor. */
   onSelect: (node: TreeNode | null) => void
+  /** Fires when the user asks to see a node's rows in the grid. Never on plain selection. */
+  onOpenInGrid?: (node: TreeNode) => void
 }
 
-/** Children keyed by parent id; absent = never expanded, empty = expanded and childless. */
+/** Children keyed by parent id; absent = not fetched, empty = fetched and childless. */
 type ChildMap = Record<string, TreeNode[]>
 
-export function FolderTree({ project, collection, selectedId, onSelect }: Props) {
+export function FolderTree({ project, collection, selectedId, onSelect, onOpenInGrid }: Props) {
   const [root, setRoot] = useState<TreeNode | null>(null)
   const [rootError, setRootError] = useState<string | null>(null)
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading')
@@ -22,8 +26,10 @@ export function FolderTree({ project, collection, selectedId, onSelect }: Props)
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
   const [loadingIds, setLoadingIds] = useState<Set<string>>(new Set())
 
-  // Resolve the root whenever the project or collection changes. The root rule itself lives
-  // server-side (AlmTreeRoots) — the client deliberately does not reimplement it.
+  // Parents already fetched or in flight. A ref, not state, because the prefetch must not re-run
+  // when it lands — that would be a fetch loop, each level triggering the next forever.
+  const fetchedRef = useRef<Set<string>>(new Set())
+
   useEffect(() => {
     let cancelled = false
     setStatus('loading')
@@ -31,6 +37,7 @@ export function FolderTree({ project, collection, selectedId, onSelect }: Props)
     setRootError(null)
     setChildren({})
     setExpanded(new Set())
+    fetchedRef.current = new Set()
 
     fetchTreeRoots(project)
       .then((roots) => {
@@ -60,21 +67,58 @@ export function FolderTree({ project, collection, selectedId, onSelect }: Props)
     }
   }, [project, collection])
 
-  const loadChildren = useCallback(
-    (parentId: string) => {
-      setLoadingIds((prev) => new Set(prev).add(parentId))
-      fetchTreeChildren(project, collection, parentId)
+  /**
+   * Fetch one whole level at a time.
+   *
+   * `visible` drives the spinner; a prefetch passes false so a background look-ahead never makes
+   * rows flicker into a loading state the user did not ask for.
+   */
+  const loadLevel = useCallback(
+    (parentIds: string[], visible: boolean) => {
+      const wanted = parentIds.filter((id) => !fetchedRef.current.has(id))
+      if (wanted.length === 0) return
+      for (const id of wanted) fetchedRef.current.add(id)
+
+      if (visible) {
+        setLoadingIds((prev) => {
+          const next = new Set(prev)
+          for (const id of wanted) next.add(id)
+          return next
+        })
+      }
+
+      fetchTreeChildren(project, collection, wanted)
         .then((result) => {
-          setChildren((prev) => ({ ...prev, [parentId]: result.nodes }))
+          // Seed every requested parent with [] first, so a parent that came back with no rows is
+          // recorded as "fetched and childless" rather than staying indistinguishable from unfetched.
+          const grouped: ChildMap = {}
+          for (const id of wanted) grouped[id] = []
+          for (const node of result.nodes) {
+            const key = node.parentId ?? ''
+            ;(grouped[key] ??= []).push(node)
+          }
+          setChildren((prev) => ({ ...prev, ...grouped }))
+
+          // Look ahead one level: fetch the children of everything just revealed that can expand.
+          // By the time the user clicks a twisty the rows are already here, so expanding is instant.
+          const next = result.nodes.filter((n) => n.hasChildren).map((n) => n.id)
+          if (next.length > 0) loadLevel(next, false)
         })
         .catch(() => {
-          // A folder that fails to expand shows as empty rather than taking down the tree.
-          setChildren((prev) => ({ ...prev, [parentId]: [] }))
+          // A level that fails renders as empty rather than taking down the tree. Clearing the
+          // fetched marks lets a later expand retry instead of the failure being permanent.
+          for (const id of wanted) fetchedRef.current.delete(id)
+          setChildren((prev) => {
+            const next = { ...prev }
+            for (const id of wanted) next[id] ??= []
+            return next
+          })
         })
         .finally(() => {
+          if (!visible) return
           setLoadingIds((prev) => {
             const next = new Set(prev)
-            next.delete(parentId)
+            for (const id of wanted) next.delete(id)
             return next
           })
         })
@@ -82,43 +126,60 @@ export function FolderTree({ project, collection, selectedId, onSelect }: Props)
     [project, collection],
   )
 
-  const toggle = useCallback(
-    (node: TreeNode) => {
-      const isOpen = expanded.has(node.id)
+  // Open the root once so the tree is never a single collapsed line.
+  useEffect(() => {
+    if (root && !fetchedRef.current.has(root.id)) {
+      setExpanded(new Set([root.id]))
+      loadLevel([root.id], true)
+    }
+  }, [root, loadLevel])
+
+  const setOpen = useCallback(
+    (node: TreeNode, open: boolean) => {
       setExpanded((prev) => {
         const next = new Set(prev)
-        if (isOpen) next.delete(node.id)
-        else next.add(node.id)
+        if (open) next.add(node.id)
+        else next.delete(node.id)
         return next
       })
-      if (!isOpen && children[node.id] === undefined) {
-        loadChildren(node.id)
-      }
+      if (open) loadLevel([node.id], true)
     },
-    [expanded, children, loadChildren],
+    [loadLevel],
   )
 
-  // Auto-expand the root once, so the tree is never a single collapsed line.
-  useEffect(() => {
-    if (root && !expanded.has(root.id) && children[root.id] === undefined) {
-      setExpanded(new Set([root.id]))
-      loadChildren(root.id)
-    }
-  }, [root, expanded, children, loadChildren])
+  /**
+   * A click selects, and opens the node if it was closed.
+   *
+   * It deliberately does not toggle: clicking a row you are reading should never collapse it out
+   * from under you. Closing is the twisty's job, which is also the only control whose label says so.
+   */
+  const handleSelect = useCallback(
+    (node: TreeNode) => {
+      onSelect(node)
+      if (node.hasChildren && !expanded.has(node.id)) setOpen(node, true)
+    },
+    [onSelect, expanded, setOpen],
+  )
 
   if (status === 'loading') {
-    return <div className="tree-state">Loading folders…</div>
+    return (
+      <div className="tree-skeleton" role="status" aria-label="Loading folders">
+        {Array.from({ length: 7 }, (_, i) => (
+          <div key={i} className="tree-skeleton-row" style={{ marginInlineStart: `${(i % 3) * 14}px` }} />
+        ))}
+      </div>
+    )
   }
   if (rootError && !root) {
     return (
-      <div className="tree-state tree-state-error">
+      <div className="tree-state tree-state-error" role="alert">
         <strong>Tree unavailable</strong>
         <span>{rootError}</span>
       </div>
     )
   }
   if (!root) {
-    return <div className="tree-state">No folders.</div>
+    return <div className="tree-state">This project has no {collection} tree.</div>
   }
 
   return (
@@ -128,11 +189,12 @@ export function FolderTree({ project, collection, selectedId, onSelect }: Props)
           node={root}
           depth={0}
           expanded={expanded}
-          children_={children}
+          childMap={children}
           loadingIds={loadingIds}
           selectedId={selectedId}
-          onToggle={toggle}
-          onSelect={onSelect}
+          onSetOpen={setOpen}
+          onSelect={handleSelect}
+          onOpenInGrid={onOpenInGrid}
         />
       </ul>
     </nav>
@@ -143,25 +205,27 @@ interface ItemProps {
   node: TreeNode
   depth: number
   expanded: Set<string>
-  children_: ChildMap
+  childMap: ChildMap
   loadingIds: Set<string>
   selectedId: string | null
-  onToggle: (node: TreeNode) => void
-  onSelect: (node: TreeNode | null) => void
+  onSetOpen: (node: TreeNode, open: boolean) => void
+  onSelect: (node: TreeNode) => void
+  onOpenInGrid?: (node: TreeNode) => void
 }
 
 function TreeItem({
   node,
   depth,
   expanded,
-  children_,
+  childMap,
   loadingIds,
   selectedId,
-  onToggle,
+  onSetOpen,
   onSelect,
+  onOpenInGrid,
 }: ItemProps) {
   const isOpen = expanded.has(node.id)
-  const kids = children_[node.id]
+  const kids = childMap[node.id]
   const isLoading = loadingIds.has(node.id)
   const isSelected = selectedId === node.id
 
@@ -172,18 +236,19 @@ function TreeItem({
         aria-expanded={node.hasChildren ? isOpen : undefined}
         aria-selected={isSelected}
         aria-level={depth + 1}
-        tabIndex={0}
+        tabIndex={isSelected ? 0 : -1}
         className={`tree-row${isSelected ? ' is-selected' : ''}`}
-        style={{ paddingInlineStart: `${depth * 14 + 8}px` }}
+        style={{ paddingInlineStart: `${depth * 15 + 6}px` }}
         onClick={() => onSelect(node)}
+        onDoubleClick={() => onOpenInGrid?.(node)}
         onKeyDown={(e) => {
           if (e.key === 'Enter' || e.key === ' ') {
             e.preventDefault()
             onSelect(node)
           } else if (e.key === 'ArrowRight' && node.hasChildren && !isOpen) {
-            onToggle(node)
+            onSetOpen(node, true)
           } else if (e.key === 'ArrowLeft' && isOpen) {
-            onToggle(node)
+            onSetOpen(node, false)
           }
         }}
       >
@@ -194,17 +259,25 @@ function TreeItem({
             aria-label={isOpen ? `Collapse ${node.name}` : `Expand ${node.name}`}
             onClick={(e) => {
               e.stopPropagation()
-              onToggle(node)
+              onSetOpen(node, !isOpen)
             }}
           >
-            {isLoading ? '·' : isOpen ? '▾' : '▸'}
+            {isOpen ? <ChevronDown /> : <ChevronRight />}
           </button>
         ) : (
-          <span className="tree-twisty tree-twisty-empty" aria-hidden="true" />
+          // Leaves keep the twisty's width so names stay on one vertical rule.
+          <span className="tree-twisty tree-twisty-leaf" aria-hidden="true" />
         )}
+
+        <span className="tree-icon" aria-hidden="true">
+          {node.hasChildren ? <Folder /> : <Doc />}
+        </span>
+
         <span className="tree-name" title={node.name}>
           {node.name}
         </span>
+
+        {isLoading && <span className="tree-spinner" aria-hidden="true" />}
       </div>
 
       {isOpen && kids && kids.length > 0 && (
@@ -215,18 +288,20 @@ function TreeItem({
               node={child}
               depth={depth + 1}
               expanded={expanded}
-              children_={children_}
+              childMap={childMap}
               loadingIds={loadingIds}
               selectedId={selectedId}
-              onToggle={onToggle}
+              onSetOpen={onSetOpen}
               onSelect={onSelect}
+              onOpenInGrid={onOpenInGrid}
             />
           ))}
         </ul>
       )}
+
       {isOpen && kids && kids.length === 0 && !isLoading && (
-        <div className="tree-empty" style={{ paddingInlineStart: `${(depth + 1) * 14 + 22}px` }}>
-          empty
+        <div className="tree-empty" style={{ paddingInlineStart: `${(depth + 1) * 15 + 27}px` }}>
+          No child records
         </div>
       )}
     </li>

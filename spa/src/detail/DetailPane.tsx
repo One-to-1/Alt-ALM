@@ -1,7 +1,7 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import type { GridColumn, GridResponse } from '../api/client.ts'
 import { ApiError, fetchDetail } from '../api/client.ts'
-import { renderCell } from '../grid/renderers.tsx'
+import { htmlToPlainText, renderCell } from '../grid/renderers.tsx'
 import './DetailPane.css'
 
 interface Props {
@@ -10,14 +10,40 @@ interface Props {
   entityId: string | null
 }
 
-/** Fields worth showing first; everything else follows in metadata order. */
-const LEAD_FIELDS = ['id', 'name', 'status', 'type-id', 'owner', 'priority']
+/**
+ * Field order, following how ALM lays a record out: identity, then classification, then
+ * assignment, then dates. Anything unlisted keeps metadata order after these.
+ *
+ * This is presentation order only — the field *set* still comes entirely from the project's own
+ * metadata (ADR 0005). A project that lacks any of these simply skips it.
+ */
+const LEAD_FIELDS = [
+  'id',
+  'name',
+  'req-type',
+  'type-id',
+  'status',
+  'req-priority',
+  'priority',
+  'severity',
+  'owner',
+  'assigned-to',
+  'detected-by',
+  'target-rel',
+  'target-rcyc',
+  'creation-time',
+  'last-modified',
+]
+
+type Tab = 'details' | 'description' | 'all'
+
+type Status = 'idle' | 'loading' | 'ready' | 'missing' | 'error'
 
 export function DetailPane({ project, collection, entityId }: Props) {
   const [data, setData] = useState<GridResponse | null>(null)
-  const [status, setStatus] = useState<'idle' | 'loading' | 'ready' | 'missing' | 'error'>('idle')
+  const [status, setStatus] = useState<Status>('idle')
   const [error, setError] = useState<string | null>(null)
-  const [showAll, setShowAll] = useState(false)
+  const [tab, setTab] = useState<Tab>('details')
 
   useEffect(() => {
     if (!entityId) {
@@ -50,62 +76,97 @@ export function DetailPane({ project, collection, entityId }: Props) {
     }
   }, [project, collection, entityId])
 
+  // Reset to Details when the record changes: the previous record's open tab may not even exist
+  // on this one.
+  useEffect(() => setTab('details'), [entityId])
+
+  const parts = useMemo(() => {
+    if (!data || data.rows.length === 0) return null
+    const row = data.rows[0]
+
+    const isPopulated = (c: GridColumn) => {
+      const values = row.values[c.name]
+      return values !== undefined && values.some((v) => v !== '' && v !== null)
+    }
+
+    const populated = data.columns.filter(isPopulated)
+    const memos = populated.filter((c) => c.type === 'MEMO')
+    const scalars = populated.filter((c) => c.type !== 'MEMO' && c.name !== 'name')
+
+    const rank = (c: GridColumn) => {
+      const i = LEAD_FIELDS.indexOf(c.name)
+      return i === -1 ? LEAD_FIELDS.length : i
+    }
+    const ordered = [...scalars].sort((a, b) => rank(a) - rank(b))
+
+    return { row, populated, memos, ordered }
+  }, [data])
+
   if (status === 'idle') {
     return (
-      <aside className="detail" aria-label="Record detail">
-        <div className="detail-placeholder">Select a row to see its detail.</div>
-      </aside>
+      <Shell>
+        <div className="detail-empty">
+          <p className="detail-empty-title">No record selected</p>
+          <p className="detail-empty-hint">
+            Pick a row in the grid, or a node in the tree, to see its fields here.
+          </p>
+        </div>
+      </Shell>
     )
   }
+
   if (status === 'loading') {
     return (
-      <aside className="detail" aria-label="Record detail">
-        <div className="detail-placeholder">Loading…</div>
-      </aside>
+      <Shell>
+        <div className="detail-skeleton" role="status" aria-label="Loading record">
+          <div className="detail-skeleton-title" />
+          {Array.from({ length: 8 }, (_, i) => (
+            <div key={i} className="detail-skeleton-row" />
+          ))}
+        </div>
+      </Shell>
     )
   }
+
   if (status === 'missing') {
     return (
-      <aside className="detail" aria-label="Record detail">
-        <div className="detail-placeholder">
-          No record with id {entityId} in this project.
+      <Shell>
+        <div className="detail-empty">
+          <p className="detail-empty-title">Record {entityId} not found</p>
+          <p className="detail-empty-hint">
+            It may have been deleted, or it belongs to a different project.
+          </p>
         </div>
-      </aside>
+      </Shell>
     )
   }
-  if (status === 'error' || !data || data.rows.length === 0) {
+
+  if (status === 'error' || !data || !parts) {
     return (
-      <aside className="detail" aria-label="Record detail">
-        <div className="detail-placeholder detail-error">{error ?? 'Could not load this record.'}</div>
-      </aside>
+      <Shell>
+        <div className="detail-empty detail-empty-error" role="alert">
+          <p className="detail-empty-title">Could not load this record</p>
+          <p className="detail-empty-hint">{error ?? 'The server did not return the record.'}</p>
+        </div>
+      </Shell>
     )
   }
 
-  const row = data.rows[0]
-  const byName = new Map<string, GridColumn>(data.columns.map((c) => [c.name, c]))
-
-  // Only fields the server actually returned a value for. A 74-column entity with 12 populated
-  // fields is the normal case, and rendering 62 empty rows buries the 12 that matter.
-  const populated = data.columns.filter((c) => {
-    const values = row.values[c.name]
-    return values !== undefined && values.some((v) => v !== '' && v !== null)
-  })
-
-  const lead = LEAD_FIELDS.map((n) => byName.get(n)).filter(
-    (c): c is GridColumn => c !== undefined && populated.includes(c),
-  )
-  const rest = populated.filter((c) => !lead.includes(c))
-  const shown = showAll ? [...lead, ...rest] : [...lead, ...rest.slice(0, 12)]
-  const hidden = rest.length - (showAll ? rest.length : Math.min(rest.length, 12))
-
+  const { row, populated, memos, ordered } = parts
   const title = row.values['name']?.[0] ?? `Record ${row.id}`
+  const hasDescription = memos.length > 0
 
   return (
-    <aside className="detail" aria-label="Record detail">
-      <header className="detail-header">
-        <div className="detail-eyebrow">
-          {data.collection} · {row.id}
-          {!data.writable && <span className="detail-ro">read only</span>}
+    <Shell>
+      <header className="detail-head">
+        <div className="detail-idline">
+          <span className="detail-id">{row.id}</span>
+          <span className="detail-entity">{singular(data.collection)}</span>
+          {!data.writable && (
+            <span className="badge badge-ro" title="Alt-ALM has no write path yet">
+              Read only
+            </span>
+          )}
         </div>
         <h2 className="detail-title" title={title}>
           {title}
@@ -113,34 +174,111 @@ export function DetailPane({ project, collection, entityId }: Props) {
       </header>
 
       {row.error && (
-        <div className="detail-row-error" role="status">
+        <div className="detail-alert" role="status">
           ALM flagged this row: {row.error}
         </div>
       )}
 
-      <dl className="detail-fields">
-        {shown.map((col) => (
-          <div className="detail-field" key={col.name}>
-            <dt title={col.name}>{col.label || col.name}</dt>
-            <dd>{renderCell(col, row.values[col.name] ?? [])}</dd>
-          </div>
-        ))}
-      </dl>
+      <div className="detail-tabs" role="tablist" aria-label="Record sections">
+        <Tab id="details" active={tab} onSelect={setTab} label="Details" />
+        {hasDescription && (
+          <Tab id="description" active={tab} onSelect={setTab} label="Description" />
+        )}
+        <Tab id="all" active={tab} onSelect={setTab} label={`All fields (${data.columns.length})`} />
+      </div>
 
-      {hidden > 0 && (
-        <button type="button" className="detail-more" onClick={() => setShowAll(true)}>
-          Show {hidden} more populated {hidden === 1 ? 'field' : 'fields'}
-        </button>
-      )}
-      {showAll && rest.length > 12 && (
-        <button type="button" className="detail-more" onClick={() => setShowAll(false)}>
-          Show fewer
-        </button>
-      )}
+      <div className="detail-body" role="tabpanel" aria-labelledby={`detail-tab-${tab}`}>
+        {tab === 'details' && <FieldTable columns={ordered} row={row} />}
 
-      <p className="detail-note">
-        {populated.length} of {data.columns.length} fields have values in this project.
-      </p>
+        {tab === 'description' &&
+          memos.map((col) => (
+            <section className="detail-memo" key={col.name}>
+              <h3 className="detail-memo-title">{col.label || col.name}</h3>
+              <p className="detail-memo-body">
+                {(row.values[col.name] ?? []).map(htmlToPlainText).filter(Boolean).join('\n\n')}
+              </p>
+            </section>
+          ))}
+
+        {tab === 'all' && (
+          <>
+            <FieldTable columns={data.columns.filter((c) => c.type !== 'MEMO')} row={row} showEmpty />
+            <p className="detail-note">
+              {populated.length} of {data.columns.length} fields hold a value in this project.
+            </p>
+          </>
+        )}
+      </div>
+    </Shell>
+  )
+}
+
+function Shell({ children }: { children: React.ReactNode }) {
+  return (
+    <aside className="detail" aria-label="Record detail">
+      {children}
     </aside>
   )
+}
+
+interface TabProps {
+  id: Tab
+  active: Tab
+  label: string
+  onSelect: (t: Tab) => void
+}
+
+function Tab({ id, active, label, onSelect }: TabProps) {
+  return (
+    <button
+      type="button"
+      id={`detail-tab-${id}`}
+      role="tab"
+      aria-selected={active === id}
+      className={`detail-tab${active === id ? ' is-active' : ''}`}
+      onClick={() => onSelect(id)}
+    >
+      {label}
+    </button>
+  )
+}
+
+interface FieldTableProps {
+  columns: GridColumn[]
+  row: GridResponse['rows'][number]
+  showEmpty?: boolean
+}
+
+/**
+ * ALM's own record layout: a two-column label/value list, label on the left against a tinted
+ * column, value on the right. Dense enough that 20 fields fit without scrolling.
+ */
+function FieldTable({ columns, row, showEmpty = false }: FieldTableProps) {
+  const shown = showEmpty
+    ? columns
+    : columns.filter((c) => {
+        const values = row.values[c.name]
+        return values !== undefined && values.some((v) => v !== '' && v !== null)
+      })
+
+  if (shown.length === 0) {
+    return <p className="detail-note">No fields to show.</p>
+  }
+
+  return (
+    <dl className="detail-fields">
+      {shown.map((col) => (
+        <div className="detail-field" key={col.name}>
+          <dt title={`${col.name} · ${col.type}`}>{col.label || col.name}</dt>
+          <dd>{renderCell(col, row.values[col.name] ?? [])}</dd>
+        </div>
+      ))}
+    </dl>
+  )
+}
+
+/** "requirements" -> "Requirement". Display only. */
+function singular(collection: string): string {
+  const base = collection.endsWith('s') ? collection.slice(0, -1) : collection
+  return base.charAt(0).toUpperCase() + base.slice(1).replace(/-/g, ' ')
 }

@@ -1,4 +1,4 @@
-/* Alt-ALM app shell: dense three-pane workspace.
+/* Alt-ALM app shell: dense two-pane workspace.
    Density is a data attribute so row height flows to the grid and tree together. */
 
 .app {
@@ -6,8 +6,8 @@
   flex-direction: column;
   height: 100vh;
   min-height: 0;
-  background: var(--color-bg, #f6f7f9);
-  color: var(--color-text, #1a1d21);
+  background: var(--bg);
+  color: var(--text);
 }
 
 .app[data-density='comfortable'] {
@@ -23,35 +23,36 @@
   --tree-row-height: 21px;
 }
 
-/* ---- top bar ---- */
+/* ---- top bar: identity and module ---- */
 
 .app-bar {
   display: flex;
   align-items: center;
-  gap: var(--space-4, 16px);
+  gap: var(--space-4);
   flex: 0 0 auto;
-  height: 44px;
-  padding-inline: var(--space-3, 12px);
-  background: var(--color-surface, #fff);
-  border-bottom: 1px solid var(--color-border, #e5e7eb);
+  height: 42px;
+  padding-inline: var(--space-3);
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
 }
 
 .app-brand {
+  color: var(--text-h);
+  font-size: var(--text-md);
   font-weight: 700;
-  font-size: 0.9375rem;
-  letter-spacing: -0.01em;
+  letter-spacing: -0.015em;
   white-space: nowrap;
 }
 
 .app-brand-dim {
-  color: var(--color-text-muted, #6b7280);
+  color: var(--text-muted);
   font-weight: 500;
 }
 
 .app-modules {
   display: flex;
   align-items: center;
-  gap: 2px;
+  gap: 1px;
   min-width: 0;
   overflow-x: auto;
 }
@@ -59,61 +60,156 @@
 .app-module {
   padding: 5px 10px;
   border: 0;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   background: none;
-  color: var(--color-text-muted, #6b7280);
-  font-size: var(--font-size-sm, 0.8125rem);
-  font-weight: 500;
+  color: var(--text);
+  font: 500 var(--text-sm) / 1 var(--sans);
   white-space: nowrap;
   cursor: pointer;
+  transition: background 120ms ease, color 120ms ease;
 }
 
 .app-module:hover {
-  background: var(--color-surface-hover, rgba(0, 0, 0, 0.04));
-  color: var(--color-text, #1a1d21);
-}
-
-.app-module:focus-visible {
-  outline: 2px solid var(--color-focus, #2563eb);
-  outline-offset: 1px;
+  background: var(--surface-alt);
+  color: var(--text-h);
 }
 
 .app-module.is-active {
-  background: var(--color-selected, #e6efff);
-  color: var(--color-selected-text, #14315f);
+  background: var(--accent-bg);
+  color: var(--accent);
+  font-weight: 600;
 }
 
 .app-bar-right {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
   margin-inline-start: auto;
 }
 
-.app-field select {
-  height: 26px;
-  padding-inline: 6px;
-  border: 1px solid var(--color-border, #e5e7eb);
-  border-radius: 4px;
-  background: var(--color-surface, #fff);
-  color: var(--color-text, #1a1d21);
-  font-size: var(--font-size-xs, 0.75rem);
+/* ---- sub bar: where you are, and how to get back ---- */
+
+.app-subbar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex: 0 0 auto;
+  min-height: 34px;
+  padding-inline: var(--space-3);
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-alt);
 }
 
-.app-ro-badge {
-  padding: 2px 7px;
-  border: 1px solid var(--color-warning-border, #f3d29a);
-  border-radius: 999px;
-  background: var(--color-warning-surface, #fff8ec);
-  color: var(--color-warning-text, #92500b);
-  font-size: 10px;
+.app-viewtoggle {
+  display: inline-flex;
+  padding: 2px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+}
+
+.app-viewbtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 9px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--text-muted);
+  font: 500 var(--text-sm) / 1 var(--sans);
+  cursor: pointer;
+  transition: background 120ms ease, color 120ms ease;
+}
+
+.app-viewbtn:hover {
+  color: var(--text-h);
+}
+
+.app-viewbtn.is-active {
+  background: var(--accent-bg);
+  color: var(--accent);
   font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
+}
+
+/* ---- breadcrumb scope ---- */
+
+.app-crumbs {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  font-size: var(--text-sm);
+}
+
+.app-crumb-module {
+  color: var(--text-muted);
+  font-weight: 500;
   white-space: nowrap;
 }
 
-/* ---- three-pane body ---- */
+.app-crumb-sep {
+  color: var(--border-strong);
+}
+
+.app-crumb {
+  overflow: hidden;
+  max-width: 260px;
+  color: var(--text-h);
+  font-weight: 600;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.app-crumb-clear {
+  display: grid;
+  place-items: center;
+  width: 17px;
+  height: 17px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--text-muted);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.app-crumb-clear:hover {
+  background: var(--border);
+  color: var(--text-h);
+}
+
+/* ---- search ---- */
+
+.app-search {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-inline-start: auto;
+}
+
+.app-search-icon {
+  display: grid;
+  place-items: center;
+  margin-inline-end: -24px;
+  padding-inline-start: 7px;
+  color: var(--text-muted);
+  font-size: 12px;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.app-search-input {
+  width: 210px;
+  padding-inline-start: 25px;
+}
+
+.app-search-input::placeholder {
+  color: var(--text-muted);
+}
+
+/* ---- panes ---- */
 
 .app-body {
   display: flex;
@@ -129,143 +225,35 @@
   min-width: 0;
 }
 
-/* Width is set inline from the resizable preference; flex-basis must not fight it. */
+/* Width is set inline from the resizable preference; flex-basis must not fight it.
+   container-type lets the detail pane's own layout respond to its width rather than the viewport's,
+   which is the whole point of a resizable pane. */
 .app-pane-detail {
   flex: 0 0 auto;
-  border-inline-start: 1px solid var(--color-border, #e5e7eb);
-  background: var(--color-surface-sunken, #fbfbfc);
+  border-inline-start: 1px solid var(--border-strong);
+  background: var(--surface-sunken);
+  container-type: inline-size;
 }
 
 .app-pane {
   display: flex;
   flex-direction: column;
   min-height: 0;
-  background: var(--color-surface, #fff);
+  background: var(--surface);
 }
 
-/* ---- view toggle ---- */
+/* ---- grid toolbar content owned by the shell ---- */
 
-.app-viewtoggle {
-  display: inline-flex;
-  padding: 2px;
-  border: 1px solid var(--color-border, #e5e7eb);
-  border-radius: 5px;
-  background: var(--color-surface-sunken, #f3f4f6);
-}
-
-.app-viewbtn {
-  padding: 3px 10px;
-  border: 0;
-  border-radius: 3px;
-  background: none;
-  color: var(--color-text-muted, #6b7280);
-  font-size: var(--font-size-xs, 0.75rem);
-  font-weight: 500;
-  cursor: pointer;
-}
-
-.app-viewbtn:hover {
-  color: var(--color-text, #1a1d21);
-}
-
-.app-viewbtn:focus-visible {
-  outline: 2px solid var(--color-focus, #2563eb);
-  outline-offset: 1px;
-}
-
-.app-viewbtn.is-active {
-  background: var(--color-surface, #fff);
-  color: var(--color-text, #1a1d21);
-  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.12);
-}
-
-.grid-toolbar-right {
-  margin-inline-start: auto;
-}
-
-.pane-head {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex: 0 0 auto;
-  min-height: 32px;
-  padding-inline: var(--space-3, 12px);
-  border-bottom: 1px solid var(--color-border, #e5e7eb);
-}
-
-.pane-title {
-  font-size: var(--font-size-xs, 0.75rem);
+.grid-toolbar-label {
+  color: var(--text-h);
+  font-size: var(--text-sm);
   font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: var(--color-text-muted, #6b7280);
   white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 
-.pane-scope {
-  text-transform: none;
-  letter-spacing: 0;
-  font-weight: 500;
-  color: var(--color-text-subtle, #9ca3af);
-}
-
-.pane-action {
-  border: 0;
-  background: none;
-  color: var(--color-link, #2563eb);
-  font-size: var(--font-size-xs, 0.75rem);
-  cursor: pointer;
-  padding: 2px 4px;
-  border-radius: 3px;
-}
-
-.pane-action:hover {
-  background: var(--color-surface-hover, rgba(0, 0, 0, 0.04));
-}
-
-.pane-search {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  margin-inline-start: auto;
-}
-
-.pane-search input {
-  width: 200px;
-  height: 24px;
-  padding-inline: 7px;
-  border: 1px solid var(--color-border, #e5e7eb);
-  border-radius: 4px;
-  background: var(--color-surface, #fff);
-  color: var(--color-text, #1a1d21);
-  font-size: var(--font-size-xs, 0.75rem);
-}
-
-.pane-search input:focus-visible {
-  outline: 2px solid var(--color-focus, #2563eb);
-  outline-offset: -1px;
-}
-
-.pane-search button {
-  height: 24px;
-  padding-inline: 9px;
-  border: 1px solid var(--color-border, #e5e7eb);
-  border-radius: 4px;
-  background: var(--color-surface, #fff);
-  color: var(--color-text, #1a1d21);
-  font-size: var(--font-size-xs, 0.75rem);
-  cursor: pointer;
-}
-
-.pane-search button:hover {
-  background: var(--color-surface-hover, rgba(0, 0, 0, 0.04));
-}
-
-.pane-search button:focus-visible {
-  outline: 2px solid var(--color-focus, #2563eb);
-  outline-offset: 1px;
+.grid-toolbar-scope {
+  color: var(--text-muted);
+  font-weight: 400;
 }
 
 /* ---- boot / fatal states ---- */
@@ -275,37 +263,26 @@
   flex-direction: column;
   gap: 6px;
   align-items: flex-start;
-  padding: var(--space-6, 32px);
-  font-size: var(--font-size-sm, 0.8125rem);
-  color: var(--color-text-muted, #6b7280);
+  padding: var(--space-6);
+  color: var(--text-muted);
+  font-size: var(--text-sm);
 }
 
 .app-boot strong {
-  color: var(--color-text, #1a1d21);
-  font-size: var(--font-size-base, 0.875rem);
+  color: var(--text-h);
+  font-size: var(--text-md);
 }
 
 .app-boot-error strong {
-  color: var(--color-danger-text, #9f1239);
+  color: var(--danger);
 }
 
 .app-boot-hint code {
   padding: 1px 5px;
-  border-radius: 3px;
-  background: var(--color-surface-hover, rgba(0, 0, 0, 0.05));
-  font-size: 0.9em;
-}
-
-.sr-only {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  padding: 0;
-  margin: -1px;
-  overflow: hidden;
-  clip: rect(0, 0, 0, 0);
-  white-space: nowrap;
-  border: 0;
+  border-radius: var(--radius-sm);
+  background: var(--surface-alt);
+  font-family: var(--mono);
+  font-size: 0.95em;
 }
 
 @media (max-width: 900px) {
@@ -317,11 +294,16 @@
   /* Inline width from the splitter is meaningless once stacked. */
   .app-pane-detail {
     width: auto !important;
+    min-height: 340px;
     border-inline-start: 0;
-    border-block-start: 1px solid var(--color-border, #e5e7eb);
+    border-block-start: 1px solid var(--border-strong);
   }
 
   .splitter {
     display: none;
+  }
+
+  .app-search-input {
+    width: 150px;
   }
 }

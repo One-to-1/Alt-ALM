@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { GridColumn } from '../api/client.ts'
+import { Columns } from '../shell/icons.tsx'
 import './ColumnPicker.css'
 
 interface Props {
@@ -65,11 +66,12 @@ export function ColumnPicker({ columns, visible, onChange, onReset }: Props) {
     <div className="colpick" ref={ref}>
       <button
         type="button"
-        className="colpick-trigger"
+        className="btn"
         aria-expanded={open}
         aria-haspopup="dialog"
         onClick={() => setOpen((o) => !o)}
       >
+        <Columns />
         Columns
         <span className="colpick-count">
           {visible.length}/{columns.length}
@@ -93,10 +95,14 @@ export function ColumnPicker({ columns, visible, onChange, onReset }: Props) {
           </div>
 
           <div className="colpick-actions">
-            <button type="button" onClick={() => onChange(columns.map((c) => c.name))}>
+            <button
+              type="button"
+              className="btn"
+              onClick={() => onChange(columns.map((c) => c.name))}
+            >
               All
             </button>
-            <button type="button" onClick={onReset}>
+            <button type="button" className="btn" onClick={onReset}>
               Reset
             </button>
             <span className="colpick-hint">{visible.length} shown</span>

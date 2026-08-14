@@ -23,7 +23,7 @@ const MEMO_PREVIEW_LENGTH = 140
  * to preview rich text without dangerouslySetInnerHTML; real sanitized
  * rendering is a later phase.
  */
-function htmlToPlainText(html: string): string {
+export function htmlToPlainText(html: string): string {
   try {
     const doc = new DOMParser().parseFromString(html, 'text/html')
     return (doc.body.textContent ?? '').trim().replace(/\s+/g, ' ')

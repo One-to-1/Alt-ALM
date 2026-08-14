@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import type { GridColumn, GridResponse } from '../api/client.ts'
 import { ApiError, fetchGrid } from '../api/client.ts'
+import { SortAsc, SortDesc, SortNone } from '../shell/icons.tsx'
 import { renderCell } from './renderers.tsx'
 import './DataGrid.css'
 
@@ -23,6 +24,8 @@ interface DataGridProps {
   visibleColumns?: string[]
   /** Rendered into the grid toolbar; the picker lives here so it can see the loaded columns. */
   renderToolbar?: (columns: GridColumn[]) => React.ReactNode
+  /** Shown in the empty state, so a filtered-to-nothing grid can offer the way out. */
+  onClearFilters?: () => void
 }
 
 type LoadStatus = 'loading' | 'ready' | 'error'
@@ -35,6 +38,7 @@ export function DataGrid({
   onSelectRow,
   visibleColumns,
   renderToolbar,
+  onClearFilters,
 }: DataGridProps) {
   const [start, setStart] = useState(1)
   const [sort, setSort] = useState(DEFAULT_SORT)
@@ -108,21 +112,28 @@ export function DataGrid({
 
   if (status === 'loading' && !data) {
     return (
-      <div className="grid-status" role="status" aria-live="polite">
-        Loading {collection}…
+      <div className="data-grid">
+        <div className="grid-skeleton" role="status" aria-label={`Loading ${collection}`}>
+          {Array.from({ length: 14 }, (_, i) => (
+            <div key={i} className="grid-skeleton-row" />
+          ))}
+        </div>
       </div>
     )
   }
 
   if (status === 'error' && !data) {
     return (
-      <div className="grid-status grid-status-error" role="alert">
-        <p>{error?.message}</p>
-        {error?.retryable && (
-          <button type="button" onClick={handleRetry}>
-            Retry
-          </button>
-        )}
+      <div className="data-grid">
+        <div className="grid-status grid-status-error" role="alert">
+          <p className="grid-status-title">Could not load {collection}</p>
+          <p>{error?.message}</p>
+          {error?.retryable && (
+            <button type="button" className="btn" onClick={handleRetry}>
+              Try again
+            </button>
+          )}
+        </div>
       </div>
     )
   }
@@ -131,10 +142,27 @@ export function DataGrid({
     return null
   }
 
+  const hasFilters = filters !== undefined && Object.keys(filters).length > 0
+
   if (data.rows.length === 0 && status === 'ready') {
     return (
-      <div className="grid-status" role="status">
-        No {collection} found in this project.
+      <div className="data-grid">
+        {renderToolbar && <div className="grid-toolbar">{renderToolbar(data.columns)}</div>}
+        <div className="grid-status" role="status">
+          <p className="grid-status-title">
+            {hasFilters ? `No ${collection} match this filter` : `No ${collection} in this project`}
+          </p>
+          <p>
+            {hasFilters
+              ? 'Widen the filter or clear the folder scope to see more.'
+              : 'Nothing has been created here yet.'}
+          </p>
+          {hasFilters && onClearFilters && (
+            <button type="button" className="btn" onClick={onClearFilters}>
+              Clear filters
+            </button>
+          )}
+        </div>
       </div>
     )
   }
@@ -150,11 +178,7 @@ export function DataGrid({
 
   return (
     <div className="data-grid">
-      {!data.writable && (
-        <p className="grid-note" role="status">
-          This collection is read-only in Alt-ALM.
-        </p>
-      )}
+      {renderToolbar && <div className="grid-toolbar">{renderToolbar(data.columns)}</div>}
 
       {status === 'loading' && (
         <div className="grid-refresh-banner" role="status" aria-live="polite">
@@ -166,14 +190,12 @@ export function DataGrid({
         <div className="grid-inline-error" role="alert">
           <span>{error?.message}</span>
           {error?.retryable && (
-            <button type="button" onClick={handleRetry}>
-              Retry
+            <button type="button" className="btn" onClick={handleRetry}>
+              Try again
             </button>
           )}
         </div>
       )}
-
-      {renderToolbar && <div className="grid-toolbar">{renderToolbar(data.columns)}</div>}
 
       <div className="data-grid-scroll">
         <table>
@@ -183,9 +205,17 @@ export function DataGrid({
           <thead>
             <tr>
               {shownColumns.map((column) => (
-                <GridHeaderCell key={column.name} column={column} sort={sort} desc={desc} onSort={handleSort} />
+                <GridHeaderCell
+                  key={column.name}
+                  column={column}
+                  sort={sort}
+                  desc={desc}
+                  onSort={handleSort}
+                />
               ))}
-              <th scope="col">Row status</th>
+              <th scope="col">
+                <span className="sr-only">Row status</span>
+              </th>
             </tr>
           </thead>
           <tbody>
@@ -212,7 +242,9 @@ export function DataGrid({
                 }
               >
                 {shownColumns.map((column) => (
-                  <td key={column.name}>{renderCell(column, row.values[column.name] ?? [])}</td>
+                  <td key={column.name} title={(row.values[column.name] ?? []).join(', ')}>
+                    {renderCell(column, row.values[column.name] ?? [])}
+                  </td>
                 ))}
                 <td className="cell-row-status">
                   {row.error ? (
@@ -231,14 +263,19 @@ export function DataGrid({
 
       <div className="grid-footer">
         <span>
-          Showing rows {start}–{rangeEnd} ({data.page.rowsReturned} rows returned)
-          {data.page.mayHaveMore && <span className="badge badge-more">more results may exist</span>}
+          Rows {start}–{rangeEnd}
+          {data.page.mayHaveMore && <span className="badge badge-more">more may exist</span>}
         </span>
         <div className="grid-pager">
-          <button type="button" onClick={handlePrevious} disabled={start <= 1}>
+          <button type="button" className="btn" onClick={handlePrevious} disabled={start <= 1}>
             Previous
           </button>
-          <button type="button" onClick={handleNext} disabled={!data.page.mayHaveMore}>
+          <button
+            type="button"
+            className="btn"
+            onClick={handleNext}
+            disabled={!data.page.mayHaveMore}
+          >
             Next
           </button>
         </div>
@@ -256,15 +293,21 @@ interface GridHeaderCellProps {
 
 function GridHeaderCell({ column, sort, desc, onSort }: GridHeaderCellProps) {
   const isSorted = sort === column.name
-  const ariaSort: 'ascending' | 'descending' | 'none' = isSorted ? (desc ? 'descending' : 'ascending') : 'none'
+  const ariaSort: 'ascending' | 'descending' | 'none' = isSorted
+    ? desc
+      ? 'descending'
+      : 'ascending'
+    : 'none'
 
   return (
     <th scope="col" aria-sort={ariaSort}>
       <button type="button" className="sort-button" onClick={() => onSort(column.name)}>
         {column.label}
-        {isSorted && (
-          <span aria-hidden="true" className="sort-indicator">
-            {desc ? '▼' : '▲'}
+        {isSorted ? (
+          <span className="sort-indicator">{desc ? <SortDesc /> : <SortAsc />}</span>
+        ) : (
+          <span className="sort-indicator sort-indicator-idle">
+            <SortNone />
           </span>
         )}
       </button>

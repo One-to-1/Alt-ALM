@@ -1,35 +1,69 @@
 .data-grid {
   display: flex;
   flex-direction: column;
-  gap: var(--space-3);
+  flex: 1 1 auto;
+  min-height: 0;
+  min-width: 0;
+  background: var(--surface);
 }
 
-.grid-note {
-  margin: 0;
-  font-size: 13px;
-  color: var(--warning);
+/* ---- toolbar ---- */
+
+.grid-toolbar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex: 0 0 auto;
+  min-height: 33px;
+  padding: 0 var(--space-3);
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
 }
+
+.grid-toolbar-right {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-inline-start: auto;
+}
+
+/* ---- the table ----
+   border-collapse: collapse is what makes the inner rules render as single hairlines. An earlier
+   pass rounded the wrapper without clipping it, so the corners curved while the cell borders ran
+   straight past them; `overflow: hidden` on the wrapper is what ties the two together. */
 
 .data-grid-scroll {
-  overflow-x: auto;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
+  flex: 1 1 auto;
+  min-height: 0;
+  min-width: 0;
+  overflow: auto;
+  border-block-start: 1px solid transparent;
 }
 
 .data-grid table {
   border-collapse: collapse;
   width: 100%;
-  min-width: 640px;
-  font-size: 13px;
+  font-size: var(--text-base);
+  background: var(--surface);
 }
 
 .data-grid thead th {
   position: sticky;
   top: 0;
+  z-index: 1;
+  padding: 0;
   background: var(--surface-alt);
+  color: var(--text-h);
   text-align: left;
-  border-bottom: 1px solid var(--border);
+  font-weight: 600;
   white-space: nowrap;
+  /* A sticky header loses its collapsed border when it detaches, so the rule is drawn as a shadow
+     that travels with it. */
+  box-shadow: inset 0 -1px 0 var(--border-strong);
+}
+
+.data-grid thead th + th {
+  box-shadow: inset 1px 0 0 var(--border), inset 0 -1px 0 var(--border-strong);
 }
 
 .sort-button {
@@ -37,51 +71,98 @@
   align-items: center;
   gap: 4px;
   width: 100%;
+  height: 28px;
+  padding-inline: 9px;
   border: 0;
   background: none;
-  font: inherit;
-  font-weight: 600;
-  color: var(--text-h);
+  font: 600 var(--text-sm) / 1 var(--sans);
+  color: inherit;
   cursor: pointer;
   text-align: left;
-  padding: 10px 12px;
 }
 
 .sort-button:hover {
   color: var(--accent);
 }
 
+.sort-button:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: -2px;
+}
+
 .sort-indicator {
-  font-size: 10px;
+  display: inline-flex;
+  color: var(--accent);
+  font-size: 11px;
+}
+
+/* The unsorted affordance appears on hover only, so 8 columns do not show 8 icons at rest. */
+.sort-indicator-idle {
+  color: var(--text-muted);
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+
+.sort-button:hover .sort-indicator-idle,
+.sort-button:focus-visible .sort-indicator-idle {
+  opacity: 1;
 }
 
 .data-grid tbody td {
-  padding: 0 12px;
-  height: var(--row-height, 44px);
+  padding: 0 9px;
+  height: var(--row-height);
   border-bottom: 1px solid var(--border);
+  color: var(--text-h);
   vertical-align: middle;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 340px;
+}
+
+.data-grid tbody td + td {
+  border-left: 1px solid var(--border);
 }
 
 .data-grid tbody tr:hover td {
   background: var(--surface-alt);
 }
 
-.data-grid tbody tr:last-child td {
-  border-bottom: none;
+/* Selection: tint plus a leading bar, so it is never signalled by colour alone. */
+.data-grid tbody tr.row-selected td {
+  background: var(--accent-bg);
+}
+
+.data-grid tbody tr.row-selected td:first-child {
+  box-shadow: inset 2px 0 0 0 var(--accent);
+}
+
+.data-grid tbody tr[tabindex] {
+  cursor: default;
+}
+
+.data-grid tbody tr[tabindex]:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: -2px;
 }
 
 .row-degraded td {
   background: var(--danger-bg);
 }
 
+/* ---- cells ---- */
+
 .cell-empty {
-  color: var(--text);
-  opacity: 0.5;
+  color: var(--text-muted);
 }
 
 .cell-number {
   display: block;
   text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.cell-date {
   font-variant-numeric: tabular-nums;
 }
 
@@ -91,7 +172,7 @@
 
 .cell-reference-list {
   margin: 0;
-  padding-left: 16px;
+  padding-left: 15px;
 }
 
 .cell-row-status {
@@ -99,9 +180,57 @@
   white-space: nowrap;
 }
 
-.grid-refresh-banner {
-  font-size: 13px;
+.badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 7px;
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  background: var(--surface-alt);
   color: var(--text);
+  font-size: var(--text-xs);
+  font-weight: 500;
+  line-height: 1.5;
+}
+
+.badge-yes {
+  border-color: color-mix(in srgb, var(--success) 35%, transparent);
+  background: var(--success-bg);
+  color: var(--success);
+}
+
+.badge-no {
+  border-color: var(--border-strong);
+  background: var(--surface-alt);
+  color: var(--text-muted);
+}
+
+.badge-error {
+  border-color: color-mix(in srgb, var(--danger) 35%, transparent);
+  background: var(--danger-bg);
+  color: var(--danger);
+}
+
+.badge-ro {
+  border-color: color-mix(in srgb, var(--warning) 35%, transparent);
+  background: var(--warning-bg);
+  color: var(--warning);
+}
+
+.badge-more {
+  margin-inline-start: 6px;
+}
+
+/* ---- banners ---- */
+
+.grid-note,
+.grid-refresh-banner {
+  flex: 0 0 auto;
+  margin: 0;
+  padding: 5px var(--space-3);
+  border-bottom: 1px solid var(--border);
+  color: var(--text-muted);
+  font-size: var(--text-sm);
 }
 
 .grid-inline-error {
@@ -109,12 +238,15 @@
   flex-wrap: wrap;
   align-items: center;
   gap: var(--space-3);
-  padding: var(--space-2) var(--space-3);
-  border: 1px solid var(--danger);
-  border-radius: var(--radius-sm);
+  flex: 0 0 auto;
+  padding: 6px var(--space-3);
+  border-bottom: 1px solid var(--danger);
   background: var(--danger-bg);
   color: var(--danger);
+  font-size: var(--text-sm);
 }
+
+/* ---- footer ---- */
 
 .grid-footer {
   display: flex;
@@ -122,7 +254,12 @@
   align-items: center;
   justify-content: space-between;
   gap: var(--space-3);
-  font-size: 13px;
+  flex: 0 0 auto;
+  padding: 5px var(--space-3);
+  border-top: 1px solid var(--border);
+  background: var(--surface-alt);
+  color: var(--text-muted);
+  font-size: var(--text-sm);
 }
 
 .grid-pager {
@@ -130,44 +267,57 @@
   gap: var(--space-2);
 }
 
-.grid-pager button {
-  padding: 6px 12px;
-  border-radius: var(--radius-sm);
-  border: 1px solid var(--border);
-  background: var(--surface);
-  color: var(--text-h);
-  cursor: pointer;
-  font: inherit;
-}
+/* ---- states ---- */
 
-.grid-pager button:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-/* Row selection drives the detail pane. Selection is shown with background AND a leading
-   accent bar, never colour alone. */
-.data-grid tbody tr.row-selected {
-  background: var(--color-selected, #e6efff);
-  box-shadow: inset 2px 0 0 0 var(--color-focus, #2563eb);
-}
-
-.data-grid tbody tr[tabindex]:hover {
-  background: var(--color-surface-hover, rgba(0, 0, 0, 0.035));
-  cursor: default;
-}
-
-.data-grid tbody tr[tabindex]:focus-visible {
-  outline: 2px solid var(--color-focus, #2563eb);
-  outline-offset: -2px;
-}
-
-.grid-toolbar {
+.grid-status {
   display: flex;
+  flex-direction: column;
+  gap: 5px;
   align-items: center;
-  gap: 8px;
-  flex: 0 0 auto;
-  padding: 5px 10px;
-  border-bottom: 1px solid var(--color-border, #e5e7eb);
-  background: var(--color-surface, #fff);
+  justify-content: center;
+  flex: 1 1 auto;
+  padding: var(--space-6);
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+  text-align: center;
+}
+
+.grid-status-title {
+  color: var(--text-h);
+  font-size: var(--text-md);
+  font-weight: 600;
+}
+
+.grid-status-error .grid-status-title {
+  color: var(--danger);
+}
+
+.grid-skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  flex: 1 1 auto;
+  padding: var(--space-2) 0;
+}
+
+.grid-skeleton-row {
+  height: var(--row-height);
+  background: linear-gradient(90deg, var(--surface-alt) 25%, var(--surface) 50%, var(--surface-alt) 75%);
+  background-size: 200% 100%;
+  animation: grid-shimmer 1.3s ease-in-out infinite;
+}
+
+@keyframes grid-shimmer {
+  from {
+    background-position: 200% 0;
+  }
+  to {
+    background-position: -200% 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .grid-skeleton-row {
+    animation: none;
+  }
 }

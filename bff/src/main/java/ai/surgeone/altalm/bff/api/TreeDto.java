@@ -17,12 +17,13 @@ public final class TreeDto {
     /**
      * One node.
      *
-     * @param hasChildren ⚠️ <strong>"might have children", not "does".</strong> ALM's
-     *                    {@code children-count} envelope attribute reads 0 for every node on this
-     *                    version even when children exist (probe 19), so there is no cheap way to
-     *                    know in advance. The server answers optimistically and the client learns
-     *                    the truth by expanding — a node that turns out to be empty renders as
-     *                    empty rather than being undiscoverable
+     * @param hasChildren <strong>Exact, as long as {@link Children#exact} is true.</strong> ALM's
+     *                    own {@code children-count} attribute is useless — it reads 0 for every node
+     *                    on this version even when children exist (probe 19) — so this is derived
+     *                    instead, by asking which of this level's ids appear as a {@code parent-id}
+     *                    one level down (probe 20's batched {@code OR} makes that one query, not
+     *                    one per node). When {@code exact} is false the value degrades to the older
+     *                    optimistic "might have children"
      */
     public record Node(String id, String name, String parentId, boolean hasChildren) {
     }
@@ -42,7 +43,19 @@ public final class TreeDto {
         }
     }
 
-    /** Children of one node, for lazy expansion. */
-    public record Children(String collection, String parentId, List<Node> nodes) {
+    /**
+     * Children of one or more nodes.
+     *
+     * <p>Batched because a tree level is drawn all at once: asking for every node on a level in one
+     * call is what lets the server answer {@link Node#hasChildren} exactly, and gives the client the
+     * next level to hold in reserve so expanding feels instant.
+     *
+     * @param parentIds the parents actually queried, after blanks and duplicates were dropped — so a
+     *                  client can tell which of its requests were honoured
+     * @param exact     false when a page came back filled exactly to the 2,000-row cap, meaning rows
+     *                  may have been cut off and {@code hasChildren} has fallen back to optimistic.
+     *                  Surfaced rather than hidden: a client that cares can re-ask node by node
+     */
+    public record Children(String collection, List<String> parentIds, List<Node> nodes, boolean exact) {
     }
 }

@@ -91,10 +91,16 @@ public class GridController {
         return trees.roots(resolve(project));
     }
 
-    /** Children of one node, for lazy expansion. */
+    /**
+     * Children of one or more nodes.
+     *
+     * <p>Repeat the parameter to batch a whole tree level — {@code ?parentId=12&parentId=19&…}. One
+     * call then both draws that level and reports, exactly, which of its nodes can be expanded; see
+     * {@link TreeService#children}.
+     */
     @GetMapping("/tree/{collection}/children")
     public TreeDto.Children treeChildren(@PathVariable String collection,
-                                         @RequestParam String parentId,
+                                         @RequestParam List<String> parentId,
                                          @RequestParam(required = false) String project) {
         return trees.children(resolve(project), collection, parentId);
     }
