@@ -1027,6 +1027,47 @@ fall back to `{parent-id[0]}` only for the trees whose roots use `0`.**
 
 ---
 
+## Probe 17 — the `order-by` separator, because our own reference contradicted itself. 2026-08-14 (`scripts/probe/probe-orderby.ps1`)
+
+Read-only, against the populated read-only project (`PROJECT-5`). Ordering of opaque ids only — no
+field content read or printed.
+
+**Origin**: this probe was not planned. It came from building `AlmQuery`, whose author noticed that
+`alm-api-reference.md` §4.3 wrote the multi-field `order-by` separator as a **comma** in its grammar
+line and as a **semicolon** in its own worked example one line below. Rather than pick one, the
+ambiguity was flagged `UNVERIFIED` and probed.
+
+| Request | Result |
+|---|---|
+| `order-by={id}` | 200, ascending |
+| `order-by={id[DESC]}` | 200, descending |
+| `order-by={type-id;id}` | **200, correctly sorted** |
+| `order-by={type-id,id}` | **404** `not existing field: "type-id,id"` |
+| `order-by={type-id;id[DESC]}` | 200 — `[DESC]` works on a secondary key |
+| `order-by={type-id,id[DESC]}` | 404, same message |
+| `order-by={type-id\|id}` | 404, same message |
+| `order-by={no-such-field}` | 404, same message |
+
+**The separator is `;`.** §4.3 has been corrected.
+
+⚠️ **The more useful finding is the failure mode.** A comma is not a *wrong separator* — it is not a
+separator at all. The server reads `type-id,id` as a single field name and reports a **missing
+field**, which is the *same* error a genuine typo produces. So a malformed multi-field sort is
+indistinguishable from a misspelled column, and there is no syntax error to catch. Any client that
+builds `order-by` from user input needs to validate field names against metadata itself; the server
+will not tell it which of the two mistakes was made.
+
+Also note the status: **404**, not 400 — a third instance of the §3.4 rule that error handling must
+parse `Id`/`Title` and never branch on the HTTP status (the others being an out-of-range `page-size`
+→ 404 in probe 15, and the logged-out-token 500 in probe 13).
+
+**Process note.** This is the first defect found in the project's *own* reference documentation by
+code written against it, as opposed to a finding about ALM. The reference has been treated as
+settled since planning closed; it contained a self-contradiction on a line that had been read many
+times. Worth remembering when the next "the docs say X" argument comes up.
+
+---
+
 ## Open items for the next probe round
 
 1. ~~Map `SiteVersion 20.0 (20.00.0.143)` → marketing version~~ **DONE: ALM 26.1** (probe 3).
@@ -1052,3 +1093,10 @@ fall back to `{parent-id[0]}` only for the trees whose roots use `0`.**
     `IMAGE_COMPRESSION_LEVEL` round-trip.
 11. **NEW (probe 15), blocked on the record generator**: is an over-cap `page-size` silently clamped
     to 2,000? Untestable while the sandbox's largest collection holds 2 rows. See Q45.
+12. **NEW (P1 build, 2026-08-14)**: what does a collection read actually return for an entity whose
+    `EntityStatus` is not `"Success"`, and is `EntityStatus` ever absent? Every envelope captured so
+    far carries `EntityStatus:"Success"` explicitly, so `AlmEntityParser`'s handling of the failure
+    row — and its default-to-`Success`-when-absent — is a **reasonable construction, not a probed
+    fact**, and is labelled as such in the code and its fixture. Cheap to settle: request a
+    collection with a deliberately bad `fields=` value, or read an entity the key cannot see, and
+    capture the row. Do this before any UI surfaces a per-row error state.

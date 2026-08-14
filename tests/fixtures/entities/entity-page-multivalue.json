@@ -1,0 +1,16 @@
+{
+  "entities": [
+    {
+      "Fields": [
+        {"Name": "id", "values": [{"value": "3001"}]},
+        {"Name": "name", "values": [{"value": "ALTALM-SAMPLE-4"}]},
+        {"Name": "target-rel", "values": [{"value": "9001"}, {"value": "9002"}]}
+      ],
+      "Type": "requirement",
+      "ErrorMessage": "",
+      "EntityStatus": "Success",
+      "children-count": 0
+    }
+  ],
+  "TotalResults": 1
+}

@@ -1,0 +1,17 @@
+{
+  "entities": [
+    {
+      "Fields": [
+        {"Name": "id", "values": [{"value": "2001"}]},
+        {"Name": "name", "values": [{"value": "ALTALM-SAMPLE-3"}]},
+        {"Name": "owner", "values": [{"value": null}]},
+        {"Name": "user-01", "values": []}
+      ],
+      "Type": "defect",
+      "ErrorMessage": "",
+      "EntityStatus": "Success",
+      "children-count": 0
+    }
+  ],
+  "TotalResults": 1
+}

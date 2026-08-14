@@ -338,8 +338,25 @@ query/fields/order-by — violations silently produce wrong results, not errors.
   single-entity GET** in Core (Deprecated's fields clause DOES apply to instances — a real behavioural
   difference). Discover filterable fields via
   `.../customization/entities/{entity}/fields?can-filter=true`.
-- `order-by={field[,field…]}`, collections only (no-op on single GET); default sort = entity ID
-  ascending; multi-field e.g. `order-by={status;name[DESC]}`; Reference fields sort by the referenced
+- `order-by={field[;field…]}` — ⚠️ **semicolon-separated, probe-verified (probe 17)**. This entry
+  previously wrote the separator as a **comma** in its grammar line while giving a **semicolon** in
+  its own worked example one line later. The contradiction was caught when `AlmQuery` was built
+  against it, and settled against the live server:
+
+  ```
+  order-by={type-id;id}  → HTTP 200, correctly sorted
+  order-by={type-id,id}  → HTTP 404 qccore.invalid-query-value
+                           "Invalid \"order-by\" parameter value, not existing field: \"type-id,id\""
+  ```
+
+  ⚠️ **A comma is not a wrong separator, it is not a separator at all** — the server reads the whole
+  string as one field name and reports a *missing field*, not a syntax error. Any unsupported
+  separator (`|` was also tried) fails the same way, so a malformed sort is indistinguishable from a
+  typo'd column name. And it answers **404**, not 400 — another instance of §3.4's rule that error
+  handling must parse `Id`/`Title` rather than branch on the status code.
+
+  Collections only (no-op on single GET); default sort = entity ID ascending; `field[DESC]` for
+  descending, verified on both the first and second sort key; Reference fields sort by the referenced
   **value**, not the id (e.g. `parent-id[DESC]` sorts by folder name); `[…,CI]` forces case-insensitive
   sort (added ALM 17.0). No `can-sort` metadata flag found — `UNVERIFIED`.
 

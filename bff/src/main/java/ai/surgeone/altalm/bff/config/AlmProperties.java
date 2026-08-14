@@ -36,7 +36,32 @@ public class AlmProperties {
     private String domain;
     private String project;
 
+    /**
+     * Projects this BFF may <strong>read</strong>, as {@code DOMAIN/PROJECT} strings.
+     *
+     * <p>Empty by default, and that default is the point: a deployment reaches exactly the
+     * credentialed project until someone deliberately enrols another. The user granted read access
+     * to the tenant's other projects on 2026-08-14 for P1 validation (the sandbox holds 1
+     * requirement and 0 tests, a sibling holds 847 rows — probe 16), but the grant covers reading
+     * only, and enrolment stays explicit.
+     *
+     * <p>⚠️ These values name other teams' live projects, so they are configuration, never
+     * committed: keep them in a local profile or an environment variable, not in a tracked
+     * {@code application.properties}. Writes are impossible here regardless — see
+     * {@link ai.surgeone.altalm.bff.alm.read.AlmAccessPolicy}, which permits writes to the
+     * credentialed project alone and offers no override.
+     */
+    private java.util.List<String> readableProjects = new java.util.ArrayList<>();
+
     private final Pool pool = new Pool();
+
+    public java.util.List<String> getReadableProjects() {
+        return readableProjects;
+    }
+
+    public void setReadableProjects(java.util.List<String> readableProjects) {
+        this.readableProjects = readableProjects == null ? new java.util.ArrayList<>() : readableProjects;
+    }
 
     public String getCredentialsFile() {
         return credentialsFile;

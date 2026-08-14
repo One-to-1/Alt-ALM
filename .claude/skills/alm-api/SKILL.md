@@ -99,7 +99,11 @@ parens nest.
   free-text fields.
 - `fields=<name>[,…]` — **no effect on a single-entity GET** in Core (works on collections). Discover
   filterable fields via `.../customization/entities/{entity}/fields?can-filter=true`.
-- `order-by={field[,field…]}` — collections only, no-op on single GET. Default sort = id ascending.
+- `order-by={field[;field…]}` — ⚠️ **SEMICOLON-separated** [probe17]. A comma yields **HTTP 404**
+  `not existing field: "a,b"` — the server reads the whole string as one field name, so a bad
+  separator is indistinguishable from a typo'd column and there is no syntax error to catch.
+  Validate field names against metadata client-side. Collections only, no-op on single GET.
+  Default sort = id ascending. `field[DESC]` works on any key, primary or secondary.
   Reference fields sort by referenced value, not id. `[…,CI]` = case-insensitive (ALM 17.0+).
 - **Paging**: `page-size` (default 100, max **2000**), `start-index` (**1-based**). Deprecated API
   uses `limit`/`offset` (0-based) instead and **throws** on overflow.

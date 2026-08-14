@@ -1,0 +1,15 @@
+{
+  "entities": [
+    {
+      "Fields": [
+        {"Name": "id", "values": [{"value": "4001"}]},
+        {"Name": "name", "values": [{"value": "ALTALM-SAMPLE-5"}]}
+      ],
+      "Type": "defect",
+      "ErrorMessage": "insufficient permissions to read field 'severity'",
+      "EntityStatus": "Failure",
+      "children-count": 0
+    }
+  ],
+  "TotalResults": 1
+}

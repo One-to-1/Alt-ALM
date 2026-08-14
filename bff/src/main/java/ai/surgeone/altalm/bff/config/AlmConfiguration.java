@@ -2,6 +2,10 @@ package ai.surgeone.altalm.bff.config;
 
 import ai.surgeone.altalm.bff.alm.metadata.AlmMetadataCache;
 import ai.surgeone.altalm.bff.alm.metadata.AlmMetadataClient;
+import ai.surgeone.altalm.bff.alm.read.AlmAccessPolicy;
+import ai.surgeone.altalm.bff.alm.read.AlmEntityClient;
+import ai.surgeone.altalm.bff.alm.read.AlmProjectRef;
+import ai.surgeone.altalm.bff.alm.read.AlmReadRetry;
 import ai.surgeone.altalm.bff.alm.session.AlmAuthClient;
 import ai.surgeone.altalm.bff.alm.session.AlmCredentials;
 import ai.surgeone.altalm.bff.alm.session.AlmKeepalive;
@@ -118,6 +122,51 @@ public class AlmConfiguration {
     @Bean
     public AlmMetadataCache almMetadataCache(AlmCredentials creds, AlmMetadataClient client) {
         return new AlmMetadataCache(creds.domain(), creds.project(), client::fetchFields);
+    }
+
+    /**
+     * The read/write boundary across projects.
+     *
+     * <p>Built from configuration, but note what configuration cannot do: {@code readableProjects}
+     * only ever grants <em>reads</em>. There is no property that makes another project writable,
+     * because a property that dangerous would eventually be set (probe 16 — eight of the nine
+     * reachable projects belong to other teams).
+     *
+     * <p>A malformed entry fails at startup rather than at first request, and the error names the
+     * position rather than echoing the value, since these values identify third-party projects.
+     */
+    @Bean
+    public AlmAccessPolicy almAccessPolicy(AlmCredentials creds, AlmProperties props) {
+        var readable = new java.util.LinkedHashSet<AlmProjectRef>();
+        var entries = props.getReadableProjects();
+        for (int i = 0; i < entries.size(); i++) {
+            String raw = entries.get(i) == null ? "" : entries.get(i).trim();
+            int slash = raw.indexOf('/');
+            if (slash <= 0 || slash == raw.length() - 1) {
+                throw new IllegalStateException(
+                        "alt-alm.alm.readable-projects[" + i + "] must be 'DOMAIN/PROJECT'");
+            }
+            readable.add(new AlmProjectRef(raw.substring(0, slash), raw.substring(slash + 1)));
+        }
+        return new AlmAccessPolicy(AlmProjectRef.sandboxOf(creds), readable);
+    }
+
+    /**
+     * Read retry for the transient 5xx of Q46. Three attempts, short linear backoff: the one
+     * observed failure recovered on the very next request, so this is sized to survive a blink
+     * rather than an outage.
+     */
+    @Bean
+    public AlmReadRetry almReadRetry() {
+        return new AlmReadRetry(3, Duration.ofMillis(250));
+    }
+
+    @Bean
+    public AlmEntityClient almEntityClient(RestClient almRestClient, AlmCredentials creds,
+                                           AlmSessionPool pool, AlmAccessPolicy policy,
+                                           AlmReadRetry retry, AlmProperties props) {
+        return new AlmEntityClient(almRestClient, creds, pool, policy, retry,
+                props.getPool().getBorrowTimeout());
     }
 
     /**
