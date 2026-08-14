@@ -1147,6 +1147,56 @@ thing that gets cited later as if it were verified.
 
 ---
 
+## Probe 20 — `parent-id` accepts `OR`, so one query resolves many parents. 2026-08-14
+
+Read-only, through the running BFF (so `AlmAccessPolicy` gated every call), against the populated
+read-only project. Ids and counts only. Scripts: `scripts/probe/probe-batch-children.py`.
+
+**Origin**: probe 19 left the tree unable to know which nodes expand. The question was whether the
+children query — `requirements?query={parent-id[N]}`, which is how child requirements are already
+fetched — can be asked for several parents at once.
+
+**Hypothesis**: `OR` inside one field's brackets works. api-ref §4.3 documented it, but tagged
+`[docs-research]` — never probed. Refuting observation: any non-200, or a row set that differs from
+the same parents queried one at a time.
+
+**Confirmed.** Ground truth was built independently, by reading all 233 requirements in one page and
+grouping them by their own `parent-id` field, so the check does not depend on the mechanism it tests.
+
+| OR terms | query length | rows | distinct parents | matches ground truth |
+|---|---|---|---|---|
+| 8 | 50 | 19 | 4 | ✅ |
+| 16 | 106 | 29 | 7 | ✅ |
+| 32 | 218 | 42 | 11 | ✅ |
+| 63 | 435 | 74 | 22 | ✅ |
+| 100 | 694 | 113 | 31 | ✅ |
+| **233** (every id in the project) | **1,625** | 232 | 62 | ✅ |
+
+Four parents queried individually returned `318:1  265:6  339:1  133:9`; the same four batched into
+one request returned exactly those counts. `test-folders` batches the same way (20 terms → 22 rows).
+
+**Two consequences.**
+
+1. **The expander problem is solvable exactly, not optimistically.** One query per *level* — batching
+   that level's ids — returns every child of every node on it, so `hasChildren` becomes a fact
+   (a parent absent from the result has no children) instead of the always-true guess probe 19
+   forced. Cost: one request per level rather than one per node.
+2. **For a tree that fits one page, the whole hierarchy is one request.** 233 requirements are well
+   under the 2,000 cap, and every row already carries its own `parent-id` — the ground-truth map
+   above *was* the entire tree, built from a single call.
+
+⚠️ **The upper bound is unprobed.** 1,625 characters is the longest query tested; it is not a limit,
+just the largest project available. Servers and proxies cap URL length (commonly ~8 KB) and ALM's
+own limit is unknown, so any implementation must **chunk** the id list rather than assume one request
+always suffices. A tree of 2,000 nodes would produce a ~14 KB query. Untested, therefore chunk.
+
+⚠️ **`OR` is a bare keyword inside the brackets, and `AlmQuery.filter` currently forbids `; [ ] }`
+but not spaces or `OR`** — so a user typing `OR` into the grid's name filter already reaches ALM as
+an operator, not as literal text. Not a new hole (it predates this probe), but this probe is what
+makes it visible. Recorded as **Q47**.
+
+---
+
 ## Open items for the next probe round
 
 1. ~~Map `SiteVersion 20.0 (20.00.0.143)` → marketing version~~ **DONE: ALM 26.1** (probe 3).

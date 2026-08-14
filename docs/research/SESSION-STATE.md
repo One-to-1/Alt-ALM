@@ -505,13 +505,19 @@ not wired to anything.
 
 ### Running it
 
-```
+**PowerShell — one line each, no continuations.** (A trailing `\` is bash; PowerShell passes it to
+Maven as a lifecycle phase and the build fails before compiling. Use a backtick if you must wrap.)
+
+```powershell
 # Terminal 1 — BFF (needs credentials; tracked config has none so CI can start clean)
-cd bff && ./mvnw spring-boot:run \
-  -Dspring-boot.run.arguments=--spring.config.additional-location=file:../Secrets/local.properties
+cd 'D:\OneDrive - SurgeONE.ai\Documents\GitHub\Alt-ALM\bff'; ./mvnw spring-boot:run "-Dspring-boot.run.arguments=--spring.config.additional-location=file:../Secrets/local.properties"
+
 # Terminal 2 — SPA
-cd spa && npm run dev     # http://localhost:5173
+cd 'D:\OneDrive - SurgeONE.ai\Documents\GitHub\Alt-ALM\spa'; npm run dev     # http://localhost:5173
 ```
+
+Quote the whole `-D...` argument: PowerShell otherwise splits it at the `=` and Maven never sees the
+config location. Use absolute `cd` paths — after the first `cd bff`, a relative `cd spa` fails.
 
 `Secrets/local.properties` is git-ignored and holds the credentials path plus the 8 read-only
 project enrolments. Regenerate it with `scripts/probe/probe-projects-2.ps1` if lost.

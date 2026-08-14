@@ -313,6 +313,15 @@ curly-brace grammar) and **Deprecated** (`/qcbin/api/...`, symbol-only grammar, 
   from 24.1 P1, either form works (text form recommended for strict-security orgs).
 - Logical operators inside one field's brackets: `AND`, `OR`, `NOT` (keywords). Quotes (single or
   double) for literals with spaces; `*` wildcard; parentheses nest freely.
+  **`OR` is now `[probe]`-verified** (Probe 20): `{parent-id[a OR b OR …]}` on `requirements`
+  returned exactly the union of the per-parent queries at 8, 16, 32, 63, 100 and **233 terms**
+  (1,625-char query), checked against a parent→children map built independently from a full-page
+  read. `test-folders` behaves the same. This makes "children of these N nodes" **one request**
+  rather than N — see Probe 20 for the tree consequence.
+  ⚠️ **No probed upper bound on query length** (Q48) — 1,625 chars is the largest project available,
+  not a ceiling. Chunk the term list; a 2,000-id query would be ~14 KB, past the usual ~8 KB URL cap.
+  ⚠️ Because these are bare keywords with **no documented escaping rule** (next-but-one bullet), a
+  user-supplied value containing `OR` reaches ALM as an *operator*, not as text (Q47).
 - **No documented null-test syntax for Core** (Deprecated has `= null`) — genuine gap, `UNVERIFIED`
   (probe: `{detected-in-rel[null]}`, `{field[]}`).
 - **No documented escaping rule for delimiter characters** (`'`, `"`, `;`, `[`, `]`, `(`, `)`, `,`) in
