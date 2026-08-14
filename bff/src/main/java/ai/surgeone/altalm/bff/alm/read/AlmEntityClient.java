@@ -89,6 +89,24 @@ public final class AlmEntityClient {
                 .toList();
     }
 
+    /**
+     * Server-side group-by: {@code GET {collection}/groups/{field}}.
+     *
+     * <p>Uses plain {@code application/json}, not {@code schema=alm-web}. Probe 15 §15.2 established
+     * that plain JSON already carries {@code size} and {@code expression} — everything a Group tab
+     * needs, including the filter that drills into a group — so the dialect adds nothing here, and
+     * adopting it on operations that do not advertise it is R15.
+     */
+    public List<AlmGroup> groups(AlmProjectRef project, String collection, String field) {
+        policy.checkMethod("GET", project);
+
+        String url = project.restBase(credentials.baseUrl())
+                + "/" + URLEncoder.encode(collection, StandardCharsets.UTF_8)
+                + "/groups/" + URLEncoder.encode(field, StandardCharsets.UTF_8);
+
+        return retry.call(() -> AlmGroupParser.parseGroups(getBody(url)));
+    }
+
     /** A {@link AlmTreeRoots} bound to one project. */
     public AlmTreeRoots treeRoots(AlmProjectRef project) {
         return new AlmTreeRoots((collection, parentId) -> childrenOf(project, collection, parentId));

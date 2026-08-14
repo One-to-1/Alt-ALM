@@ -1,0 +1,104 @@
+.tree {
+  overflow: auto;
+  height: 100%;
+  padding-block: var(--space-2, 8px);
+}
+
+.tree-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.tree-item {
+  margin: 0;
+}
+
+.tree-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-height: var(--tree-row-height, 24px);
+  padding-inline-end: 8px;
+  font-size: var(--font-size-sm, 0.8125rem);
+  color: var(--color-text, #1a1d21);
+  cursor: default;
+  border-radius: 3px;
+  user-select: none;
+}
+
+.tree-row:hover {
+  background: var(--color-surface-hover, rgba(0, 0, 0, 0.04));
+}
+
+.tree-row:focus-visible {
+  outline: 2px solid var(--color-focus, #2563eb);
+  outline-offset: -2px;
+}
+
+.tree-row.is-selected {
+  background: var(--color-selected, #e6efff);
+  color: var(--color-selected-text, #14315f);
+  font-weight: 500;
+}
+
+.tree-twisty {
+  flex: 0 0 auto;
+  width: 16px;
+  height: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--color-text-muted, #6b7280);
+  font-size: 10px;
+  line-height: 1;
+  cursor: pointer;
+  border-radius: 2px;
+}
+
+.tree-twisty:hover {
+  color: var(--color-text, #1a1d21);
+  background: var(--color-surface-hover, rgba(0, 0, 0, 0.06));
+}
+
+.tree-twisty:focus-visible {
+  outline: 2px solid var(--color-focus, #2563eb);
+  outline-offset: 1px;
+}
+
+.tree-twisty-empty {
+  cursor: default;
+}
+
+.tree-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tree-empty {
+  font-size: var(--font-size-xs, 0.75rem);
+  color: var(--color-text-subtle, #9ca3af);
+  font-style: italic;
+  padding-block: 2px;
+}
+
+.tree-state {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: var(--space-3, 12px);
+  font-size: var(--font-size-sm, 0.8125rem);
+  color: var(--color-text-muted, #6b7280);
+}
+
+.tree-state-error {
+  color: var(--color-danger-text, #9f1239);
+}
+
+.tree-state-error strong {
+  font-weight: 600;
+}

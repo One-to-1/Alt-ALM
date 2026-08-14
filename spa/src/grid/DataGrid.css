@@ -144,3 +144,20 @@
   opacity: 0.5;
   cursor: not-allowed;
 }
+
+/* Row selection drives the detail pane. Selection is shown with background AND a leading
+   accent bar, never colour alone. */
+.data-grid tbody tr.row-selected {
+  background: var(--color-selected, #e6efff);
+  box-shadow: inset 2px 0 0 0 var(--color-focus, #2563eb);
+}
+
+.data-grid tbody tr[tabindex]:hover {
+  background: var(--color-surface-hover, rgba(0, 0, 0, 0.035));
+  cursor: default;
+}
+
+.data-grid tbody tr[tabindex]:focus-visible {
+  outline: 2px solid var(--color-focus, #2563eb);
+  outline-offset: -2px;
+}

@@ -1103,6 +1103,50 @@ because product code was put under a live test.
 
 ---
 
+## Probe 19 — `children-count` is always 0. 2026-08-14 (`scripts/probe/probe-childcount.ps1`)
+
+Read-only, against the populated read-only project. Ids and counts only.
+
+**Origin**: the P1 folder tree rendered with no expanders. Every folder reported
+`hasChildren=false`, yet filtering the grid by one of those folders returned a row — so the folders
+plainly had children.
+
+| Read | `id:children-count` |
+|---|---|
+| `fields=id,name,parent-id` (what the BFF sends) | `133:0  265:0  318:0  339:0` |
+| `fields=id` only | `133:0  265:0  318:0  339:0` |
+| no `fields` projection at all | `133:0  265:0  318:0  339:0` |
+| with an explicit `order-by` | `318:0  265:0  339:0  133:0` |
+
+And the same folders, counted by querying their children directly:
+
+| Folder | actual children |
+|---|---|
+| 133 | **9** |
+| 265 | **6** |
+| 318 | **1** |
+| 339 | **1** |
+
+`test-folders` behaves identically — nine child folders, every one reporting 0.
+
+**`children-count` is present in the envelope and always zero.** Not a projection artifact, not
+tree-specific, not fixed by asking differently. It is not a usable "does this node have children"
+signal on this ALM version.
+
+**Consequence for the UI**: the tree cannot know in advance which nodes expand. Alt-ALM's tree now
+reports every node as *possibly* expandable and discovers the truth on expansion; a node that turns
+out to be empty renders as empty. The cost is one wasted request per leaf, against the alternative
+of a tree nobody can navigate.
+
+⚠️ **This retracts half of R15's justification.** That row gave two reasons not to adopt the
+`alm-web` dialect: it is undocumented on collection reads, *and* it omits `children-count` which
+"tree UIs need". The second reason was wrong — the field is worthless in either shape, so its
+absence costs nothing. R15 stands on the undocumented-behaviour reason alone, which was always the
+stronger one. Recorded because a wrong reason attached to a right conclusion is exactly the kind of
+thing that gets cited later as if it were verified.
+
+---
+
 ## Open items for the next probe round
 
 1. ~~Map `SiteVersion 20.0 (20.00.0.143)` → marketing version~~ **DONE: ALM 26.1** (probe 3).

@@ -13,6 +13,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -30,11 +31,14 @@ import java.util.Map;
 public class GridController {
 
     private final GridService grids;
+    private final TreeService trees;
     private final AlmAccessPolicy policy;
     private final AlmCredentials credentials;
 
-    public GridController(GridService grids, AlmAccessPolicy policy, AlmCredentials credentials) {
+    public GridController(GridService grids, TreeService trees, AlmAccessPolicy policy,
+                          AlmCredentials credentials) {
         this.grids = grids;
+        this.trees = trees;
         this.policy = policy;
         this.credentials = credentials;
     }
@@ -52,9 +56,70 @@ public class GridController {
                              @RequestParam(defaultValue = "50") int pageSize,
                              @RequestParam(defaultValue = "1") int start,
                              @RequestParam(required = false) String sort,
-                             @RequestParam(defaultValue = "false") boolean desc) {
+                             @RequestParam(defaultValue = "false") boolean desc,
+                             @RequestParam(required = false) List<String> filter) {
 
-        return grids.grid(resolve(project), collection, pageSize, start, sort, desc);
+        return grids.grid(resolve(project), collection, pageSize, start, sort, desc, parseFilters(filter));
+    }
+
+    /** One entity by id — the detail pane. 404 when the id does not exist in this project. */
+    @GetMapping("/detail/{collection}/{id}")
+    public ResponseEntity<GridDto.Grid> detail(@PathVariable String collection,
+                                               @PathVariable String id,
+                                               @RequestParam(required = false) String project) {
+        return grids.detail(resolve(project), collection, id)
+                .map(ResponseEntity::ok)
+                .orElseGet(() -> ResponseEntity.notFound().build());
+    }
+
+    /**
+     * Server-side group-by counts for one field.
+     *
+     * <p>Each group carries an {@code expression} — the filter that selects exactly that group's
+     * rows — so the UI can drill in without reconstructing a filter of its own.
+     */
+    @GetMapping("/groups/{collection}/{field}")
+    public List<Map<String, Object>> groups(@PathVariable String collection,
+                                            @PathVariable String field,
+                                            @RequestParam(required = false) String project) {
+        return grids.groups(resolve(project), collection, field);
+    }
+
+    /** Every tree's root. Trees this project does not use report an error instead of failing the call. */
+    @GetMapping("/tree/roots")
+    public List<TreeDto.Root> treeRoots(@RequestParam(required = false) String project) {
+        return trees.roots(resolve(project));
+    }
+
+    /** Children of one node, for lazy expansion. */
+    @GetMapping("/tree/{collection}/children")
+    public TreeDto.Children treeChildren(@PathVariable String collection,
+                                         @RequestParam String parentId,
+                                         @RequestParam(required = false) String project) {
+        return trees.children(resolve(project), collection, parentId);
+    }
+
+    /**
+     * Parses repeated {@code filter=field:value} parameters.
+     *
+     * <p>Colon-delimited because ALM field names cannot contain one, so the split is unambiguous —
+     * whereas splitting on {@code =} would collide with the query string itself. Only the FIRST
+     * colon splits, so a value may contain colons freely.
+     */
+    private static Map<String, String> parseFilters(List<String> filters) {
+        if (filters == null || filters.isEmpty()) {
+            return Map.of();
+        }
+        Map<String, String> parsed = new LinkedHashMap<>();
+        for (String f : filters) {
+            int colon = f.indexOf(':');
+            if (colon <= 0 || colon == f.length() - 1) {
+                throw new IllegalArgumentException(
+                        "filter must be 'field:value' (got a value with no field or no literal)");
+            }
+            parsed.put(f.substring(0, colon), f.substring(colon + 1));
+        }
+        return parsed;
     }
 
     /**

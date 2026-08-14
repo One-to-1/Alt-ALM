@@ -11,11 +11,22 @@ interface DataGridProps {
   /** "<domain>/<project>" */
   project: string
   collection: string
+  /** Field -> literal value, ANDed. Unknown fields are rejected by the server with a 400. */
+  filters?: Record<string, string>
+  /** Currently selected row id, for the detail pane. */
+  selectedId?: string | null
+  onSelectRow?: (id: string) => void
 }
 
 type LoadStatus = 'loading' | 'ready' | 'error'
 
-export function DataGrid({ project, collection }: DataGridProps) {
+export function DataGrid({
+  project,
+  collection,
+  filters,
+  selectedId,
+  onSelectRow,
+}: DataGridProps) {
   const [start, setStart] = useState(1)
   const [sort, setSort] = useState(DEFAULT_SORT)
   const [desc, setDesc] = useState(false)
@@ -32,12 +43,19 @@ export function DataGrid({ project, collection }: DataGridProps) {
     setData(null)
   }, [project, collection])
 
+  // A filter change is a new result set, so page 1 again — otherwise you land on page 4 of a
+  // 2-row result and see an empty grid that looks like a failure.
+  const filterKey = JSON.stringify(filters ?? {})
+  useEffect(() => {
+    setStart(1)
+  }, [filterKey])
+
   useEffect(() => {
     let cancelled = false
     setStatus('loading')
     setError(null)
 
-    fetchGrid({ collection, project, pageSize: PAGE_SIZE, start, sort, desc })
+    fetchGrid({ collection, project, pageSize: PAGE_SIZE, start, sort, desc, filters })
       .then((response) => {
         if (cancelled) return
         setData(response)
@@ -61,7 +79,9 @@ export function DataGrid({ project, collection }: DataGridProps) {
     return () => {
       cancelled = true
     }
-  }, [project, collection, start, sort, desc, retryToken])
+    // `filters` is listed for correctness; callers must memoize it (App does) or every render
+    // would refetch. filterKey is kept so a value change re-runs even if identity is stable.
+  }, [project, collection, start, sort, desc, retryToken, filterKey, filters])
 
   const handleSort = (columnName: string) => {
     setStart(1)
@@ -152,7 +172,27 @@ export function DataGrid({ project, collection }: DataGridProps) {
           </thead>
           <tbody>
             {data.rows.map((row) => (
-              <tr key={row.id} className={row.error ? 'row-degraded' : undefined}>
+              <tr
+                key={row.id}
+                className={
+                  [row.error ? 'row-degraded' : '', selectedId === row.id ? 'row-selected' : '']
+                    .filter(Boolean)
+                    .join(' ') || undefined
+                }
+                aria-selected={onSelectRow ? selectedId === row.id : undefined}
+                tabIndex={onSelectRow ? 0 : undefined}
+                onClick={onSelectRow ? () => onSelectRow(row.id) : undefined}
+                onKeyDown={
+                  onSelectRow
+                    ? (e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault()
+                          onSelectRow(row.id)
+                        }
+                      }
+                    : undefined
+                }
+              >
                 {data.columns.map((column) => (
                   <td key={column.name}>{renderCell(column, row.values[column.name] ?? [])}</td>
                 ))}

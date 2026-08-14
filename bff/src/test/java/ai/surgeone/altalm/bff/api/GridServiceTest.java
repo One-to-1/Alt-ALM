@@ -99,7 +99,8 @@ class GridServiceTest {
     @Test
     @DisplayName("sorting builds a semicolon-separated order-by via AlmQuery (probe 17)")
     void sortIsAppliedThroughTheBuilder() {
-        when(metadata.fields(any(), any())).thenReturn(List.of(field("id", AlmFieldType.NUMBER)));
+        when(metadata.fields(any(), any()))
+                .thenReturn(List.of(field("id", AlmFieldType.NUMBER), field("name", AlmFieldType.STRING)));
         AtomicReference<AlmQuery> captured = new AtomicReference<>();
         when(entities.page(any(), any(), any())).thenAnswer(inv -> {
             captured.set(inv.getArgument(2));
@@ -109,6 +110,66 @@ class GridServiceTest {
         service.grid(READONLY, "requirements", 50, 1, "name", true);
 
         assertThat(captured.get().toQueryString()).contains("order-by={name[DESC]}");
+    }
+
+    @Test
+    @DisplayName("an unknown sort field is rejected here, because the server's error is ambiguous")
+    void unknownSortFieldIsRejectedLocally() {
+        // Probe 17: a bad order-by FIELD and a bad order-by SEPARATOR produce the identical server
+        // error ("not existing field"), so the server cannot say which mistake was made. Catching
+        // it here is the only way the caller learns which one it actually was.
+        when(metadata.fields(any(), any())).thenReturn(List.of(field("id", AlmFieldType.NUMBER)));
+
+        assertThatThrownBy(() -> service.grid(READONLY, "requirements", 50, 1, "no-such-field", false))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("unknown sort field");
+    }
+
+    @Test
+    @DisplayName("an unknown filter field is rejected against THIS project's metadata")
+    void unknownFilterFieldIsRejected() {
+        when(metadata.fields(any(), any())).thenReturn(List.of(field("id", AlmFieldType.NUMBER)));
+
+        assertThatThrownBy(() -> service.grid(READONLY, "requirements", 50, 1, null, false,
+                java.util.Map.of("not-a-field", "x")))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("unknown filter field");
+    }
+
+    @Test
+    @DisplayName("filters compose into a single query clause set")
+    void filtersAreApplied() {
+        when(metadata.fields(any(), any()))
+                .thenReturn(List.of(field("id", AlmFieldType.NUMBER), field("status", AlmFieldType.LOOKUP_LIST)));
+        AtomicReference<AlmQuery> captured = new AtomicReference<>();
+        when(entities.page(any(), any(), any())).thenAnswer(inv -> {
+            captured.set(inv.getArgument(2));
+            return page(0);
+        });
+
+        service.grid(READONLY, "requirements", 50, 1, null, false, java.util.Map.of("status", "Passed"));
+
+        assertThat(captured.get().toQueryString()).contains("query={status[Passed]}");
+    }
+
+    @Test
+    @DisplayName("detail returns empty for an id that does not exist rather than an empty grid")
+    void detailIsEmptyWhenMissing() {
+        when(metadata.fields(any(), any())).thenReturn(List.of(field("id", AlmFieldType.NUMBER)));
+        when(entities.page(any(), any(), any())).thenReturn(page(0));
+
+        assertThat(service.detail(READONLY, "requirements", "999")).isEmpty();
+    }
+
+    @Test
+    @DisplayName("detail refuses to pick a winner if an id lookup somehow returns two rows")
+    void detailRefusesAmbiguity() {
+        when(metadata.fields(any(), any())).thenReturn(List.of(field("id", AlmFieldType.NUMBER)));
+        when(entities.page(any(), any(), any())).thenReturn(page(2, row("1", "a"), row("1", "b")));
+
+        assertThatThrownBy(() -> service.detail(READONLY, "requirements", "1"))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("unique lookup");
     }
 
     @Test

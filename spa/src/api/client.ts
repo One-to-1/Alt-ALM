@@ -64,6 +64,38 @@ export interface GridQuery {
   start: number
   sort?: string
   desc?: boolean
+  /** Field name -> literal value, ANDed. Rejected server-side if the field is unknown for this project. */
+  filters?: Record<string, string>
+}
+
+/** One node of an ALM folder tree. */
+export interface TreeNode {
+  id: string
+  name: string
+  parentId: string | null
+  hasChildren: boolean
+}
+
+/** A tree's root, or the reason it could not be resolved for this project. */
+export interface TreeRoot {
+  collection: string
+  root: TreeNode | null
+  error: string | null
+}
+
+export interface TreeChildren {
+  collection: string
+  parentId: string
+  nodes: TreeNode[]
+}
+
+/** One server-side group-by bucket. `size` here IS a real count, unlike GridPage.reportedTotal. */
+export interface GroupBucket {
+  value: string
+  label: string
+  size: number
+  /** The ALM filter expression selecting exactly this group — drill in without rebuilding a filter. */
+  expression: string
 }
 
 type ErrorKind = 'access-denied' | 'bad-request' | 'alm-unavailable' | 'network' | 'unknown'
@@ -200,6 +232,54 @@ export function fetchGrid(query: GridQuery): Promise<GridResponse> {
   if (query.desc !== undefined) {
     params.set('desc', String(query.desc))
   }
+  // Repeated `filter=field:value`. Only the first colon splits server-side, so values may
+  // contain colons; field names cannot.
+  for (const [field, value] of Object.entries(query.filters ?? {})) {
+    if (value.trim() !== '') {
+      params.append('filter', `${field}:${value}`)
+    }
+  }
 
   return apiGet<GridResponse>(`/api/grid/${encodeURIComponent(query.collection)}?${params.toString()}`)
+}
+
+/** Every tree's root for this project. Unused modules report an error rather than failing the call. */
+export function fetchTreeRoots(project: string): Promise<TreeRoot[]> {
+  return apiGet<TreeRoot[]>(`/api/tree/roots?project=${encodeURIComponent(project)}`)
+}
+
+/** Children of one folder, for lazy expansion. */
+export function fetchTreeChildren(
+  project: string,
+  collection: string,
+  parentId: string,
+): Promise<TreeChildren> {
+  const params = new URLSearchParams({ project, parentId })
+  return apiGet<TreeChildren>(
+    `/api/tree/${encodeURIComponent(collection)}/children?${params.toString()}`,
+  )
+}
+
+/** One entity by id. Throws ApiError with status 404 when it does not exist in this project. */
+export function fetchDetail(
+  project: string,
+  collection: string,
+  id: string,
+): Promise<GridResponse> {
+  const params = new URLSearchParams({ project })
+  return apiGet<GridResponse>(
+    `/api/detail/${encodeURIComponent(collection)}/${encodeURIComponent(id)}?${params.toString()}`,
+  )
+}
+
+/** Server-side group-by counts for one field. */
+export function fetchGroups(
+  project: string,
+  collection: string,
+  field: string,
+): Promise<GroupBucket[]> {
+  const params = new URLSearchParams({ project })
+  return apiGet<GroupBucket[]>(
+    `/api/groups/${encodeURIComponent(collection)}/${encodeURIComponent(field)}?${params.toString()}`,
+  )
 }
