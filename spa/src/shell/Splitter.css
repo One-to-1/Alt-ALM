@@ -1,0 +1,53 @@
+.splitter {
+  flex: 0 0 auto;
+  width: 5px;
+  cursor: col-resize;
+  background: var(--color-border, #e5e7eb);
+  position: relative;
+  touch-action: none;
+}
+
+.splitter:hover,
+.splitter:focus-visible {
+  background: var(--color-focus, #2563eb);
+  outline: none;
+}
+
+/* Widen the hit target well beyond the visible 5px line — a hairline splitter is a
+   precision-mouse task otherwise. */
+.splitter::before {
+  content: '';
+  position: absolute;
+  inset-block: 0;
+  inset-inline: -4px;
+}
+
+.splitter-grip {
+  position: absolute;
+  inset-block-start: 50%;
+  inset-inline-start: 1px;
+  width: 3px;
+  height: 28px;
+  margin-block-start: -14px;
+  border-radius: 2px;
+  background: var(--color-text-subtle, #9ca3af);
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+
+.splitter:hover .splitter-grip,
+.splitter:focus-visible .splitter-grip {
+  opacity: 0.7;
+  background: #fff;
+}
+
+body.is-resizing {
+  user-select: none;
+  cursor: col-resize;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .splitter-grip {
+    transition: none;
+  }
+}

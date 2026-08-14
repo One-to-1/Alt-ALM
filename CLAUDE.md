@@ -145,7 +145,22 @@ finding in the project surfaced by product code under test rather than a hand-wr
   Cause UNVERIFIED, possibly the same load-balancer intermittency as Q40. P1's grid needs a
   **bounded retry on 5xx reads** — separate from the 5xx-on-*write* verify-by-query rule (**Q46**).
 
-See [docs/plan/implementation-plan.md](docs/plan/implementation-plan.md) for P1's scope.
+🟢 **P1 is largely built (2026-08-14) — the Requirements module runs end to end.** 147 tests green.
+Grid (metadata-driven columns, sort, filter, paging), folder tree, detail pane, column picker,
+Tree|Grid toggle, resizable detail pane. Group-by has a working endpoint but **no UI**.
+
+⚠️ **THERE IS NO WRITE PATH. Records cannot be created or edited** — that is P2. Enforced in four
+places: `AlmEntityClient` has no write method; the `api` package has no non-GET mapping and
+`ApiIsReadOnlyTest` fails the build if one appears; `AlmAccessPolicy.checkWrite` allows only the
+sandbox with no override; and the borrowed projects are read-only by grant. When P2 adds writes,
+**change** that test to assert they route through the write-safety component — do not delete it.
+
+⚠️ **`spring-boot:run` forks a child JVM.** Kill the **port holder**, not the Maven parent, or the
+old build keeps serving :8080 and answering health checks while the new one fails to bind.
+
+See [docs/plan/implementation-plan.md](docs/plan/implementation-plan.md) for P1's scope and
+[docs/research/SESSION-STATE.md](docs/research/SESSION-STATE.md) for the P1 status section
+(what works, the UI decisions not to re-litigate, and the known gaps).
 
 ✅ **Toolchain ready**: Node 24.13.1, git 2.54, **JDK 25.0.4 Temurin** (machine-level `JAVA_HOME`
 set by its installer — do NOT add user-level Java env vars, they shadow it). No local Maven/Gradle

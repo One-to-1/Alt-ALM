@@ -16,6 +16,13 @@ interface DataGridProps {
   /** Currently selected row id, for the detail pane. */
   selectedId?: string | null
   onSelectRow?: (id: string) => void
+  /**
+   * Column names to render, in metadata order. Omitted = render every column, which is only
+   * sensible for narrow entities — a requirement carries 76.
+   */
+  visibleColumns?: string[]
+  /** Rendered into the grid toolbar; the picker lives here so it can see the loaded columns. */
+  renderToolbar?: (columns: GridColumn[]) => React.ReactNode
 }
 
 type LoadStatus = 'loading' | 'ready' | 'error'
@@ -26,6 +33,8 @@ export function DataGrid({
   filters,
   selectedId,
   onSelectRow,
+  visibleColumns,
+  renderToolbar,
 }: DataGridProps) {
   const [start, setStart] = useState(1)
   const [sort, setSort] = useState(DEFAULT_SORT)
@@ -132,6 +141,13 @@ export function DataGrid({
 
   const rangeEnd = start + data.page.rowsReturned - 1
 
+  // Metadata order is preserved regardless of the order names arrive in, so toggling a column
+  // on never reshuffles the grid under the user.
+  const shownColumns =
+    visibleColumns && visibleColumns.length > 0
+      ? data.columns.filter((c) => visibleColumns.includes(c.name))
+      : data.columns
+
   return (
     <div className="data-grid">
       {!data.writable && (
@@ -157,6 +173,8 @@ export function DataGrid({
         </div>
       )}
 
+      {renderToolbar && <div className="grid-toolbar">{renderToolbar(data.columns)}</div>}
+
       <div className="data-grid-scroll">
         <table>
           <caption className="sr-only">
@@ -164,7 +182,7 @@ export function DataGrid({
           </caption>
           <thead>
             <tr>
-              {data.columns.map((column) => (
+              {shownColumns.map((column) => (
                 <GridHeaderCell key={column.name} column={column} sort={sort} desc={desc} onSort={handleSort} />
               ))}
               <th scope="col">Row status</th>
@@ -193,7 +211,7 @@ export function DataGrid({
                     : undefined
                 }
               >
-                {data.columns.map((column) => (
+                {shownColumns.map((column) => (
                   <td key={column.name}>{renderCell(column, row.values[column.name] ?? [])}</td>
                 ))}
                 <td className="cell-row-status">

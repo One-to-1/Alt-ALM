@@ -446,6 +446,82 @@ Worth doing soon, cheap now that the harness exists:
 - Remaining open items are **Q**-numbers in
   [../plan/risks-and-open-questions.md](../plan/risks-and-open-questions.md); risks are **R**-numbers.
 
+## P1 status — 2026-08-14 (read this before touching the UI or claiming a feature works)
+
+### ⚠️ NO WRITE PATH EXISTS. Records cannot be created or edited.
+
+User asked directly, 2026-08-14. The answer is no, and it is enforced in four independent places,
+none of which should be relaxed casually:
+
+1. `AlmEntityClient` has **no write method** — there is nothing to call.
+2. The `api` package has **no non-GET mapping**, and `ApiIsReadOnlyTest` **fails the build** if one
+   appears. When P2 legitimately adds writes, that test is *changed deliberately* to assert they
+   route through the write-safety component — **not deleted**. The failure is the prompt for that
+   conversation.
+3. `AlmAccessPolicy.checkWrite` refuses every project but the designated sandbox, with no override
+   parameter, no env var, and no test bypass.
+4. The 8 borrowed projects are read-only by the user's grant anyway.
+
+The write hazards P2 must honour are already built and unit-tested (`AlmEntityBody` deterministic
+field order, `AlmWriteOutcome` 5xx→UNKNOWN, `AlmWriteRetry` missing-field retry) — they are simply
+not wired to anything.
+
+### What P1 has, working live
+
+- **Grid** — metadata-driven columns (76 for a requirement), sort, name filter, folder scope, paging.
+- **Tree** — root discovery via the corrected rule, lazy expansion, drill-down.
+- **Detail pane** — one record, showing only **populated** fields (23 of 76 on a real record).
+- **Group-by** — endpoint returns real counts with drill-in `expression`. **No UI yet.**
+- **Column picker, view toggle (Tree|Grid), resizable detail pane** — all persisted to
+  `localStorage`, per project+collection for columns.
+
+**147 tests green** (`./mvnw test`), plus 7 live contract tests with `-Pcontract`.
+
+### UI decisions worth not re-litigating
+
+- **No total row count anywhere.** ALM's `TotalResults` describes the *page*, not the collection
+  (probe 15: reports 0 for a populated collection at `page-size=0`). The DTO deliberately has no
+  `total` field; the UI shows "rows returned" and a "more results may exist" flag.
+- **Grid defaults to ~8 columns, not all of them.** 76 columns is unreadable and mostly empty.
+  `defaultColumns()` prefers the fields people scan (`id, name, status, owner…`) and tops up in
+  metadata order.
+- **Tree nodes always claim to be expandable** — `children-count` is uselessly 0 (probe 19).
+- **Memo fields render as truncated plain text, never HTML.** No `dangerouslySetInnerHTML` anywhere;
+  sanitisation is a later phase and the data belongs to other teams.
+
+### Known gaps / next steps
+
+1. **Group-by UI** — endpoint is done, nothing renders it.
+2. **Cross-filter grammar** (`api-ref §4.2`) — `AlmQuery` has no cross-entity filter support.
+3. **Filter UX is one name box** — no per-column filters, no operators (`>`, `NOT`, wildcards).
+   `AlmQuery.filterRaw` exists for that but is unused by the API.
+4. **`AlmQuery.filter` refuses values containing `; [ ] }`** — ALM documents no escaping rule
+   (api-ref §4.1), so it fails loudly rather than mangling. A user searching for `foo;bar` gets a
+   400. Correct, but the UI should explain it.
+5. **Tests/Defects/Test Sets/Runs modules** share the grid and detail but are untested beyond
+   requirements.
+6. **Design pass not done.** `impeccable` is installed; the current look is functional, not designed.
+   PRODUCT.md / DESIGN.md were deliberately **not** written (user: "nothing too complex").
+
+### Running it
+
+```
+# Terminal 1 — BFF (needs credentials; tracked config has none so CI can start clean)
+cd bff && ./mvnw spring-boot:run \
+  -Dspring-boot.run.arguments=--spring.config.additional-location=file:../Secrets/local.properties
+# Terminal 2 — SPA
+cd spa && npm run dev     # http://localhost:5173
+```
+
+`Secrets/local.properties` is git-ignored and holds the credentials path plus the 8 read-only
+project enrolments. Regenerate it with `scripts/probe/probe-projects-2.ps1` if lost.
+
+⚠️ **`spring-boot:run` forks a child JVM.** Killing the Maven process leaves the child holding
+:8080, so the next start fails while `/actuator/health` still answers **from the old build**. Kill
+the **port holder**, not the parent. This cost a debugging cycle.
+
+---
+
 ## ⚠️ Standing lesson — read before writing any "X is impossible"
 
 **Four confident negative verdicts have been overturned in three days**: OTA unreachable (stale

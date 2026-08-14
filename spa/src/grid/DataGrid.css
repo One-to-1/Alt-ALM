@@ -161,3 +161,13 @@
   outline: 2px solid var(--color-focus, #2563eb);
   outline-offset: -2px;
 }
+
+.grid-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+  padding: 5px 10px;
+  border-bottom: 1px solid var(--color-border, #e5e7eb);
+  background: var(--color-surface, #fff);
+}
