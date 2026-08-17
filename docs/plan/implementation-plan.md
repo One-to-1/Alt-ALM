@@ -216,6 +216,73 @@ The system tabs (`Attachments`, `History`, `Revision History`, `Signatures`) are
 attachments and audit history are separate reads, and audit coverage is known-partial
 (`api-ref §9`). The tab strip should not show tabs it cannot fill.
 
+### Added to P1 scope 2026-08-17 — the entity detail tab strip (user request)
+
+ALM's Requirement Details dialog carries a left-hand tab rail beyond the field form:
+
+`Details` · `Rich Text` · `Attachments` · `Linked Defects` · `Requirement Traceability` ·
+`Test Coverage` · `Risk Analysis` · `Business Models Linkage` · `History`
+
+**Probe 21.6 established that this set is API-derivable**, which is what makes it P1 work rather
+than a guess: `GET …/customization/entities/{entity}/relations/` returns each relation with a
+`Label` that is literally the stock tab name, plus the `TargetEntity` collection to read.
+
+| Tab | Source | Backing read |
+|---|---|---|
+| Details | field metadata | `active ∧ visibleInWebUI` (an approximation — probe 21.3) |
+| Rich Text, Description, Comments | field metadata | `MEMO ∧ active ∧ visibleInWebUI` — **done** |
+| Risk Analysis | field metadata | `active ∧ ¬visibleInWebUI` — **done** |
+| Attachments | `relations` → `Requirement Attachments` | `…/{id}/attachments` |
+| Linked Defects | `relations` → `Linked Defects` | `defect-links` |
+| Requirement Traceability | `relations` → `Traced From/To Requirements` | `req-traces` |
+| Test Coverage | `relations` → `Test Coverage` | `requirement-coverages` |
+| Business Models Linkage | `relations` → `Business Models Linkage` | `bpm-link` |
+| History | **not** in `relations` | `…/{id}/audits` |
+
+Rules for the implementation:
+
+- **Enumerate from `relations`, do not hardcode the list.** The set differs per entity (requirement
+  22, test 27, defect 17) and per project. A static list would be wrong on the first project that
+  differs, which is the same mistake ADR 0005 exists to prevent.
+- ⚠️ **`UI_HIERARCHY` / `UI_LINKED_ENTITIES` are not a filter.** They are the only two feature names
+  observed and both appear on every relation returned, so they cannot be used to decide which
+  relations become tabs. The `Label` is the signal.
+- **History is a separate read and its coverage is known-partial** (`api-ref §9`) — the tab must say
+  so rather than implying a complete audit trail.
+- **A tab that cannot be filled is not shown.** Business Models Linkage in particular may have no
+  usable REST read (probe 21 found no primary documentation for it); if a read fails, the tab
+  reports why rather than rendering empty.
+- Read-only in P1. These are editable relationships in ALM; adding/removing links is P2.
+
+### Added to P1/P5 scope 2026-08-17 — rich text must actually render as rich text (user request)
+
+**Requirement**: memo / MLT fields must display as formatted content — **bold, italic, underline,
+bullet and numbered lists, tables, and embedded images** — not as the flattened plain text Alt-ALM
+renders today.
+
+This is currently an explicit limitation: `DetailPane` runs every memo body through
+`htmlToPlainText` and shows the result, because memo fields hold a full `<html><body>` document and
+rendering it is a security decision, not a formatting one.
+
+- **The blocker is sanitisation, and it is real.** ALM stores raw HTML, and the deployment's own
+  allowed-tag set lives in a server-side `sanitizer-whitelist.xml` that varies per install
+  (`CLAUDE.md`, `api-ref §7`). Rendering that HTML in our page means trusting content authored by
+  other users of the ALM instance. **`dangerouslySetInnerHTML` over raw ALM memo content is not
+  acceptable** — it is stored-XSS by construction.
+- **Required approach**: sanitise client-side against our own allowlist before rendering, and derive
+  that allowlist from the formatting we actually intend to support rather than from what the server
+  happens to permit. Two independent gates, not one.
+- **Embedded images** are the sharp edge: probe-verified `<img src>` forms are an absolute REST URL
+  or a `data:` URI (`api-ref §6.6`), and a REST URL means the browser fetches an authenticated
+  resource — so images must be proxied through the BFF, not linked directly, or they will 401 in the
+  page while working fine in curl.
+- **Read side is P1-adjacent, write side stays P5.** Displaying formatted content and *authoring* it
+  are separable; the editor, the canonicalised round-trip comparator and the upload flows remain P5
+  as specified above. This entry raises the display half from "plain text forever" to a tracked
+  requirement.
+- **Until it is built, the plain-text rendering must be visibly labelled as such in the UI**, so no
+  one mistakes a stripped document for an empty one.
+
 **Also noted from the same reference screenshots, NOT in scope**: ALM's per-column filter row under
 the grid header, the icon-only status columns (attachment / alarm / flag), and the bottom-docked
 detail panel position. Recorded so they are decisions rather than oversights.

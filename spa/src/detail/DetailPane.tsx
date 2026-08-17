@@ -262,10 +262,18 @@ export function DetailPane({ project, collection, entityId }: Props) {
               This record has no {(activeMemo.label || activeMemo.name).toLowerCase()}.
             </p>
           ) : (
-            // Plain text, deliberately. Memo bodies are full <html><body> documents and the
-            // sanitiser's allowed set is deployment-specific, so rendering them as HTML is a P5
-            // decision with a security dimension — not something to slip in here.
-            <p className="detail-memo-body">{memoText(activeMemo)}</p>
+            // Plain text, deliberately. Memo bodies are full <html><body> documents authored by
+            // other users of the ALM instance; rendering them as HTML without our own sanitiser is
+            // stored-XSS by construction. Formatted rendering is a tracked requirement, not a
+            // permanent state — see implementation-plan "rich text must actually render as rich
+            // text". The banner exists so nobody mistakes a stripped document for an empty one.
+            <>
+              <p className="detail-memo-note">
+                Formatting removed — shown as plain text. Lists, styling and images are not rendered
+                yet.
+              </p>
+              <p className="detail-memo-body">{memoText(activeMemo)}</p>
+            </>
           ))}
 
         {tab === RISK_TAB && <FieldTable columns={risk} row={row} showEmpty />}

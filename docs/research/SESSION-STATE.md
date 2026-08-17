@@ -446,6 +446,29 @@ Worth doing soon, cheap now that the harness exists:
 - Remaining open items are **Q**-numbers in
   [../plan/risks-and-open-questions.md](../plan/risks-and-open-questions.md); risks are **R**-numbers.
 
+## ✅ THE POC IS DONE — 2026-08-17 (user). Next session: complete P1 properly.
+
+The proof-of-concept phase is closed. The Requirements module runs end to end against live data with
+a tree-grid, metadata-driven columns, working detail tabs, a theme toggle and a screenshot harness.
+**Both servers were shut down at the user's request** — nothing is running; see "Running it" below.
+
+**The next session's job is finishing P1, not more POC.** Start from the numbered gap list in
+"Known gaps / next steps" — items 0, 0a–0d are the newest and came from the user's own ALM
+screenshots. In rough dependency order:
+
+1. **Enumerate the detail tab strip from `relations`** (gap 0c) — the API work is proven by probe
+   21.6; this is wiring, and it unblocks Attachments / Linked Defects / Traceability / Test Coverage.
+2. **Switch to `types/{subtypeId}/fields`** (gap 0a) — per-type field sets genuinely differ and we
+   currently over-show on typed records.
+3. **The module left rail** (gap 0) — presentation over existing reads, but needs the three-state
+   capability model so it does not advertise modules REST cannot reach.
+4. **Group-by UI** (gap 1) — endpoint done, nothing renders it.
+5. **Rich-text rendering** (gap 0d) — gated on a client-side sanitiser decision, not on effort.
+
+⚠️ **Do not treat the POC's shortcuts as finished work.** The Details field set is a probe-verified
+*approximation* (16/17), memo bodies are flattened to plain text, and only the Requirements module
+has actually been exercised.
+
 ## P1 status — 2026-08-14 (read this before touching the UI or claiming a feature works)
 
 ### ⚠️ NO WRITE PATH EXISTS. Records cannot be created or edited.
@@ -555,6 +578,23 @@ not wired to anything.
    are not a fixed list; they are that project's **memo fields, one per tab**. Alt-ALM currently
    stacks them all under a single "Description" tab. Metadata-driven, labels from the project, empty
    ones shown-but-marked. Still plain text — real rich-text rendering stays P5.
+0c. **The entity detail tab strip** — added to P1 scope 2026-08-17 (user request). ALM's left rail
+   inside Requirement Details: Details · Rich Text · Attachments · Linked Defects · Requirement
+   Traceability · Test Coverage · Risk Analysis · Business Models Linkage · History. **Enumerate
+   from `customization/entities/{e}/relations/`, never hardcode** — probe 21.6 proved the `Label`
+   is the tab name and the relation names its backing collection. History is separate (`/audits`,
+   coverage known-partial). Field-backed tabs (Details, the memo tabs, Risk Analysis) are already
+   done. Read-only in P1; editing links is P2.
+0d. **Rich text must render AS rich text** — added to P1/P5 scope 2026-08-17 (user request). Bold,
+   italic, underline, bullet/numbered lists, tables, embedded images. Today `DetailPane` flattens
+   every memo through `htmlToPlainText`, and the UI now says so on each memo tab rather than
+   letting a stripped document look empty.
+   ⚠️ **The blocker is security, not effort.** Memo bodies are raw HTML authored by other users of
+   the ALM instance, and the server's allowed-tag set is per-deployment. `dangerouslySetInnerHTML`
+   over that is stored-XSS by construction — sanitise client-side against **our own** allowlist,
+   derived from the formatting we intend to support. Embedded images need proxying through the BFF:
+   the probe-verified `<img src>` form is an absolute REST URL, which the browser will fetch
+   unauthenticated and get a 401 on, while working fine in curl.
 1. **Group-by UI** — endpoint is done, nothing renders it.
 2. **Cross-filter grammar** (`api-ref §4.2`) — `AlmQuery` has no cross-entity filter support.
 3. **Filter UX is one name box** — no per-column filters, no operators (`>`, `NOT`, wildcards).
