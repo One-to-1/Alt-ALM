@@ -32,13 +32,15 @@ public class GridController {
 
     private final GridService grids;
     private final TreeService trees;
+    private final TabService tabs;
     private final AlmAccessPolicy policy;
     private final AlmCredentials credentials;
 
-    public GridController(GridService grids, TreeService trees, AlmAccessPolicy policy,
-                          AlmCredentials credentials) {
+    public GridController(GridService grids, TreeService trees, TabService tabs,
+                          AlmAccessPolicy policy, AlmCredentials credentials) {
         this.grids = grids;
         this.trees = trees;
+        this.tabs = tabs;
         this.policy = policy;
         this.credentials = credentials;
     }
@@ -115,6 +117,36 @@ public class GridController {
                                  @RequestParam List<String> parentId,
                                  @RequestParam(required = false) String project) {
         return trees.rows(resolve(project), collection, parentId);
+    }
+
+    /**
+     * The related-entity tab strip for a collection — Attachments, Linked Defects, Traceability…
+     *
+     * <p>Metadata only: no records are read, so this is one cached answer per project+entity rather
+     * than a query per tab. It also returns the candidates that did <em>not</em> become tabs, each
+     * with its reason, because the reduction is an approximation and the discards are the part
+     * nobody could otherwise explain.
+     */
+    @GetMapping("/tabs/{collection}")
+    public TabDto.Strip tabs(@PathVariable String collection,
+                             @RequestParam(required = false) String project) {
+        return tabs.strip(resolve(project), collection);
+    }
+
+    /**
+     * The rows behind one tab, shaped exactly like a grid so the SPA reuses its table.
+     *
+     * <p>404 when the tab key is not one this entity has in this project — which is a real answer,
+     * since the strip is per-project and a bookmarked key can stop existing.
+     */
+    @GetMapping("/tabs/{collection}/{id}/{tabKey}")
+    public ResponseEntity<GridDto.Grid> tabRows(@PathVariable String collection,
+                                                @PathVariable String id,
+                                                @PathVariable String tabKey,
+                                                @RequestParam(required = false) String project) {
+        return tabs.rows(resolve(project), collection, id, tabKey)
+                .map(ResponseEntity::ok)
+                .orElseGet(() -> ResponseEntity.notFound().build());
     }
 
     /**

@@ -34,6 +34,25 @@ package ai.surgeone.altalm.bff.alm.metadata;
  *                      mirrored one ({@code requirementToTestConnection_mirrored} is "the
  *                      requirements this test covers"), and for {@code defect}, "Linked from
  *                      Defects" is a genuinely distinct tab from "Linked to Defects".
+ * @param filterIdField the field on {@link #readEntity()} holding the source record's id — this is
+ *                      what makes a tab fillable. ALM supplies it in the storage descriptor as
+ *                      either {@code ReferenceIdColumn} or {@code AssociationSourceIdColumn}, so the
+ *                      query for every tab is derivable rather than hand-written per entity.
+ * @param filterTypeField the companion type discriminator, or empty when the relation has none.
+ *                      ⚠️ <strong>Load-bearing when present.</strong> Probe 23 read a real project's
+ *                      {@code defect-links} and found <em>one</em> table serving seven entity types
+ *                      — defect, requirement, test, run, run-step, test-set, test-instance.
+ *                      Filtering on the id alone would mix them.
+ * @param filterTypeValue what {@code filterTypeField} must equal, or empty when there is no
+ *                      discriminator. ⚠️ <strong>It is not always the source entity.</strong> The
+ *                      discriminator can sit on either endpoint, and which one decides the value:
+ *                      from a <em>requirement</em>, the record is at {@code second-endpoint}, so the
+ *                      relation carries {@code AssociationSourceTypeColumn} and the value is
+ *                      {@code requirement}; from a <em>defect</em>, the record is always at
+ *                      {@code first-endpoint} and needs no proof, but the far end does — so the
+ *                      relation carries {@code AssociationTargetTypeColumn} and the value is the
+ *                      <em>target</em> entity ({@code run}, {@code test}, {@code test-set}). Read
+ *                      the source column and "Linked Runs" would list every link the defect has.
  */
 public record AlmRelation(
         String name,
@@ -42,7 +61,10 @@ public record AlmRelation(
         String targetEntity,
         String type,
         String associationEntity,
-        boolean mirrored) {
+        boolean mirrored,
+        String filterIdField,
+        String filterTypeField,
+        String filterTypeValue) {
 
     /** ALM's relation-type strings that this codebase reasons about by name. */
     public static final String TYPE_ATTACHMENT = "attachment";
@@ -54,6 +76,15 @@ public record AlmRelation(
         }
         label = label == null ? "" : label;
         associationEntity = associationEntity == null ? "" : associationEntity;
+        filterIdField = filterIdField == null ? "" : filterIdField;
+        filterTypeField = filterTypeField == null ? "" : filterTypeField;
+        filterTypeValue = filterTypeValue == null ? "" : filterTypeValue;
+        if (filterTypeField.isBlank() != filterTypeValue.isBlank()) {
+            throw new IllegalArgumentException(
+                    "relation '" + name + "' has a half-built discriminator (field='"
+                            + filterTypeField + "', value='" + filterTypeValue + "'); a type column "
+                            + "with nothing to match it against would filter everything away");
+        }
     }
 
     /** A relation ALM did not caption. Probe 22: these are field-backed references, not tabs. */
@@ -69,5 +100,15 @@ public record AlmRelation(
     /** The collection whose rows fill this tab: the join entity when there is one, else the target. */
     public String readEntity() {
         return associationEntity.isBlank() ? targetEntity : associationEntity;
+    }
+
+    /** Whether this relation carries enough information to be queried at all. */
+    public boolean fillable() {
+        return !filterIdField.isBlank();
+    }
+
+    /** Whether this relation needs a second clause to avoid mixing entity types. */
+    public boolean discriminated() {
+        return !filterTypeField.isBlank();
     }
 }

@@ -18,6 +18,12 @@ import java.util.List;
  * is the opposite of the lowerCamel used by the sibling {@code fields} endpoint. Getting that
  * backwards yields a successful parse of entirely empty relations, so this parser insists on the
  * array being present rather than defaulting.
+ *
+ * <p>The most useful part is the {@code StorageDescriptor}: it names the column linking the related
+ * collection back to this record, which is what lets every tab's query be derived from metadata
+ * instead of hand-written per entity. It comes in two shapes — {@code AssociationStorage} (a join
+ * table, naming its own entity and both endpoint columns) and {@code ReferenceStorage} (a plain
+ * foreign key) — and this parser flattens both into one id/type pair.
  */
 public final class AlmRelationParser {
 
@@ -55,32 +61,48 @@ public final class AlmRelationParser {
                 // de-duplicated, so it is dropped rather than given a synthetic id.
                 continue;
             }
+            JsonNode storage = r.path("StorageDescriptor").path("customizationStorageDescriptor");
+            JsonNode association = storage.path("AssociationStorage");
+            JsonNode reference = storage.path("ReferenceStorage");
+            boolean isAssociation = association.isObject();
+
+            String sourceEntity = r.path("SourceEntity").asString();
+            String targetEntity = r.path("TargetEntity").asString();
+
+            // Filter by the SOURCE id: the open record is the source, and its id is what narrows the
+            // related collection. Taking the target column would return rows — the wrong ones.
+            String idField = isAssociation
+                    ? association.path("AssociationSourceIdColumn").asString("")
+                    : reference.path("ReferenceIdColumn").asString("");
+
+            // ⚠️ The discriminator may sit on EITHER endpoint, and which one decides its value.
+            // Source-side: the open record proves its own type — from a requirement, the record sits
+            // at second-endpoint, so second-endpoint-type = "requirement".
+            // Target-side: the record's endpoint is unambiguous but the far end is not — from a
+            // defect the record is always first-endpoint, so the type names the TARGET, and
+            // second-endpoint-type = "run" is what separates Linked Runs from Linked Tests.
+            String typeField = isAssociation
+                    ? association.path("AssociationSourceTypeColumn").asString("")
+                    : reference.path("ReferenceTypeColumn").asString("");
+            String typeValue = typeField.isBlank() ? "" : sourceEntity;
+            if (typeField.isBlank() && isAssociation) {
+                typeField = association.path("AssociationTargetTypeColumn").asString("");
+                typeValue = typeField.isBlank() ? "" : targetEntity;
+            }
+
             out.add(new AlmRelation(
                     name,
                     r.path("Label").asString(null),
-                    r.path("SourceEntity").asString(),
-                    r.path("TargetEntity").asString(),
+                    sourceEntity,
+                    targetEntity,
                     r.path("Type").asString(),
-                    associationEntity(r),
-                    name.endsWith(MIRRORED_SUFFIX)));
+                    association.path("AssociationEntity").asString(""),
+                    name.endsWith(MIRRORED_SUFFIX),
+                    idField,
+                    typeField,
+                    typeValue));
         }
         return List.copyOf(out);
     }
 
-    /**
-     * The join entity, for relations stored as a many-to-many association.
-     *
-     * <p>Two storage shapes were observed, both nested under {@code customizationStorageDescriptor}:
-     * {@code AssociationStorage} (a join table, naming its own entity plus the endpoint id columns)
-     * and {@code ReferenceStorage} (a plain foreign key). Only the former has a join entity, and it
-     * is the one that matters — {@code bpm-link} and {@code defect-link} are read as collections in
-     * their own right.
-     */
-    private static String associationEntity(JsonNode relation) {
-        return relation.path("StorageDescriptor")
-                .path("customizationStorageDescriptor")
-                .path("AssociationStorage")
-                .path("AssociationEntity")
-                .asString("");
-    }
 }

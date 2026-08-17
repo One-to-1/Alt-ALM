@@ -138,6 +138,72 @@ class AlmRelationParserTest {
     }
 
     @Test
+    @DisplayName("the storage descriptor yields the filter field, so every tab's query is derived")
+    void filterFieldsComeFromTheStorageDescriptor() throws IOException {
+        assumeThat(Files.exists(fixture("requirement"))).isTrue();
+        List<AlmRelation> relations = AlmRelationParser.parseRelations(
+                Files.readString(fixture("requirement")));
+
+        // ReferenceStorage: filter the target collection by its own FK column.
+        AlmRelation traces = byName(relations, "requirementToReqTraceLinkLeft");
+        assertThat(traces.filterIdField()).isEqualTo("from-req-id");
+        assertThat(traces.filterTypeField()).isEmpty();
+        assertThat(traces.fillable()).isTrue();
+
+        AlmRelation coverage = byName(relations, "requirementCoverageToRequirementLink");
+        assertThat(coverage.filterIdField()).isEqualTo("requirement-id");
+
+        // AssociationStorage: the SOURCE columns. Taking the target columns would filter by the far
+        // end's id — a query that returns rows, just the wrong ones.
+        AlmRelation defects = byName(relations, "requirementToDefectConnection");
+        assertThat(defects.filterIdField()).isEqualTo("second-endpoint-id");
+        assertThat(defects.filterTypeField()).isEqualTo("second-endpoint-type");
+    }
+
+    @Test
+    @DisplayName("⚠️ probe 23: a polymorphic link carries a type discriminator, and it is the entity name")
+    void polymorphicLinksCarryATypeDiscriminator() throws IOException {
+        assumeThat(Files.exists(fixture("defect"))).isTrue();
+        List<AlmRelation> relations = AlmRelationParser.parseRelations(
+                Files.readString(fixture("defect")));
+
+        // defect-links is ONE table serving seven entity types (probe 23 counted them on real data:
+        // defect, requirement, test, run, run-step, test-set, test-instance). Every relation that
+        // fans out through it must filter on a type as well as an id, or the tab mixes them.
+        // Restricted to the fan-out relations: those that reach a far end THROUGH the join. The two
+        // that read defect-link as itself (target == the join table) need no discriminator, since
+        // the defect always occupies first-endpoint — an asymmetry worth not "fixing".
+        assertThat(relations)
+                .filteredOn(r -> "defect-link".equals(r.readEntity()) && !r.unlabelled())
+                .filteredOn(r -> !"defect-link".equals(r.targetEntity()))
+                .filteredOn(r -> !"defect".equals(r.targetEntity()))
+                .isNotEmpty()
+                .allSatisfy(r -> assertThat(r.discriminated()).isTrue());
+
+        // ⚠️ From a DEFECT the discriminator is on the target endpoint, and names the target: the
+        // defect is always first-endpoint so its own type needs no proof, but "Linked Runs" versus
+        // "Linked Tests" is entirely the far end's type. Reading the source column here — the
+        // obvious symmetry — would make every one of these tabs list all of the defect's links.
+        AlmRelation linkedRuns = byName(relations, "runToDefectConnection_mirrored");
+        assertThat(linkedRuns.filterIdField()).isEqualTo("first-endpoint-id");
+        assertThat(linkedRuns.filterTypeField()).isEqualTo("second-endpoint-type");
+        assertThat(linkedRuns.filterTypeValue()).isEqualTo("run");
+
+        // …while from a REQUIREMENT the record sits at the polymorphic endpoint, so the same table's
+        // discriminator names the SOURCE instead.
+        List<AlmRelation> fromRequirement = AlmRelationParser.parseRelations(
+                Files.readString(fixture("requirement")));
+        AlmRelation linkedDefects = byName(fromRequirement, "requirementToDefectConnection");
+        assertThat(linkedDefects.filterIdField()).isEqualTo("second-endpoint-id");
+        assertThat(linkedDefects.filterTypeField()).isEqualTo("second-endpoint-type");
+        assertThat(linkedDefects.filterTypeValue()).isEqualTo("requirement");
+    }
+
+    private static AlmRelation byName(List<AlmRelation> relations, String name) {
+        return relations.stream().filter(r -> name.equals(r.name())).findFirst().orElseThrow();
+    }
+
+    @Test
     @DisplayName("a wrong-shaped payload fails loudly rather than parsing to zero tabs")
     void wrongShapeThrows() {
         // The failure this guards against is specific: `relations` is PascalCase where the sibling

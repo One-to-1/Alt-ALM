@@ -1453,6 +1453,64 @@ Eight across the three captures: `link`, `connection`, `containment`, `compositi
 the closure over exactly 8 is a probe-verified invariant worth failing a parse on. An unseen ninth
 relation type must not break an otherwise fine document.
 
+## Probe 23 — how a tab's query is derived, and the trap in it (2026-08-17)
+
+GET only. Sandbox for the existence checks; `PROJECT-5` (borrowed, read-only) for the shape counts.
+
+### 23.1 The StorageDescriptor names the column to filter on
+
+This is what makes the tab strip buildable without a per-entity special case:
+
+| Storage shape | Read | Filter by |
+|---|---|---|
+| `ReferenceStorage` | `TargetEntity` | `ReferenceIdColumn` (+ `ReferenceTypeColumn` if present) |
+| `AssociationStorage` | `AssociationEntity` | `AssociationSourceIdColumn` (+ a type column, see 23.3) |
+
+So requirement→traceability is `req-traces?query={from-req-id[605]}`, and requirement→coverage is
+`requirement-coverages?query={requirement-id[605]}`. **Verified live**: 29 coverage rows for one
+`PROJECT-5` requirement, every row's `requirement-id` equal to the open record's id.
+
+### 23.2 ⚠️ `defect-links` is one table serving SEVEN entity types
+
+Distinct `second-endpoint-type` values across 74 rows in `PROJECT-5`:
+
+```
+defect 8 · requirement 2 · test 11 · run-step 34 · test-set 12 · run 6 · test-instance 1
+```
+
+The discriminator holds the **plain wire entity name**, not a short code — no lookup table needed.
+Filtering `defect-links` by an endpoint id alone would show a *test's* linked defects on a
+*requirement's* tab whenever the two share an id number.
+
+### 23.3 ⚠️ The discriminator sits on EITHER endpoint, and that decides its value
+
+The asymmetry that would be easy to get wrong, and silently:
+
+- **From a requirement**, the open record occupies the polymorphic endpoint, so the relation carries
+  `AssociationSourceTypeColumn` and the value is the **source** entity —
+  `{second-endpoint-id[605];second-endpoint-type[requirement]}`.
+- **From a defect**, the record is always `first-endpoint` and needs no proof, but the far end does.
+  The relation carries `AssociationTargetTypeColumn` instead, and the value is the **target** —
+  `second-endpoint-type[run]` is the only thing separating "Linked Runs" from "Linked Tests".
+
+Reading the source column in both directions — the obvious symmetry — makes every defect tab list
+every link the defect has, of every kind. `defect-links` also has **no `first-endpoint-type` field
+at all** (asking for it is a 400), which is consistent: the first endpoint is always a defect.
+
+### 23.4 Which related collections actually exist
+
+| Collection | Status |
+|---|---|
+| `defect-links` | ✅ 200 |
+| `req-traces` | ✅ 200 |
+| `requirement-coverages` | ✅ 200 |
+| `attachments` | ✅ 200 (also readable as a per-parent sub-resource) |
+| `bpm-links` | ⚠️ **404** |
+
+So **ALM's Business Models Linkage tab has no known REST read**. The obvious pluralisation is wrong
+and guessing another name would ship a tab that fails on click, so the selector drops it and returns
+the reason to the client. Settling the real name (or confirming there is none) is an open item.
+
 ## Open items for the next probe round
 
 1. ~~Map `SiteVersion 20.0 (20.00.0.143)` → marketing version~~ **DONE: ALM 26.1** (probe 3).

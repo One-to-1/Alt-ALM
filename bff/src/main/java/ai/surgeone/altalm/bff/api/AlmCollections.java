@@ -40,23 +40,82 @@ public final class AlmCollections {
             Map.entry("run-steps", "run-step"),
             Map.entry("test-configs", "test-config"));
 
+    /**
+     * Entity → collection for the <strong>related</strong> reads that fill detail-pane tabs.
+     *
+     * <p>Separate from {@link #ENTITY_OF} on purpose. These are not browsable modules — nobody opens
+     * a grid of {@code req-traces} — they are the collections a tab queries, and keeping the two
+     * lists apart stops a link table drifting into the module allowlist by accident.
+     *
+     * <p>Every entry is <strong>probe-verified to exist</strong> (probe 23): each returned HTTP 200
+     * on the sandbox. ⚠️ {@code bpm-link} is deliberately absent — the obvious pluralisation
+     * {@code bpm-links} returns <strong>404</strong>, so ALM's Business Models Linkage tab has no
+     * known REST read and {@code AlmRelationSelector}'s "a tab that cannot be filled is not shown"
+     * rule drops it. Guessing a name here would produce a tab that 404s on click.
+     */
+    private static final Map<String, String> RELATED_COLLECTION_OF = Map.of(
+            "defect-link", "defect-links",
+            "req-trace", "req-traces",
+            "requirement-coverage", "requirement-coverages",
+            "attachment", "attachments");
+
     private AlmCollections() {
     }
 
     /**
-     * @throws IllegalArgumentException if {@code collection} is not on the allowlist — deliberately
-     *                                  not a fallback to a guessed singular
+     * The collection to query for a related entity, or empty when nothing here can read it.
+     *
+     * <p>Empty is a normal answer, not a failure: it is what makes a tab disappear rather than
+     * appear and fail.
+     */
+    public static java.util.Optional<String> relatedCollectionOf(String entity) {
+        return java.util.Optional.ofNullable(RELATED_COLLECTION_OF.get(entity));
+    }
+
+    /** Whether a detail-pane tab backed by this entity can be populated at all. */
+    public static boolean isReadableRelated(String entity) {
+        return RELATED_COLLECTION_OF.containsKey(entity);
+    }
+
+    /** Reverse of {@link #RELATED_COLLECTION_OF}, so a read of either kind can resolve its entity. */
+    private static final Map<String, String> RELATED_ENTITY_OF = RELATED_COLLECTION_OF.entrySet()
+            .stream()
+            .collect(java.util.stream.Collectors.toUnmodifiableMap(Map.Entry::getValue,
+                    Map.Entry::getKey));
+
+    /**
+     * The singular entity for any collection this BFF may read — module or related.
+     *
+     * <p>Accepts both lists because the grid read path serves both: a tab's rows are shaped by the
+     * same code that shapes a module's grid, and giving them separate shaping code to keep the
+     * lookups apart would trade a real duplication for a nominal one.
+     *
+     * <p>The security property is unchanged — the reachable set is still exactly what is written in
+     * this file. What the two lists still separate is <em>browsability</em>: {@link #isModule} is
+     * what the SPA offers as a module, and {@code req-traces} is not on it.
+     *
+     * @throws IllegalArgumentException if {@code collection} is on neither list — deliberately not a
+     *                                  fallback to a guessed singular
      */
     public static String entityOf(String collection) {
         String entity = ENTITY_OF.get(collection);
         if (entity == null) {
+            entity = RELATED_ENTITY_OF.get(collection);
+        }
+        if (entity == null) {
             throw new IllegalArgumentException(
-                    "unknown collection '" + collection + "'; expected one of " + ENTITY_OF.keySet());
+                    "unknown collection '" + collection + "'; expected one of " + ENTITY_OF.keySet()
+                            + " or a related collection " + RELATED_ENTITY_OF.keySet());
         }
         return entity;
     }
 
-    public static boolean isKnown(String collection) {
+    /** Whether this collection is a browsable module, as opposed to a tab's backing collection. */
+    public static boolean isModule(String collection) {
         return ENTITY_OF.containsKey(collection);
+    }
+
+    public static boolean isKnown(String collection) {
+        return ENTITY_OF.containsKey(collection) || RELATED_ENTITY_OF.containsKey(collection);
     }
 }
