@@ -18,6 +18,7 @@ import {
   writeString,
   writeStringList,
 } from './shell/prefs.ts'
+import { readUrlState, writeUrlState } from './shell/urlState.ts'
 import './App.css'
 
 const COLLECTIONS = ['requirements', 'tests', 'defects', 'test-sets', 'runs'] as const
@@ -60,19 +61,33 @@ function projectKey(project: Project): string {
   return `${project.domain}/${project.project}`
 }
 
+/** Narrows a URL-supplied module name to one this build actually has. */
+function isCollection(value: string | null): value is Collection {
+  return value !== null && (COLLECTIONS as readonly string[]).includes(value)
+}
+
 type ProjectsStatus = 'loading' | 'ready' | 'error' | 'empty'
 
 function App() {
+  // Read once, at startup. Later reads would fight the effect that writes it.
+  const initialUrl = useRef(readUrlState()).current
+
   const [projects, setProjects] = useState<Project[]>([])
   const [projectsStatus, setProjectsStatus] = useState<ProjectsStatus>('loading')
   const [projectsError, setProjectsError] = useState<ApiError | null>(null)
   const [selectedProjectKey, setSelectedProjectKey] = useState<string | null>(null)
-  const [collection, setCollection] = useState<Collection>('requirements')
+  const [collection, setCollection] = useState<Collection>(() =>
+    isCollection(initialUrl.collection) ? initialUrl.collection : 'requirements',
+  )
 
   const [density, setDensity] = useState<Density>(() =>
     readString<Density>('density', 'compact', DENSITIES),
   )
-  const [view, setView] = useState<View>(() => readString<View>('view', 'tree', VIEWS))
+  // The address wins over the stored preference: a link that says grid must open a grid, even for
+  // someone whose last session ended in tree view.
+  const [view, setView] = useState<View>(
+    () => initialUrl.view ?? readString<View>('view', 'tree', VIEWS),
+  )
   const [theme, setTheme] = useState<Theme>(readTheme)
   const [detailWidth, setDetailWidth] = useState(() =>
     readNumber('detailWidth', 460, DETAIL_MIN, DETAIL_MAX),
@@ -81,9 +96,9 @@ function App() {
   useEffect(() => applyTheme(theme), [theme])
 
   const [folder, setFolder] = useState<TreeNode | null>(null)
-  const [selectedRowId, setSelectedRowId] = useState<string | null>(null)
-  const [searchDraft, setSearchDraft] = useState('')
-  const [search, setSearch] = useState('')
+  const [selectedRowId, setSelectedRowId] = useState<string | null>(initialUrl.id)
+  const [searchDraft, setSearchDraft] = useState(initialUrl.search ?? '')
+  const [search, setSearch] = useState(initialUrl.search ?? '')
   const [columns, setColumns] = useState<string[] | null>(null)
 
   // Back history. A ref, not state, because pushing must never itself trigger a render — the push
@@ -117,7 +132,12 @@ function App() {
         if (cancelled) return
         setProjects(result)
         setProjectsStatus(result.length === 0 ? 'empty' : 'ready')
-        if (result.length > 0) setSelectedProjectKey(projectKey(result[0]))
+        if (result.length > 0) {
+          // Honour the address, but only for a project the server says is readable — a stale or
+          // hand-edited link must not put the app in a state every request 403s from.
+          const requested = result.find((p) => projectKey(p) === initialUrl.project)
+          setSelectedProjectKey(projectKey(requested ?? result[0]))
+        }
       })
       .catch((err: unknown) => {
         if (cancelled) return
@@ -136,7 +156,9 @@ function App() {
     return () => {
       cancelled = true
     }
-  }, [])
+    // Read once at startup and never reassigned, so this list is stable; it is spelled out to keep
+    // the exhaustive-deps rule honest rather than silenced.
+  }, [initialUrl.project])
 
   useEffect(() => writeString('density', density), [density])
   useEffect(() => writeString('view', view), [view])
@@ -144,7 +166,21 @@ function App() {
 
   // A project switch invalidates everything, history included: those nodes and rows do not exist
   // in the new project, so a Back into them would 404.
+  //
+  // Clears only on an ACTUAL change from one project to another, compared against the previous
+  // value rather than counting runs.
+  //
+  // ⚠️ A "skip the first run" flag does not work here, and fails in a way that only shows up in dev:
+  // StrictMode double-invokes effects, so the second invocation finds the flag already set and
+  // clears the very selection the address asked for. Arriving at a link would drop you on an empty
+  // pane in `npm run dev` and work in the built app — a difference nobody wants to debug twice.
+  const previousProject = useRef<string | null>(null)
   useEffect(() => {
+    const previous = previousProject.current
+    previousProject.current = selectedProjectKey
+    // null -> first project is the initial load, not a switch.
+    if (previous === null || previous === selectedProjectKey) return
+
     setFolder(null)
     setSelectedRowId(null)
     setSearch('')
@@ -154,9 +190,30 @@ function App() {
     setCanGoBack(false)
   }, [selectedProjectKey])
 
+  // Keep the address in step with where the app is, so a reload returns here and the URL can be
+  // sent to someone else. Preferences stay out of it: a link should not restyle the recipient.
+  useEffect(() => {
+    if (projectsStatus !== 'ready') return
+    writeUrlState({
+      project: selectedProjectKey,
+      collection,
+      view,
+      id: selectedRowId,
+      search: search === '' ? null : search,
+    })
+  }, [projectsStatus, selectedProjectKey, collection, view, selectedRowId, search])
+
   // A module switch keeps history (Back to the previous module is useful) but drops the scope,
   // since a requirements folder means nothing in Defects.
+  //
+  // Same previous-value comparison as the project effect, and for the same StrictMode reason: the
+  // module named in the address is not a switch away from anything.
+  const previousCollection = useRef(collection)
   useEffect(() => {
+    const previous = previousCollection.current
+    previousCollection.current = collection
+    if (previous === collection) return
+
     setFolder(null)
     setSelectedRowId(null)
     setSearch('')
