@@ -140,11 +140,27 @@ public class GridController {
      * since the strip is per-project and a bookmarked key can stop existing.
      */
     @GetMapping("/tabs/{collection}/{id}/{tabKey}")
-    public ResponseEntity<GridDto.Grid> tabRows(@PathVariable String collection,
-                                                @PathVariable String id,
-                                                @PathVariable String tabKey,
-                                                @RequestParam(required = false) String project) {
+    public ResponseEntity<List<TabDto.TableRows>> tabRows(@PathVariable String collection,
+                                                          @PathVariable String id,
+                                                          @PathVariable String tabKey,
+                                                          @RequestParam(required = false) String project) {
         return tabs.rows(resolve(project), collection, id, tabKey)
+                .map(ResponseEntity::ok)
+                .orElseGet(() -> ResponseEntity.notFound().build());
+    }
+
+    /**
+     * The ancestor chain of one node, root first — what the tree must expand to reveal it.
+     *
+     * <p>Exists so following a link from a related-records tab can land on the record <em>in its
+     * place in the hierarchy</em>, rather than merely opening its fields. Without it the app could
+     * select a node it has never loaded and would show an empty tree with a detail pane beside it.
+     */
+    @GetMapping("/tree/{collection}/path/{id}")
+    public ResponseEntity<TreeDto.Path> treePath(@PathVariable String collection,
+                                                 @PathVariable String id,
+                                                 @RequestParam(required = false) String project) {
+        return trees.path(resolve(project), collection, id)
                 .map(ResponseEntity::ok)
                 .orElseGet(() -> ResponseEntity.notFound().build());
     }

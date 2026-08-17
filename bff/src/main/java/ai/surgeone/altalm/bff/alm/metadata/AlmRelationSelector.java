@@ -40,38 +40,34 @@ import java.util.function.Predicate;
  *       for what this BFF can actually read, so a relation to {@code deleted-asset-info} or
  *       {@code user-asset} drops out because nothing can populate it — not because its name was
  *       blocklisted here.</li>
- *   <li><strong>Group by the pair (far end, entity read).</strong> Both halves are needed, and probe
- *       22 is why. The obvious rule — group by what gets read — collapses the forward/mirrored pairs
- *       correctly, but {@code defect-link} and {@code assets-relation} are <strong>polymorphic join
- *       tables</strong>: nine of {@code defect}'s relations read {@code defect-link} to nine
- *       different far ends, so that rule would merge "Linked Runs" and "Linked Tests" into a single
- *       tab. Grouping by the far end alone fails the other way, merging Business Models Linkage into
- *       Trace because both end at {@code requirement}. The pair keeps both apart.</li>
+ *   <li><strong>One tab per entity read; one TABLE per far end.</strong> This is the rule that
+ *       dissolves what looked like an unsolvable trade-off, and it came from looking at the stock
+ *       client rather than at the payload. ALM's Requirement Traceability tab holds
+ *       <em>two</em> grids — "Trace From (Requirements that affect X)" and "Trace To (Requirements
+ *       affected by X)" — not two tabs. So a group of relations sharing a read entity becomes one
+ *       tab, and each distinct far end within it becomes its own table.</li>
  *   <li><strong>Then merge groups that share a label.</strong> {@code requirement} reaches defects
  *       two ways — a {@code defect} connection through {@code defect-link}, and a direct
  *       {@code defect-link} link — and labels both "Linked Defects". They are one tab.</li>
  * </ol>
  *
- * <h2>What this gets wrong, on purpose</h2>
+ * <h2>Why tables-within-tabs, and what it fixed</h2>
  *
- * <p>It <strong>over-shows</strong>. The sandbox's {@code requirement} reduces to 8 related tabs
- * where the stock dialog has 5. All three extras have one shape: a join entity reachable both
- * directly and through an association, which ALM presents as a single tab —
- * {@code req-trace} + {@code req-trace:requirement}, {@code requirement-coverage} +
- * {@code requirement-coverage:test}, {@code bpm-link} + {@code bpm-link:requirement}.
+ * <p>An earlier version made one tab per <em>pair</em> of (far end, entity read), which produced 8
+ * tabs for {@code requirement} where the stock dialog has 5 — {@code req-trace},
+ * {@code requirement-coverage} and {@code bpm-link} each appearing twice, once reached directly and
+ * once through an association. Merging them by read entity fixed that and simultaneously folded
+ * {@code defect}'s nine genuinely distinct {@code defect-link} tabs into one, so the trade-off
+ * looked forced, and it was documented as a limit.
  *
- * <p><strong>The rule that would merge those is the rule that breaks {@code defect}.</strong>
- * Collapsing groups that share a read entity fixes all three, and simultaneously folds defect's nine
- * legitimately distinct {@code defect-link} tabs — Linked Runs, Linked Tests, Linked Requirements —
- * into one. No rule derivable from this payload gets both right, because ALM's tab organisation is
- * per-entity and lives in workflow scripts no API serves (probe 21.8). This is the documented limit
- * of the approach, not a to-do.
+ * <p>It was not a limit; it was an assumption that one tab means one query. Grouping by read entity
+ * for the <em>tab</em> and by far end for the <em>table</em> gets both right at once: requirement's
+ * duplicates collapse, and defect's nine far ends survive as nine tables under one heading — which
+ * is closer to ALM, where a defect has a single Linked Entities grid, than nine tabs ever were.
  *
- * <p>So the error runs in the deliberate direction. The two failure modes are not symmetric: an
- * extra tab is visible and dismissible, while a wrong merge — Business Models Linkage folded into
- * Trace — silently shows one relation's rows under another's name. This class prefers the visible
- * error, and {@link Selection#dropped()} keeps the discarded candidates inspectable so the invisible
- * one stays auditable too.
+ * <p>What remains genuinely underivable is ALM's <em>ordering and naming</em> of these tabs, which
+ * lives in workflow scripts no API serves (probe 21.8). {@link Selection#dropped()} still records
+ * every discarded candidate with its reason, so absences stay explainable.
  */
 public final class AlmRelationSelector {
 
@@ -87,19 +83,45 @@ public final class AlmRelationSelector {
      * @param readEntity the entity whose rows fill the tab
      * @param relations every relation merged into this tab, server order, never empty
      */
-    public record Tab(String key, String label, String readEntity, List<AlmRelation> relations) {
+    public record Tab(String key, String label, String readEntity, List<Table> tables) {
 
         public Tab {
-            relations = List.copyOf(relations);
-            if (relations.isEmpty()) {
-                throw new IllegalArgumentException("a tab must be backed by at least one relation");
+            tables = List.copyOf(tables);
+            if (tables.isEmpty()) {
+                throw new IllegalArgumentException("a tab must hold at least one table");
             }
+        }
+
+        /** Every relation behind this tab, across all its tables. */
+        public List<AlmRelation> relations() {
+            return tables.stream().flatMap(t -> t.relations().stream()).toList();
         }
 
         /** True when ALM classifies this as the attachment relation — it reads as a sub-resource. */
         public boolean isAttachment() {
-            return relations.stream()
+            return relations().stream()
                     .anyMatch(r -> AlmRelation.TYPE_ATTACHMENT.equals(r.type()));
+        }
+    }
+
+    /**
+     * One grid within a tab: the rows reaching one particular far end.
+     *
+     * <p>ALM's Requirement Traceability tab is exactly this shape — "Trace From" and "Trace To" are
+     * two grids under one heading, each with its own caption.
+     *
+     * @param key         stable id within the tab, derived from the far end
+     * @param label       the caption above this grid, from the relation's own label
+     * @param targetEntity the entity on the far end — what clicking a row navigates to
+     * @param relations   the relations merged into this grid, never empty
+     */
+    public record Table(String key, String label, String targetEntity, List<AlmRelation> relations) {
+
+        public Table {
+            relations = List.copyOf(relations);
+            if (relations.isEmpty()) {
+                throw new IllegalArgumentException("a table must be backed by at least one relation");
+            }
         }
     }
 
@@ -126,7 +148,8 @@ public final class AlmRelationSelector {
      */
     public static Selection select(List<AlmRelation> relations, Predicate<String> readable) {
         Map<String, String> dropped = new LinkedHashMap<>();
-        Map<String, List<AlmRelation>> groups = new LinkedHashMap<>();
+        // read entity -> far end -> relations
+        Map<String, Map<String, List<AlmRelation>>> groups = new LinkedHashMap<>();
 
         for (AlmRelation r : relations) {
             if (r.unlabelled()) {
@@ -141,39 +164,60 @@ public final class AlmRelationSelector {
                 dropped.put(r.name(), "nothing can read '" + r.readEntity() + "' — tab would be empty");
                 continue;
             }
-            groups.computeIfAbsent(groupKey(r), k -> new ArrayList<>()).add(r);
+            // Tab grouping is by what gets READ. Table grouping, one level down, is by the QUERY a
+            // relation implies — not by far end.
+            //
+            // ⚠️ Far end looks right and produces duplicate tables. A requirement reaches its
+            // coverage twice: `requirementCoverageToRequirementLink` (a reference, far end
+            // requirement-coverage) and `requirementToTestConnection` (an association, far end
+            // test). Different far ends, but both filter `requirement-coverages` by
+            // `requirement-id` — the same rows, listed twice, one of them navigable and one not.
+            // Keying on the filter collapses them, and still keeps defect's nine apart, because
+            // each carries a different type discriminator.
+            groups.computeIfAbsent(r.readEntity(), k -> new LinkedHashMap<>())
+                    .computeIfAbsent(queryKey(r), k -> new ArrayList<>())
+                    .add(r);
         }
 
-        // Rule 5: fold groups that share a label, keeping the first group's key so the merged tab
-        // has a stable identity across restarts.
+        List<Tab> tabs = new ArrayList<>(groups.size());
+        for (Map.Entry<String, Map<String, List<AlmRelation>>> group : groups.entrySet()) {
+            String readEntity = group.getKey();
+            List<Table> tables = new ArrayList<>(group.getValue().size());
+            for (Map.Entry<String, List<AlmRelation>> byQuery : group.getValue().entrySet()) {
+                List<AlmRelation> members = byQuery.getValue();
+                // The far end is whichever member knows one: a reference relation cannot say, so a
+                // group holding both takes the association's answer.
+                String target = members.stream()
+                        .filter(AlmRelation::navigable)
+                        .map(AlmRelation::targetEntity)
+                        .findFirst()
+                        .orElseGet(() -> members.getFirst().targetEntity());
+                tables.add(new Table(byQuery.getKey(), tableLabel(members), target, members));
+            }
+            // The tab takes the shortest of its tables' labels: for req-trace that is "Trace" over
+            // "Traced To Requirements", and the per-direction detail stays on each table's caption.
+            String label = tables.stream()
+                    .map(Table::label)
+                    .min(Comparator.comparingInt(String::length).thenComparing(l -> l))
+                    .orElseThrow();
+            tabs.add(new Tab(readEntity, label, readEntity, tables));
+        }
+
+        // Rule 5: fold tabs that share a label, concatenating their tables.
         Map<String, Tab> byLabel = new LinkedHashMap<>();
-        for (Map.Entry<String, List<AlmRelation>> group : groups.entrySet()) {
-            List<AlmRelation> members = group.getValue();
-            String label = bestLabel(members);
-            Tab existing = byLabel.get(label);
+        for (Tab tab : tabs) {
+            Tab existing = byLabel.get(tab.label());
             if (existing == null) {
-                byLabel.put(label, new Tab(group.getKey(), label,
-                        members.getFirst().readEntity(), members));
+                byLabel.put(tab.label(), tab);
                 continue;
             }
-            List<AlmRelation> merged = new ArrayList<>(existing.relations());
-            merged.addAll(members);
-            byLabel.put(label, new Tab(existing.key(), label, existing.readEntity(), merged));
+            List<Table> merged = new ArrayList<>(existing.tables());
+            merged.addAll(tab.tables());
+            byLabel.put(tab.label(),
+                    new Tab(existing.key(), existing.label(), existing.readEntity(), merged));
         }
 
         return new Selection(List.copyOf(byLabel.values()), dropped);
-    }
-
-    /**
-     * Rule 4's key: the far end and the entity actually read, both.
-     *
-     * <p>Collapses to just the entity name in the common case where they are the same, so a tab key
-     * stays readable ({@code attachment}) rather than doubled ({@code attachment:attachment}).
-     */
-    private static String groupKey(AlmRelation r) {
-        return r.readEntity().equals(r.targetEntity())
-                ? r.targetEntity()
-                : r.readEntity() + ":" + r.targetEntity();
     }
 
     /**
@@ -185,6 +229,32 @@ public final class AlmRelationSelector {
      * alphabetically so the choice is deterministic across restarts rather than dependent on map
      * iteration.
      */
+    /**
+     * Two relations share a table when they would issue the same query — same filter column, same
+     * discriminator. That, not the far end, is what makes their rows identical.
+     */
+    private static String queryKey(AlmRelation r) {
+        return r.filterIdField() + "|" + r.filterTypeField() + "|" + r.filterTypeValue();
+    }
+
+    /**
+     * The caption above one grid.
+     *
+     * <p>Prefers the descriptive label over the qualified one. ALM's own captions are "Test
+     * Coverage", "Traced From Requirements", "Linked Defects" — never "Requirement to Tests that
+     * cover Requirement", which is the relation's formal name and reads as machinery. Those
+     * qualified forms all begin "&lt;source entity&gt; to ", so they are skipped when the group
+     * offers anything else, and among what remains the shortest matches ALM's phrasing — its grids
+     * say "Test Coverage", not "Requirement Coverage".
+     */
+    private static String tableLabel(List<AlmRelation> group) {
+        String qualified = group.getFirst().sourceEntity() + " to ";
+        List<AlmRelation> preferred = group.stream()
+                .filter(r -> !r.label().toLowerCase().startsWith(qualified.toLowerCase()))
+                .toList();
+        return bestLabel(preferred.isEmpty() ? group : preferred);
+    }
+
     private static String bestLabel(List<AlmRelation> group) {
         return group.stream()
                 .min(Comparator.comparing(AlmRelation::mirrored)

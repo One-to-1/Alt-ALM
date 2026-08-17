@@ -53,6 +53,10 @@ package ai.surgeone.altalm.bff.alm.metadata;
  *                      relation carries {@code AssociationTargetTypeColumn} and the value is the
  *                      <em>target</em> entity ({@code run}, {@code test}, {@code test-set}). Read
  *                      the source column and "Linked Runs" would list every link the defect has.
+ * @param targetIdField the field on {@link #readEntity()} holding the FAR end's id — what a "Linked
+ *                      Defects" row must expose so clicking it can open that defect. Present only on
+ *                      the association form ({@code AssociationTargetIdColumn}); see
+ *                      {@link #navigable()}.
  */
 public record AlmRelation(
         String name,
@@ -64,7 +68,8 @@ public record AlmRelation(
         boolean mirrored,
         String filterIdField,
         String filterTypeField,
-        String filterTypeValue) {
+        String filterTypeValue,
+        String targetIdField) {
 
     /** ALM's relation-type strings that this codebase reasons about by name. */
     public static final String TYPE_ATTACHMENT = "attachment";
@@ -79,6 +84,7 @@ public record AlmRelation(
         filterIdField = filterIdField == null ? "" : filterIdField;
         filterTypeField = filterTypeField == null ? "" : filterTypeField;
         filterTypeValue = filterTypeValue == null ? "" : filterTypeValue;
+        targetIdField = targetIdField == null ? "" : targetIdField;
         if (filterTypeField.isBlank() != filterTypeValue.isBlank()) {
             throw new IllegalArgumentException(
                     "relation '" + name + "' has a half-built discriminator (field='"
@@ -110,5 +116,19 @@ public record AlmRelation(
     /** Whether this relation needs a second clause to avoid mixing entity types. */
     public boolean discriminated() {
         return !filterTypeField.isBlank();
+    }
+
+    /**
+     * Whether a row of this relation can be followed to the record on the other end.
+     *
+     * <p>⚠️ Only the <strong>association</strong> form can. A {@code ReferenceStorage} relation names
+     * one column — the one pointing back at the open record — and says nothing about the far end, so
+     * {@code requirementToDefectLinkLink} can list link rows but cannot tell you which defect each
+     * one reaches. The association form names both endpoints, which is why
+     * {@link AlmRelationSelector} and the tab service prefer it: the difference between a tab you can
+     * read and a tab you can navigate from is entirely this field.
+     */
+    public boolean navigable() {
+        return !targetIdField.isBlank();
     }
 }

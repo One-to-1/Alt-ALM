@@ -57,8 +57,20 @@ public class TabService {
 
         List<TabDto.Tab> tabs = new ArrayList<>(selection.tabs().size());
         for (AlmRelationSelector.Tab tab : selection.tabs()) {
-            AlmRelation backing = primary(tab);
-            if (backing == null) {
+            List<TabDto.Table> tables = new ArrayList<>(tab.tables().size());
+            for (AlmRelationSelector.Table table : tab.tables()) {
+                AlmRelation backing = primary(table.relations());
+                if (backing == null) {
+                    continue;
+                }
+                tables.add(new TabDto.Table(
+                        table.key(),
+                        table.label(),
+                        table.targetEntity(),
+                        AlmCollections.moduleOf(table.targetEntity()).orElse(""),
+                        backing.navigable()));
+            }
+            if (tables.isEmpty()) {
                 continue;
             }
             tabs.add(new TabDto.Tab(
@@ -66,6 +78,7 @@ public class TabService {
                     tab.label(),
                     AlmCollections.relatedCollectionOf(tab.readEntity()).orElse(""),
                     tab.isAttachment(),
+                    tables,
                     tab.relations().stream().map(AlmRelation::name).toList()));
         }
 
@@ -79,8 +92,8 @@ public class TabService {
      * @return the tab's rows shaped exactly like a grid, so the SPA renders them with the component
      *         it already has; empty when the tab key is not one this entity has
      */
-    public Optional<GridDto.Grid> rows(AlmProjectRef project, String collection, String id,
-                                       String tabKey) {
+    public Optional<List<TabDto.TableRows>> rows(AlmProjectRef project, String collection, String id,
+                                                 String tabKey) {
         policy.checkRead(project);
         if (id == null || id.isBlank()) {
             throw new IllegalArgumentException("id is required");
@@ -98,14 +111,25 @@ public class TabService {
             return Optional.empty();
         }
 
-        AlmRelation backing = primary(tab);
-        if (backing == null) {
-            return Optional.empty();
-        }
         String relatedCollection = AlmCollections.relatedCollectionOf(tab.readEntity()).orElse(null);
         if (relatedCollection == null) {
             return Optional.empty();
         }
+
+        List<TabDto.TableRows> out = new ArrayList<>(tab.tables().size());
+        for (AlmRelationSelector.Table table : tab.tables()) {
+            AlmRelation backing = primary(table.relations());
+            if (backing == null) {
+                continue;
+            }
+            out.add(readTable(project, tab, table, backing, relatedCollection, id));
+        }
+        return Optional.of(List.copyOf(out));
+    }
+
+    private TabDto.TableRows readTable(AlmProjectRef project, AlmRelationSelector.Tab tab,
+                                       AlmRelationSelector.Table table, AlmRelation backing,
+                                       String relatedCollection, String id) {
 
         // The filter comes from the relation's own storage descriptor (probe 22), never from a
         // per-entity special case. Two clauses when ALM says so: the id, and — for a polymorphic
@@ -130,8 +154,26 @@ public class TabService {
             }
         }
 
-        return Optional.of(grids.grid(project, relatedCollection, TAB_PAGE_SIZE, 1, null, false,
-                filters));
+        GridDto.Grid grid = grids.grid(project, relatedCollection, TAB_PAGE_SIZE, 1, null, false,
+                filters);
+
+        // Resolve each row's far end so the SPA can offer it as a link. Skipped entirely when the
+        // relation is a plain reference (no far-end column) or when nothing in this build can open
+        // the target entity — a link that goes nowhere is worse than a plain id.
+        Map<String, TabDto.LinkTarget> targets = new java.util.LinkedHashMap<>();
+        String targetModule = AlmCollections.moduleOf(table.targetEntity()).orElse(null);
+        if (backing.navigable() && targetModule != null) {
+            for (GridDto.Row row : grid.rows()) {
+                List<String> values = row.values().get(backing.targetIdField());
+                if (values != null && !values.isEmpty() && values.getFirst() != null
+                        && !values.getFirst().isBlank()) {
+                    targets.put(row.id(), new TabDto.LinkTarget(
+                            table.targetEntity(), targetModule, values.getFirst()));
+                }
+            }
+        }
+
+        return new TabDto.TableRows(tab.key(), table.key(), table.label(), grid, targets);
     }
 
     /**
@@ -142,11 +184,14 @@ public class TabService {
      * and only one carries a type column, the one without it returns a superset — every link the
      * record has, of every kind. Picking by list order would make that a coin toss.
      */
-    private static AlmRelation primary(AlmRelationSelector.Tab tab) {
-        return tab.relations().stream()
+    private static AlmRelation primary(List<AlmRelation> relations) {
+        return relations.stream()
                 .filter(AlmRelation::fillable)
                 .min(java.util.Comparator
-                        .comparing((AlmRelation r) -> !r.discriminated())
+                        // Navigable first: only the association form names the far end, and a tab
+                        // whose rows cannot be followed is strictly less useful than one whose can.
+                        .comparing((AlmRelation r) -> !r.navigable())
+                        .thenComparing(r -> !r.discriminated())
                         .thenComparing(AlmRelation::mirrored)
                         .thenComparing(AlmRelation::name))
                 .orElse(null);

@@ -91,13 +91,15 @@ class TabServiceTest {
     void tabRowsFilterByTheRelationsOwnColumn() throws IOException {
         when(metadata.relations(eq(PROJECT), eq("requirement"))).thenReturn(relations("requirement"));
         when(metadata.fields(eq(PROJECT), eq("req-trace")))
-                .thenReturn(List.of(field("id"), field("from-req-id")));
+                .thenReturn(List.of(field("id"), field("from-req-id"), field("to-req-id")));
         AtomicReference<AlmQuery> sent = captureQuery();
 
         service.rows(PROJECT, "requirements", "605", "req-trace");
 
-        // req-trace's ReferenceIdColumn is from-req-id — nothing about this is hardcoded per entity.
-        assertThat(sent.get().toQueryString()).contains("from-req-id", "605");
+        // req-trace's own columns drive the filter — nothing here is hardcoded per entity. Both
+        // directions are queried, one table each; the captured query is whichever ran last.
+        assertThat(sent.get().toQueryString()).containsAnyOf("from-req-id", "to-req-id");
+        assertThat(sent.get().toQueryString()).contains("605");
     }
 
     @Test
@@ -109,7 +111,7 @@ class TabServiceTest {
                         field("second-endpoint-type")));
         AtomicReference<AlmQuery> sent = captureQuery();
 
-        service.rows(PROJECT, "requirements", "605", "defect-link:defect");
+        service.rows(PROJECT, "requirements", "605", "defect-link");
 
         // One defect-links table serves seven entity types (probe 23). Without the second clause a
         // requirement numbered 605 would show the linked defects of a test numbered 605.
@@ -164,15 +166,17 @@ class TabServiceTest {
     void tabRowsAreAGrid() throws IOException {
         when(metadata.relations(eq(PROJECT), eq("requirement"))).thenReturn(relations("requirement"));
         when(metadata.fields(eq(PROJECT), eq("req-trace")))
-                .thenReturn(List.of(field("id"), field("from-req-id")));
+                .thenReturn(List.of(field("id"), field("from-req-id"), field("to-req-id")));
         when(entities.page(any(), any(), any())).thenReturn(new AlmEntityPage(
                 List.of(new AlmEntityPage.AlmEntity("req-trace",
                         Map.of("id", List.of("7")), 0, "Success", "")), 1));
 
-        GridDto.Grid grid = service.rows(PROJECT, "requirements", "605", "req-trace").orElseThrow();
+        List<TabDto.TableRows> tables =
+                service.rows(PROJECT, "requirements", "605", "req-trace").orElseThrow();
 
-        assertThat(grid.collection()).isEqualTo("req-traces");
-        assertThat(grid.rows()).singleElement()
+        assertThat(tables).isNotEmpty();
+        assertThat(tables.getFirst().grid().collection()).isEqualTo("req-traces");
+        assertThat(tables.getFirst().grid().rows()).singleElement()
                 .satisfies(r -> assertThat(r.id()).isEqualTo("7"));
     }
 }

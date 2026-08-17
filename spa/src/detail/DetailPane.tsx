@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import type { GridColumn, GridResponse, RelatedTab } from '../api/client.ts'
+import type { GridColumn, GridResponse, LinkTarget, RelatedTab } from '../api/client.ts'
 import { ApiError, fetchDetail, fetchTabs } from '../api/client.ts'
 import { htmlToPlainText, renderCell } from '../grid/renderers.tsx'
 import { RelatedRows } from './RelatedRows.tsx'
@@ -9,6 +9,8 @@ interface Props {
   project: string
   collection: string
   entityId: string | null
+  /** Follow a linked record to its own module, revealed in place. */
+  onNavigate: (target: LinkTarget) => void
 }
 
 /**
@@ -70,7 +72,7 @@ function tabKeyOf(tab: RelatedTab): string {
 
 type Status = 'idle' | 'loading' | 'ready' | 'missing' | 'error'
 
-export function DetailPane({ project, collection, entityId }: Props) {
+export function DetailPane({ project, collection, entityId, onNavigate }: Props) {
   const [data, setData] = useState<GridResponse | null>(null)
   const [status, setStatus] = useState<Status>('idle')
   const [error, setError] = useState<string | null>(null)
@@ -336,6 +338,7 @@ export function DetailPane({ project, collection, entityId }: Props) {
             collection={collection}
             entityId={entityId}
             tab={activeRelated}
+            onNavigate={onNavigate}
           />
         )}
 

@@ -115,6 +115,22 @@ public final class AlmCollections {
         return ENTITY_OF.containsKey(collection);
     }
 
+    /** Reverse of {@link #ENTITY_OF} — the module to open for an entity. */
+    private static final Map<String, String> MODULE_OF = ENTITY_OF.entrySet().stream()
+            .collect(java.util.stream.Collectors.toUnmodifiableMap(Map.Entry::getValue,
+                    Map.Entry::getKey));
+
+    /**
+     * The browsable module for an entity, or empty when this build has none.
+     *
+     * <p>Drives whether a related row's id is a link. Empty is a normal answer: a
+     * {@code requirement-coverage} row can reach a {@code component}, and there is no Components
+     * module to open. Better a plain id than a link that goes nowhere.
+     */
+    public static java.util.Optional<String> moduleOf(String entity) {
+        return java.util.Optional.ofNullable(MODULE_OF.get(entity));
+    }
+
     public static boolean isKnown(String collection) {
         return ENTITY_OF.containsKey(collection) || RELATED_ENTITY_OF.containsKey(collection);
     }

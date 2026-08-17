@@ -23,11 +23,15 @@ class AlmRelationSelectorTest {
 
     private static final Path FIXTURES = Path.of("..", "tests", "fixtures");
 
-    /** What the BFF can currently populate a tab from. Mirrors the api layer's readable set. */
-    private static final Predicate<String> READABLE = Set.of(
-            "attachment", "defect", "defect-link", "req-trace", "requirement-coverage",
-            "bpm-link", "requirement", "test", "test-instance", "run", "design-step",
-            "test-config", "test-parameter", "run-step", "test-set")::contains;
+    /**
+     * What the BFF can currently populate a tab from — mirrors {@code AlmCollections}'s related set.
+     *
+     * <p>Kept identical to production on purpose. An earlier version of this test also allowed
+     * {@code bpm-link}, which no collection can actually read (probe 23: {@code bpm-links} 404s), so
+     * it asserted a tab the app never shows.
+     */
+    private static final Predicate<String> READABLE =
+            Set.of("attachment", "defect-link", "req-trace", "requirement-coverage")::contains;
 
     private static List<AlmRelation> relations(String entity) throws IOException {
         Path path = FIXTURES.resolve("customization-relations-" + entity + ".json");
@@ -36,23 +40,24 @@ class AlmRelationSelectorTest {
     }
 
     @Test
-    @DisplayName("requirement reduces to a superset of ALM's related-tab set — it over-shows by design")
-    void requirementCoversTheStockDialogAndOverShows() throws IOException {
+    @DisplayName("requirement reduces to ALM's own related-tab set")
+    void requirementMatchesTheStockDialog() throws IOException {
         AlmRelationSelector.Selection s = AlmRelationSelector.select(relations("requirement"), READABLE);
 
-        // Every related-entity tab in the reference screenshot is present. History is not a relation
-        // (it is the /audits sub-resource) and Risk Analysis is field-backed, so neither appears here.
+        // The stock dialog's related-entity tabs are Attachments, Linked Defects, Requirement
+        // Traceability, Test Coverage and Business Models Linkage. Five, and we produce five — the
+        // last is dropped upstream when bpm-links proves unreadable, and requirement-coverage is
+        // reached two ways that merge into one tab.
         assertThat(s.tabs()).extracting(AlmRelationSelector.Tab::readEntity)
-                .contains("attachment", "defect-link", "req-trace", "requirement-coverage", "bpm-link");
+                .containsExactlyInAnyOrder("attachment", "defect-link", "req-trace",
+                        "requirement-coverage");
 
-        // …and three extras, all the same shape: a join entity reachable both directly and through
-        // an association, which ALM shows as one tab and we show as two.
-        //   req-trace            + req-trace:requirement            (Traced To… / Trace)
-        //   requirement-coverage + requirement-coverage:test        (Test Coverage / …that cover…)
-        //   bpm-link             + bpm-link:requirement             (BP Model Link / Business Models Linkage)
-        // Merging those by read entity is exactly the rule that breaks defect — see
-        // defectLinkFansOutByFarEnd. Pinned at 8 so the number is a decision, not a drift.
-        assertThat(s.tabs()).hasSize(8);
+        // ⚠️ An earlier version produced EIGHT, because it made one tab per (far end, entity read)
+        // pair — so req-trace, requirement-coverage and bpm-link each appeared twice, once reached
+        // directly and once through an association. Merging them by read entity fixed that and broke
+        // defect, and the trade-off was written down as a limit. It was not: one tab holding several
+        // TABLES gets both right. This asserts the count so nobody reintroduces the split.
+        assertThat(s.tabs()).hasSize(4);
     }
 
     @Test
@@ -77,8 +82,9 @@ class AlmRelationSelectorTest {
         // must not be swept up by the same rule. It reads through the defect-link join, so the tab
         // is identified by its far end.
         AlmRelationSelector.Selection defects = AlmRelationSelector.select(relations("defect"), READABLE);
-        assertThat(defects.tabs()).extracting(AlmRelationSelector.Tab::label)
-                .contains("Linked to Defects");
+        assertThat(defects.tabs()).flatExtracting(AlmRelationSelector.Tab::tables)
+                .extracting(AlmRelationSelector.Table::label)
+                .contains("Linked from Defects", "Linked to Defects");
     }
 
     @Test
@@ -90,8 +96,12 @@ class AlmRelationSelectorTest {
         // entity read alone — the first rule I wrote — merged all nine into one tab, which would
         // have shown linked runs under the heading "Linked to Defects". This is the regression test
         // for that.
-        assertThat(s.tabs()).extracting(AlmRelationSelector.Tab::label)
-                .contains("Linked to Defects", "Linked Requirements", "Linked Runs", "Linked Tests");
+        // They now arrive as nine TABLES under one tab, which is what the stock client does — a
+        // defect has a single Linked Entities grid, not nine tabs. What must never happen is the
+        // nine collapsing into one query, and each keeping its own table is what prevents that.
+        assertThat(s.tabs()).flatExtracting(AlmRelationSelector.Tab::tables)
+                .extracting(AlmRelationSelector.Table::label)
+                .contains("Linked Requirements", "Linked Runs", "Linked Tests");
     }
 
     @Test
@@ -109,20 +119,27 @@ class AlmRelationSelectorTest {
     }
 
     @Test
-    @DisplayName("rule 4: two relations reading the same entity are one tab")
-    void bothTraceDirectionsBecomeOneTab() throws IOException {
+    @DisplayName("rule 4: traceability is ONE tab holding TWO tables, exactly as ALM shows it")
+    void traceabilityIsOneTabWithTwoTables() throws IOException {
         AlmRelationSelector.Selection s = AlmRelationSelector.select(relations("requirement"), READABLE);
 
         AlmRelationSelector.Tab traces = s.tabs().stream()
-                .filter(t -> "req-trace".equals(t.key()))
+                .filter(t -> "req-trace".equals(t.readEntity()))
                 .findFirst().orElseThrow();
 
-        // requirementToReqTraceLinkLeft + …Right — ALM shows one "Requirement Traceability" tab.
-        // The `dependency` pair (Trace / Trace From) also reads req-trace but ends at `requirement`,
-        // so the pair key keeps it in its own group; that is the over-showing documented on the
-        // selector, not a merge failure.
-        assertThat(traces.relations()).extracting(AlmRelation::name)
-                .containsExactly("requirementToReqTraceLinkLeft", "requirementToReqTraceLinkRight");
+        // ALM's Requirement Traceability tab holds two grids — "Trace From (Requirements that
+        // affect X)" and "Trace To (Requirements affected by X)". One per direction, and the
+        // direction IS the query: one filters from-req-id, the other to-req-id.
+        assertThat(traces.tables()).hasSize(2);
+        assertThat(traces.tables()).extracting(AlmRelationSelector.Table::label)
+                .containsExactlyInAnyOrder("Trace", "Traced To Requirements");
+
+        // Each direction merges its reference relation with its association twin, because they
+        // query identical rows — and the association half is what makes the rows followable.
+        assertThat(traces.tables()).allSatisfy(table ->
+                assertThat(table.relations()).hasSize(2));
+        assertThat(traces.tables()).extracting(AlmRelationSelector.Table::targetEntity)
+                .containsOnly("requirement");
     }
 
     @Test
@@ -141,17 +158,21 @@ class AlmRelationSelectorTest {
     }
 
     @Test
-    @DisplayName("the shorter, forward label wins a merge")
-    void labelSelectionPrefersForwardAndShort() throws IOException {
+    @DisplayName("a table takes ALM's readable caption, not the relation's formal name")
+    void tableLabelPrefersTheReadableForm() throws IOException {
         AlmRelationSelector.Selection s = AlmRelationSelector.select(relations("requirement"), READABLE);
 
-        AlmRelationSelector.Tab bpm = s.tabs().stream()
-                .filter(t -> "bpm-link".equals(t.readEntity()))
+        AlmRelationSelector.Tab coverage = s.tabs().stream()
+                .filter(t -> "requirement-coverage".equals(t.readEntity()))
                 .findFirst().orElseThrow();
 
-        // The group holds "Business Models Linkage" and its mirrored twin "Requirement to
-        // Requirement Business Models Linkage"; the unqualified forward label is the readable one.
-        assertThat(bpm.label()).isEqualTo("Business Models Linkage");
+        // The group holds "Test Coverage" and "Requirement to Tests that cover Requirement". The
+        // second is the relation's formal name and reads as machinery; ALM's own tab says the first.
+        // Two tables, and both are real: the plain reference lists ALL coverage rows, while the
+        // association adds `entity-type[test]` and so lists only the test-backed ones. Different
+        // queries, so different grids — but the caption of the broad one is ALM's own word for it.
+        assertThat(coverage.tables()).extracting(AlmRelationSelector.Table::label)
+                .contains("Test Coverage");
     }
 
     @Test

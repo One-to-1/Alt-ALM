@@ -80,4 +80,20 @@ public final class TreeDto {
     public record Rows(String collection, boolean writable, List<GridDto.Column> columns,
                        List<String> parentIds, List<Row> nodes, boolean exact) {
     }
+
+    /**
+     * The ancestor chain of one node, root first, ending with the node itself.
+     *
+     * <p>What the tree needs in order to <em>reveal</em> a record rather than merely select it —
+     * following a linked defect from a requirement's tab should land on that defect in its folder,
+     * the way ALM does, not on a detail pane beside an unexpanded tree.
+     *
+     * @param ids       ancestors from the root down to and including {@code id}
+     * @param truncated true when the walk stopped before reaching a root. ALM has no
+     *                  "ancestors of" query, so this walks {@code parent-id} upward one read at a
+     *                  time and is bounded; a cycle or a pathological depth stops it rather than
+     *                  looping. The client can still select the node, just not fully expand to it
+     */
+    public record Path(String collection, String id, List<String> ids, boolean truncated) {
+    }
 }

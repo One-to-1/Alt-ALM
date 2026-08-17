@@ -24,6 +24,14 @@ interface Props {
   /** Column names to render beside the tree column, in metadata order. */
   visibleColumns?: string[]
   renderToolbar?: (columns: GridColumn[]) => React.ReactNode
+  /**
+   * Ancestors to open so a linked record becomes visible, root first.
+   *
+   * Set when following a link from another record's related-records tab. Expanding is not enough on
+   * its own — the node also has to be scrolled to, since a deep hierarchy can put it well below the
+   * fold, and a selection you cannot see reads as nothing having happened.
+   */
+  revealIds?: string[]
 }
 
 /** Children keyed by parent id; absent = not fetched, empty = fetched and childless. */
@@ -52,6 +60,7 @@ export function TreeGrid({
   onColumnsLoaded,
   visibleColumns,
   renderToolbar,
+  revealIds,
 }: Props) {
   const [root, setRoot] = useState<TreeRow | null>(null)
   const [rootName, setRootName] = useState<string>('')
@@ -169,6 +178,26 @@ export function TreeGrid({
     if (columns.length > 0) onColumnsLoaded?.(columns)
   }, [columns, onColumnsLoaded])
 
+  // Open the ancestors of a linked record. Each level still has to be fetched — the ids alone do
+  // not put rows on screen — so this both expands and loads.
+  useEffect(() => {
+    if (!revealIds || revealIds.length === 0) return
+    setExpanded((prev) => {
+      const next = new Set(prev)
+      for (const id of revealIds) next.add(id)
+      return next
+    })
+    loadLevel(revealIds, true)
+  }, [revealIds, loadLevel])
+
+  // Scroll the selected row into view once it exists. Deliberately keyed on the row element rather
+  // than on selectedId: the row appears only after its level has loaded, which is several renders
+  // after the id was set, and scrolling before then silently does nothing.
+  const selectedRef = useRef<HTMLTableRowElement | null>(null)
+  useEffect(() => {
+    selectedRef.current?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+  }, [selectedId, children])
+
   const setOpen = useCallback(
     (row: TreeRow, open: boolean) => {
       setExpanded((prev) => {
@@ -272,6 +301,7 @@ export function TreeGrid({
               return (
                 <tr
                   key={row.id}
+                  ref={isSelected ? selectedRef : undefined}
                   className={
                     [row.error ? 'row-degraded' : '', isSelected ? 'row-selected' : '']
                       .filter(Boolean)

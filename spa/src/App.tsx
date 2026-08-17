@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { GridColumn, Project, TreeNode, TreeRow } from './api/client.ts'
-import { ApiError, fetchProjects } from './api/client.ts'
+import type { GridColumn, Project, TreeNode, TreeRow, LinkTarget } from './api/client.ts'
+import { ApiError, fetchProjects, fetchTreePath } from './api/client.ts'
 import { DataGrid } from './grid/DataGrid.tsx'
 import { ColumnPicker } from './grid/ColumnPicker.tsx'
 import { TreeGrid } from './tree/TreeGrid.tsx'
@@ -21,15 +21,55 @@ import {
 import { readUrlState, writeUrlState } from './shell/urlState.ts'
 import './App.css'
 
-const COLLECTIONS = ['requirements', 'tests', 'defects', 'test-sets', 'runs'] as const
+/**
+ * Every collection the app can be pointed at, including ones that are not modules.
+ *
+ * `test-instances` and `runs` are in here so a link can open one — a test set's related records
+ * reach its instances, and an instance's reach its runs — but they are deliberately NOT on
+ * {@link MODULES}.
+ */
+const COLLECTIONS = [
+  'requirements',
+  'tests',
+  'test-sets',
+  'test-instances',
+  'runs',
+  'defects',
+] as const
 type Collection = (typeof COLLECTIONS)[number]
 
+/**
+ * The module bar, matching ALM's own.
+ *
+ * ⚠️ Test instances and runs are absent on purpose. In ALM they are not modules: **Test Lab** is the
+ * module, a test set lives in it, test instances live inside a test set and runs inside an instance.
+ * Listing them as peers of Test Lab reads as a different product to anyone who knows this one.
+ *
+ * They stay reachable by link until Test Lab grows its own test-set → instances → runs drill-down,
+ * which is where they belong.
+ */
+const MODULES = ['requirements', 'tests', 'test-sets', 'defects'] as const satisfies readonly Collection[]
+
+/**
+ * ALM's own module names, not the collection names.
+ *
+ * The distinction matters to anyone who has used the stock client: the module is **Test Plan** and
+ * the records in it are *tests*; the module is **Test Lab** and the records in it are *test sets*.
+ * Labelling the modules "Tests" and "Test Sets" named the rows instead of the place, which is not
+ * how the product or its documentation talks — and this app exists to be recognisable to people who
+ * know ALM.
+ *
+ * Test instances and runs sit *inside* Test Lab in the stock client rather than beside it. They are
+ * top-level here because Alt-ALM has no in-module navigation yet; when Test Lab gains a test-set →
+ * instances → runs drill-down, these two fold into it.
+ */
 const COLLECTION_LABELS: Record<Collection, string> = {
   requirements: 'Requirements',
-  tests: 'Tests',
-  defects: 'Defects',
-  'test-sets': 'Test Sets',
+  tests: 'Test Plan',
+  'test-sets': 'Test Lab',
+  'test-instances': 'Test Instances',
   runs: 'Runs',
+  defects: 'Defects',
 }
 
 /** Which tree collection navigates each module. Absent = that module has no tree. */
@@ -97,6 +137,11 @@ function App() {
 
   const [folder, setFolder] = useState<TreeNode | null>(null)
   const [selectedRowId, setSelectedRowId] = useState<string | null>(initialUrl.id)
+  /** A record to expand the tree down to. Set by a link, cleared once the tree has consumed it. */
+  const [revealId, setRevealId] = useState<string | null>(null)
+  const [revealIds, setRevealIds] = useState<string[]>([])
+  /** A cross-module link, parked until the module switch has cleared the old selection. */
+  const pendingReveal = useRef<{ collection: Collection; id: string } | null>(null)
   const [searchDraft, setSearchDraft] = useState(initialUrl.search ?? '')
   const [search, setSearch] = useState(initialUrl.search ?? '')
   const [columns, setColumns] = useState<string[] | null>(null)
@@ -189,6 +234,46 @@ function App() {
     historyRef.current = []
     setCanGoBack(false)
   }, [selectedProjectKey])
+
+  // Apply a cross-module link once the module switch has finished clearing.
+  useEffect(() => {
+    const pending = pendingReveal.current
+    if (!pending || pending.collection !== collection) return
+    pendingReveal.current = null
+    setSelectedRowId(pending.id)
+    setRevealId(pending.id)
+  }, [collection])
+
+  // Ask the server which ancestors the tree must open to show the record. One round trip, because
+  // ALM has no "ancestors of" query and the walk is one read per level.
+  useEffect(() => {
+    if (!revealId || !selectedProjectKey) return
+    const treeCollection = TREE_FOR[collection]
+    if (!treeCollection) {
+      // A module with no tree (Defects, Runs) reveals by selection alone, which is all there is.
+      setRevealId(null)
+      return
+    }
+    let cancelled = false
+    fetchTreePath(selectedProjectKey, treeCollection, revealId)
+      .then((path) => {
+        if (cancelled) return
+        // Every ancestor except the record itself needs opening; opening the record too would
+        // expand a leaf's (empty) children for no reason.
+        setRevealIds(path.ids.slice(0, -1))
+      })
+      .catch(() => {
+        // The record may not be in this tree at all — a test-set instance, say. Selection still
+        // works; only the expansion is lost, so this is not worth an error state.
+        if (!cancelled) setRevealIds([])
+      })
+      .finally(() => {
+        if (!cancelled) setRevealId(null)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [revealId, selectedProjectKey, collection])
 
   // Keep the address in step with where the app is, so a reload returns here and the URL can be
   // sent to someone else. Preferences stay out of it: a link should not restyle the recipient.
@@ -304,6 +389,32 @@ function App() {
     setSearchDraft('')
   }, [pushHistory])
 
+  /**
+   * Follow a link from a related-records tab to the record it points at.
+   *
+   * ALM opens the linked record *where it lives* — the right module, revealed in the hierarchy —
+   * not just its fields in a pane, and that is the behaviour worth copying: an id you cannot locate
+   * is barely more useful than an id you cannot click.
+   *
+   * The reveal is a two-step because the module switch deliberately clears the selection (a
+   * requirements folder means nothing in Defects). Setting the id in the same tick would be wiped by
+   * that effect, so it is parked here and applied once the switch has settled.
+   */
+  const revealRecord = useCallback(
+    (target: LinkTarget) => {
+      if (!isCollection(target.collection)) return
+      pushHistory()
+      if (target.collection === collection) {
+        setSelectedRowId(target.id)
+        setRevealId(target.id)
+        return
+      }
+      pendingReveal.current = { collection: target.collection, id: target.id }
+      setCollection(target.collection)
+    },
+    [collection, pushHistory],
+  )
+
   if (projectsStatus === 'loading') {
     return (
       <div className="app-boot" role="status">
@@ -345,7 +456,7 @@ function App() {
         </div>
 
         <nav className="app-modules" aria-label="Modules">
-          {COLLECTIONS.map((c) => (
+          {MODULES.map((c) => (
             <button
               key={c}
               type="button"
@@ -530,6 +641,7 @@ function App() {
               onOpenInGrid={handleOpenInGrid}
               onColumnsLoaded={resolveColumns}
               visibleColumns={columns ?? undefined}
+              revealIds={revealIds}
               renderToolbar={(available) => (
                 <>
                   <span className="grid-toolbar-label">
@@ -594,6 +706,7 @@ function App() {
             project={selectedProjectKey}
             collection={collection}
             entityId={selectedRowId}
+            onNavigate={revealRecord}
           />
         </section>
       </div>

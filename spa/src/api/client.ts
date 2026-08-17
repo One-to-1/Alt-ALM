@@ -341,6 +341,29 @@ export function fetchDetail(
  * hardcoded: requirement has 22 relations, test 27, defect 17, and the labels are per-project
  * customization.
  */
+/**
+ * One grid within a tab.
+ *
+ * ALM's Requirement Traceability tab holds two — "Trace From (Requirements that affect X)" and
+ * "Trace To (Requirements affected by X)" — under a single heading, which is why a tab is a list of
+ * tables rather than a single grid.
+ */
+export interface RelatedTable {
+  key: string
+  label: string
+  /** The entity a row reaches — what following it opens. */
+  targetEntity: string
+  /** The module to open, or '' when this build has none for that entity. */
+  targetCollection: string
+  /**
+   * Whether rows carry a far-end id at all.
+   *
+   * False for a plain-reference relation, which names only the column pointing back at the open
+   * record. Those rows can be listed but not followed.
+   */
+  navigable: boolean
+}
+
 export interface RelatedTab {
   /** Stable id for requesting this tab's rows. Derived from entities, not the label. */
   key: string
@@ -349,8 +372,51 @@ export interface RelatedTab {
   collection: string
   /** Attachments render differently — they are files, not records. */
   attachment: boolean
+  tables: RelatedTable[]
   /** The ALM relation names merged into this tab; shown when a tab's contents look surprising. */
   relations: string[]
+}
+
+/** Where following a related row leads. */
+export interface LinkTarget {
+  entity: string
+  collection: string
+  id: string
+}
+
+export interface RelatedTableRows {
+  tabKey: string
+  tableKey: string
+  label: string
+  grid: GridResponse
+  /** Row id → its far end. Absent for rows whose relation names no far-end column. */
+  targets: Record<string, LinkTarget>
+}
+
+/**
+ * The ancestor chain of a node, root first, ending with the node.
+ *
+ * ALM has no "ancestors of" query, so the BFF walks parent-id upward. `truncated` means the walk
+ * stopped early (a dangling parent or a pathological depth) and the tree can select but not fully
+ * expand to the node.
+ */
+export interface TreePath {
+  collection: string
+  id: string
+  ids: string[]
+  truncated: boolean
+}
+
+/** The ancestors a tree must expand to reveal one record. 404 when the id is not in this project. */
+export function fetchTreePath(
+  project: string,
+  collection: string,
+  id: string,
+): Promise<TreePath> {
+  const params = new URLSearchParams({ project })
+  return apiGet<TreePath>(
+    `/api/tree/${encodeURIComponent(collection)}/path/${encodeURIComponent(id)}?${params.toString()}`,
+  )
 }
 
 export interface TabStrip {
@@ -374,19 +440,20 @@ export function fetchTabs(project: string, collection: string): Promise<TabStrip
 }
 
 /**
- * The rows behind one tab, for one record.
+ * The tables behind one tab, for one record.
  *
- * Comes back shaped as a grid, so the same column/row rendering works. Throws ApiError 404 when the
- * tab key is not one this entity has — which is a real answer, since the strip is per-project.
+ * Each table's rows come back shaped as a grid, so the same column/row rendering works. Throws
+ * ApiError 404 when the tab key is not one this entity has — a real answer, since the strip is
+ * per-project.
  */
 export function fetchTabRows(
   project: string,
   collection: string,
   id: string,
   tabKey: string,
-): Promise<GridResponse> {
+): Promise<RelatedTableRows[]> {
   const params = new URLSearchParams({ project })
-  return apiGet<GridResponse>(
+  return apiGet<RelatedTableRows[]>(
     `/api/tabs/${encodeURIComponent(collection)}/${encodeURIComponent(id)}/` +
       `${encodeURIComponent(tabKey)}?${params.toString()}`,
   )

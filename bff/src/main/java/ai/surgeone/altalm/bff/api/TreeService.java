@@ -43,6 +43,15 @@ public class TreeService {
      */
     private static final int IDS_PER_QUERY = 120;
 
+    /**
+     * How far {@link #path} will walk upward before giving up.
+     *
+     * <p>Probe 20 measured the deepest reachable requirement tree at 6 levels. 32 leaves room for a
+     * far deeper real hierarchy while still bounding a cycle — this is a guard, not a limit anyone
+     * should reach.
+     */
+    private static final int MAX_DEPTH = 32;
+
     private final AlmEntityClient entities;
     private final AlmMetadataCatalog metadata;
     private final AlmAccessPolicy policy;
@@ -206,6 +215,65 @@ public class TreeService {
                 .toList();
 
         return new TreeDto.Rows(collection, policy.isWritable(project), columns, parents, nodes, exact);
+    }
+
+    /**
+     * The ancestor chain of one node, root first — what the tree expands to reveal it.
+     *
+     * <p>ALM has <strong>no "ancestors of" query</strong>, so this walks {@code parent-id} upward one
+     * read at a time. That is up to {@link #MAX_DEPTH} small requests, which is why it exists as its
+     * own endpoint rather than being done in the browser: one round trip instead of six.
+     *
+     * <p>Bounded deliberately. A malformed hierarchy — a cycle, or a depth beyond anything real —
+     * must stop the walk rather than hang the request, so the result says {@code truncated} and the
+     * client selects what it can.
+     *
+     * @return empty when the id does not exist in this project
+     */
+    public java.util.Optional<TreeDto.Path> path(AlmProjectRef project, String collection, String id) {
+        policy.checkRead(project);
+        if (id == null || id.isBlank()) {
+            throw new IllegalArgumentException("id is required");
+        }
+        String trimmed = id.trim();
+
+        java.util.Deque<String> chain = new java.util.ArrayDeque<>();
+        java.util.Set<String> seen = new java.util.HashSet<>();
+        String current = trimmed;
+        boolean truncated = false;
+
+        for (int depth = 0; ; depth++) {
+            if (depth >= MAX_DEPTH) {
+                truncated = true;
+                break;
+            }
+            AlmEntityPage page = entities.page(project, collection,
+                    AlmQuery.none().filter("id", current).fields("id", "parent-id").pageSize(2));
+            if (page.entities().isEmpty()) {
+                // The first miss means the record itself is gone; a later one means a dangling
+                // parent, which is a truncated path rather than a missing record.
+                if (depth == 0) {
+                    return java.util.Optional.empty();
+                }
+                truncated = true;
+                break;
+            }
+            chain.addFirst(current);
+            if (!seen.add(current)) {
+                truncated = true;
+                break;
+            }
+
+            String parent = page.entities().getFirst().first("parent-id").orElse("");
+            // ALM's roots report a parent of -1 or nothing at all; both end the walk.
+            if (parent.isBlank() || "-1".equals(parent) || "0".equals(parent)) {
+                break;
+            }
+            current = parent;
+        }
+
+        return java.util.Optional.of(
+                new TreeDto.Path(collection, trimmed, List.copyOf(chain), truncated));
     }
 
     /**

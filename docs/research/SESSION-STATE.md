@@ -452,6 +452,32 @@ The proof-of-concept phase is closed. The Requirements module runs end to end ag
 a tree-grid, metadata-driven columns, working detail tabs, a theme toggle and a screenshot harness.
 **Both servers were shut down at the user's request** — nothing is running; see "Running it" below.
 
+### Where P1 stands after 2026-08-17 (read this first)
+
+Done today, in order: the tab strip's read path (probes 22–23), the `/api/tabs` endpoint, SPA
+rendering, the URL/refresh fix, ALM module terminology, and cross-record navigation.
+
+**Next, in order:**
+
+1. 🔴 **Fix gap 0e** — the project-switch tree race. Small, and it blocks confident UI verification.
+2. **The collapsing icon rail** (user request 2026-08-17) — the detail pane's tabs as a vertical
+   icon rail: collapsed to icons, **blue when the tab holds rows** (ALM does exactly this — its own
+   dialog blues Attachments and Requirement Traceability and leaves empty ones plain), click to
+   expand, double-click to pin, pin persisted in `localStorage` and surviving record changes.
+   Populated-state costs one `pageSize=1` probe per tab per record; that is affordable and is the
+   only honest way to colour them. Icons key off the relation's **target entity** (attachment, defect,
+   test, requirement, run) with a generic fallback, since a project can define a tab we have no icon
+   for. **NOT STARTED.**
+3. **History** — `Baselines | Audit Log` sub-tabs. ⚠️ Only Audit Log is fillable (`/audits`,
+   coverage known-partial per api-ref §9). **Baselines is OTA-only (probe 12) and cannot be filled
+   over REST**, so it must render its reason, not an empty grid. **NOT STARTED.**
+4. **Match ALM's per-tab column sets** from the user's stock-client screenshots: Test Coverage =
+   Coverage Type · Entity Name · Coverage Status · Coverage Mode; Linked Defects = Defect ID ·
+   Defect: Summary · Linked Entity Type · Linked By Status · Link Comment; Traceability = Req: Name ·
+   Trace Comment; Attachments = Name · Size · Modified. Partially done — `RelatedRows.PREFERRED`
+   leans that way but is not pinned to these sets.
+5. Then gaps 0a, 0, 1, 0d as before.
+
 **The next session's job is finishing P1, not more POC.** Start from the numbered gap list in
 "Known gaps / next steps" — items 0, 0a–0d are the newest and came from the user's own ALM
 screenshots. In rough dependency order:
@@ -578,6 +604,36 @@ not wired to anything.
    are not a fixed list; they are that project's **memo fields, one per tab**. Alt-ALM currently
    stacks them all under a single "Description" tab. Metadata-driven, labels from the project, empty
    ones shown-but-marked. Still plain text — real rich-text rendering stays P5.
+0f. ✅ **Cross-record navigation + ALM module names** (user request 2026-08-17).
+   - A related row now shows the **linked record's own id**, and clicking it opens that record in
+     its module, revealed in the tree at its place in the hierarchy — `GET
+     /api/tree/{collection}/path/{id}` walks `parent-id` upward (ALM has no "ancestors of" query)
+     and `TreeGrid` expands and scrolls to it.
+   - ⚠️ **Only the association form of a relation can be followed.** A `ReferenceStorage` relation
+     names one column — the one pointing back at the open record — and says nothing about the far
+     end, so `requirementToDefectLinkLink` can list link rows but cannot say which defect each
+     reaches. `TabService.primary()` therefore prefers a **navigable** relation over a merely
+     readable one; that preference is the difference between a tab you can read and one you can
+     navigate from.
+   - **Module names are ALM's**: Requirements · **Test Plan** · **Test Lab** · Defects. ⚠️ Test
+     instances and runs are **deliberately not modules** — in ALM a test set lives in Test Lab, an
+     instance inside a test set, a run inside an instance. They remain valid *navigation targets* so
+     links can open them, and fold into Test Lab when it gets its drill-down.
+0e. 🔴 **BUG, OPEN — switching project from the dropdown leaves the tree empty** (found 2026-08-17).
+   The tree loads its root and then no children; the grid path is unaffected. **Not** a server bug:
+   `/api/tree/{c}/rows` returns 4 nodes for the same parent when called directly.
+   - ✅ **Loading the same project from the URL works** — 5 rows, look-ahead prefetch running. So
+     the fault is specifically the *switch*, not the project or the tree.
+   - Evidence: after a switch only `tree/roots` is requested; no `tree/{c}/rows` follows. `TreeGrid`
+     does reset `fetchedRef`/`children`/`expanded` when `project` changes, so the reset is not
+     missing — the likely cause is the previous project's **in-flight** `fetchTreeRows` resolving
+     *after* that reset and re-populating `fetchedRef` through its look-ahead prefetch, which then
+     makes `loadLevel` think the new root is already fetched.
+   - ⚠️ It was **latent before today** — the screenshot harness used to switch projects before the
+     first tree had loaded, so the race never ran. Adding URL state slowed first paint enough to
+     expose it. Do not treat it as caused by the URL work.
+   - Fix direction: give the root-load effect a request generation/epoch and ignore any response
+     from a superseded one, the same cancellation discipline the other panes already use.
 0c. ✅ **The entity detail tab strip — BUILT AND RENDERING 2026-08-17** (BFF + SPA; 193 tests).
    Verified in the browser against a borrowed project: 6 related tabs beside the field-backed ones,
    Test Coverage showing real rows, Linked Defects showing its empty state, both themes, no console

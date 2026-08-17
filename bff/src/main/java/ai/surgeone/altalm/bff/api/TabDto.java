@@ -23,7 +23,30 @@ public final class TabDto {
      *                   names are the first thing anyone will want
      */
     public record Tab(String key, String label, String collection, boolean attachment,
-                      List<String> relations) {
+                      List<Table> tables, List<String> relations) {
+    }
+
+    /**
+     * One grid within a tab — ALM's Requirement Traceability holds two ("Trace From", "Trace To").
+     *
+     * @param targetEntity   the entity a row reaches
+     * @param targetCollection the module to open when a row is followed, or empty when this build
+     *                       has no module for that entity
+     * @param navigable      whether rows carry a far-end id at all. False for a plain reference
+     *                       relation, which names only the column pointing back at the open record
+     */
+    public record Table(String key, String label, String targetEntity, String targetCollection,
+                        boolean navigable) {
+    }
+
+    /**
+     * A row's far end: what clicking its id opens.
+     *
+     * @param entity     wire entity name, e.g. {@code defect}
+     * @param collection the module to open, e.g. {@code defects}
+     * @param id         the far record's id
+     */
+    public record LinkTarget(String entity, String collection, String id) {
     }
 
     /**
@@ -35,5 +58,16 @@ public final class TabDto {
      *                answer ({@code bpm-links} 404s) is one nobody would guess
      */
     public record Strip(String collection, List<Tab> tabs, Map<String, String> dropped) {
+    }
+
+    /**
+     * One table's rows, with each row's far end resolved.
+     *
+     * @param grid    the rows, shaped exactly like a module grid so the SPA reuses its rendering
+     * @param targets row id → where following that row leads. Absent for a row whose relation has no
+     *                far-end column, which is why this is a map rather than a field on every row
+     */
+    public record TableRows(String tabKey, String tableKey, String label, GridDto.Grid grid,
+                            Map<String, LinkTarget> targets) {
     }
 }

@@ -100,7 +100,9 @@ public final class AlmRelationParser {
                     name.endsWith(MIRRORED_SUFFIX),
                     idField,
                     typeField,
-                    typeValue));
+                    typeValue,
+                    // Only the association form knows the far end; a plain reference names one column.
+                    association.path("AssociationTargetIdColumn").asString("")));
         }
         return List.copyOf(out);
     }
