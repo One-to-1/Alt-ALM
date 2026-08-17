@@ -103,12 +103,20 @@ for (const theme of themes) {
     }
 
     // Select a row so the detail pane shows a record instead of its empty state.
-    if (args.includes('--select')) {
-      const row = page.locator('.treegrid tbody tr, .data-grid tbody tr').nth(1)
+    if (args.includes('--select') || opt('select-row')) {
+      const index = Number(opt('select-row', '1'))
+      const row = page.locator('.treegrid tbody tr, .data-grid tbody tr').nth(index)
       if ((await row.count()) > 0) {
         await row.click()
-        await page.waitForTimeout(1200)
+        await page.waitForTimeout(1400)
       }
+    }
+
+    // Open a named tab in the detail pane, e.g. --tab Description.
+    const wantTab = opt('tab')
+    if (wantTab) {
+      await page.getByRole('tab', { name: new RegExp(wantTab, 'i') }).first().click().catch(() => {})
+      await page.waitForTimeout(500)
     }
 
     // Blank the project selector before capturing. A screenshot of the running app otherwise

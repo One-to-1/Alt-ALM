@@ -35,7 +35,20 @@ const LEAD_FIELDS = [
   'last-modified',
 ]
 
-type Tab = 'details' | 'description' | 'all'
+/**
+ * Tab identity. `details` and `all` are fixed; everything else is a MEMO field's own name.
+ *
+ * ALM does not have a fixed tab list — its Description / Comments / Rich Text /
+ * Draft-Rejection Reason / RTM Addl Info tabs ARE that project's memo fields, one per tab. This
+ * project defines nine of them.
+ */
+type Tab = string
+
+const DETAILS = 'details'
+const ALL = 'all'
+
+/** ALM leads with Description; the rest follow in metadata order. */
+const LEAD_MEMO = 'description'
 
 type Status = 'idle' | 'loading' | 'ready' | 'missing' | 'error'
 
@@ -43,7 +56,7 @@ export function DetailPane({ project, collection, entityId }: Props) {
   const [data, setData] = useState<GridResponse | null>(null)
   const [status, setStatus] = useState<Status>('idle')
   const [error, setError] = useState<string | null>(null)
-  const [tab, setTab] = useState<Tab>('details')
+  const [tab, setTab] = useState<Tab>(DETAILS)
 
   useEffect(() => {
     if (!entityId) {
@@ -76,10 +89,6 @@ export function DetailPane({ project, collection, entityId }: Props) {
     }
   }, [project, collection, entityId])
 
-  // Reset to Details when the record changes: the previous record's open tab may not even exist
-  // on this one.
-  useEffect(() => setTab('details'), [entityId])
-
   const parts = useMemo(() => {
     if (!data || data.rows.length === 0) return null
     const row = data.rows[0]
@@ -90,17 +99,38 @@ export function DetailPane({ project, collection, entityId }: Props) {
     }
 
     const populated = data.columns.filter(isPopulated)
-    const memos = populated.filter((c) => c.type === 'MEMO')
-    const scalars = populated.filter((c) => c.type !== 'MEMO' && c.name !== 'name')
 
+    // EVERY memo field this project defines gets a tab, populated or not — that is what ALM does,
+    // and it is the difference between "this record has no description" and "this project has no
+    // description field". The previous version only showed memo content when the selected record
+    // happened to have some, so on most records the fields were invisible entirely.
+    const memos = data.columns.filter((c) => c.type === 'MEMO')
+    memos.sort((a, b) => {
+      if (a.name === LEAD_MEMO) return -1
+      if (b.name === LEAD_MEMO) return 1
+      return 0
+    })
+
+    const scalars = populated.filter((c) => c.type !== 'MEMO' && c.name !== 'name')
     const rank = (c: GridColumn) => {
       const i = LEAD_FIELDS.indexOf(c.name)
       return i === -1 ? LEAD_FIELDS.length : i
     }
     const ordered = [...scalars].sort((a, b) => rank(a) - rank(b))
 
-    return { row, populated, memos, ordered }
+    const memoText = (c: GridColumn) =>
+      (row.values[c.name] ?? []).map(htmlToPlainText).filter(Boolean).join('\n\n')
+
+    return { row, populated, memos, ordered, memoText }
   }, [data])
+
+  // Reset to Details when the record changes — but only if the open tab does not exist on the new
+  // record's project. Staying on "Comments" while arrowing through records is the useful behaviour.
+  const tabExists =
+    tab === DETAILS || tab === ALL || (parts?.memos.some((c) => c.name === tab) ?? false)
+  useEffect(() => {
+    if (!tabExists) setTab(DETAILS)
+  }, [tabExists])
 
   if (status === 'idle') {
     return (
@@ -152,9 +182,9 @@ export function DetailPane({ project, collection, entityId }: Props) {
     )
   }
 
-  const { row, populated, memos, ordered } = parts
+  const { row, populated, memos, ordered, memoText } = parts
   const title = row.values['name']?.[0] ?? `Record ${row.id}`
-  const hasDescription = memos.length > 0
+  const activeMemo = memos.find((c) => c.name === tab)
 
   return (
     <Shell>
@@ -180,31 +210,43 @@ export function DetailPane({ project, collection, entityId }: Props) {
       )}
 
       <div className="detail-tabs" role="tablist" aria-label="Record sections">
-        <Tab id="details" active={tab} onSelect={setTab} label="Details" />
-        {hasDescription && (
-          <Tab id="description" active={tab} onSelect={setTab} label="Description" />
-        )}
-        <Tab id="all" active={tab} onSelect={setTab} label={`All fields (${data.columns.length})`} />
+        <Tab id={DETAILS} active={tab} onSelect={setTab} label="Details" />
+        {/* One tab per memo field. The dot marks which hold content on THIS record, so an
+            eleven-tab strip is still scannable without opening each one. */}
+        {memos.map((col) => (
+          <Tab
+            key={col.name}
+            id={col.name}
+            active={tab}
+            onSelect={setTab}
+            label={col.label || col.name}
+            hasContent={memoText(col) !== ''}
+          />
+        ))}
+        <Tab id={ALL} active={tab} onSelect={setTab} label={`All fields (${data.columns.length})`} />
       </div>
 
       <div className="detail-body" role="tabpanel" aria-labelledby={`detail-tab-${tab}`}>
-        {tab === 'details' && <FieldTable columns={ordered} row={row} />}
+        {tab === DETAILS && <FieldTable columns={ordered} row={row} />}
 
-        {tab === 'description' &&
-          memos.map((col) => (
-            <section className="detail-memo" key={col.name}>
-              <h3 className="detail-memo-title">{col.label || col.name}</h3>
-              <p className="detail-memo-body">
-                {(row.values[col.name] ?? []).map(htmlToPlainText).filter(Boolean).join('\n\n')}
-              </p>
-            </section>
+        {activeMemo &&
+          (memoText(activeMemo) === '' ? (
+            <p className="detail-memo-empty">
+              This record has no {(activeMemo.label || activeMemo.name).toLowerCase()}.
+            </p>
+          ) : (
+            // Plain text, deliberately. Memo bodies are full <html><body> documents and the
+            // sanitiser's allowed set is deployment-specific, so rendering them as HTML is a P5
+            // decision with a security dimension — not something to slip in here.
+            <p className="detail-memo-body">{memoText(activeMemo)}</p>
           ))}
 
-        {tab === 'all' && (
+        {tab === ALL && (
           <>
             <FieldTable columns={data.columns.filter((c) => c.type !== 'MEMO')} row={row} showEmpty />
             <p className="detail-note">
-              {populated.length} of {data.columns.length} fields hold a value in this project.
+              {populated.length} of {data.columns.length} fields hold a value on this record.
+              {memos.length > 0 && ` ${memos.length} memo fields are shown as tabs above.`}
             </p>
           </>
         )}
@@ -226,19 +268,32 @@ interface TabProps {
   active: Tab
   label: string
   onSelect: (t: Tab) => void
+  /** Undefined for the fixed tabs; true/false marks a memo field as holding content or not. */
+  hasContent?: boolean
 }
 
-function Tab({ id, active, label, onSelect }: TabProps) {
+function Tab({ id, active, label, onSelect, hasContent }: TabProps) {
+  const isActive = active === id
   return (
     <button
       type="button"
       id={`detail-tab-${id}`}
       role="tab"
-      aria-selected={active === id}
-      className={`detail-tab${active === id ? ' is-active' : ''}`}
+      aria-selected={isActive}
+      className={`detail-tab${isActive ? ' is-active' : ''}${
+        hasContent === false ? ' is-empty' : ''
+      }`}
       onClick={() => onSelect(id)}
     >
+      {hasContent !== undefined && (
+        <span
+          className={`detail-tab-dot${hasContent ? ' is-filled' : ''}`}
+          aria-hidden="true"
+        />
+      )}
       {label}
+      {/* The dot is decorative; screen readers get the state as words. */}
+      {hasContent === false && <span className="sr-only"> (empty)</span>}
     </button>
   )
 }

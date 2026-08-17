@@ -186,9 +186,18 @@ show: `Description`, `Comments`, `Rich Text`, `Draft/Rejection Reason`, `RTM Add
 fixed sections — they are that project's memo fields, rendered one per tab, beside system tabs
 (`Attachments`, `History`, `Revision History`, `Signatures`).
 
-Alt-ALM currently collapses **all** memo fields into a single "Description" tab, which is wrong in
-the way that matters: a requirement with five memo fields shows them stacked under one heading, and
-the field a user is looking for is not where ALM taught them it is.
+✅ **IMPLEMENTED 2026-08-17.** The original wording of this item understated the problem. It said
+Alt-ALM "collapses all memo fields into a single Description tab"; in fact the tab only rendered
+when the *selected record* happened to have memo content, so on most records **memo fields were
+invisible entirely** — no tab, no mention, no way to tell the fields existed. The user reported it
+as "there is no Description tab or anywhere that shows MLT fields", which was accurate.
+
+Verified against live metadata: this project defines **9 MEMO fields** — `comments`, `description`,
+`request-note`, `rbt-analysis-result-data`, `rbt-analysis-setup-data`, `rbt-assessment-data`,
+`req-rich-content`, `vc-checkin-comments`, `vc-checkout-comments` — whose labels are exactly the tab
+names in the reference screenshots (Comments, Description, PPM Request Note, …, Rich Text). They are
+returned by both the collection and detail reads and are genuinely populated (`description` on
+127 of 233 requirements), so nothing was missing from the API.
 
 - **Metadata-driven, no hardcoded tab list** (ADR 0005). The tab set is "every field of type
   `MEMO` that this project defines", and the tab label is that field's own label — the same rule
