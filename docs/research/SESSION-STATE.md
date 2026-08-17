@@ -523,6 +523,17 @@ not wired to anything.
 
 ### Known gaps / next steps
 
+0. **The module left rail** — added to P1 scope 2026-08-17 (user request); see
+   `implementation-plan.md` "Added to P1 scope — the module left rail". Reproduces ALM's grouped
+   nav (My Homepage / Dashboard / Management / Requirements / Testing / Defects). ⚠️ **Most of it is
+   not backed**: Libraries and the Dashboard views are **not reachable over REST at all** (OTA-only,
+   probe 12), so the rail must render capability state rather than dead links — an item that is
+   unbuilt and an item that needs the P6 sidecar are different things and must look different.
+0b. **One tab per Memo field in the detail pane** — added to P1 scope 2026-08-17 (user request).
+   ALM's `Description` / `Comments` / `Rich Text` / `Draft-Rejection Reason` / `RTM Addl Info` tabs
+   are not a fixed list; they are that project's **memo fields, one per tab**. Alt-ALM currently
+   stacks them all under a single "Description" tab. Metadata-driven, labels from the project, empty
+   ones shown-but-marked. Still plain text — real rich-text rendering stays P5.
 1. **Group-by UI** — endpoint is done, nothing renders it.
 2. **Cross-filter grammar** (`api-ref §4.2`) — `AlmQuery` has no cross-entity filter support.
 3. **Filter UX is one name box** — no per-column filters, no operators (`>`, `NOT`, wildcards).

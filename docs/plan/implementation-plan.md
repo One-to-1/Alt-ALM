@@ -150,6 +150,67 @@ returned HTTP 500 once and never reproduced; a grid must not surface a transient
 hard error. This is distinct from — and additional to — the existing 5xx-on-write verify-by-query
 rule.
 
+### Added to P1 scope 2026-08-17 — the module left rail (user request)
+
+Reproduce ALM's left navigation rail, grouped as the stock client groups it:
+
+| Group | Items | Alt-ALM status |
+|---|---|---|
+| — | My Homepage | **Not built.** No backing read; would be an Alt-ALM construct, not an ALM one |
+| Dashboard | Analysis View, Dashboard View | **Not reachable via REST.** `BusinessViews` (37) + `GraphBuilder` and `ReportProjectTemplates` (79) are **OTA-readable only** (probe 12), so this depends on the P6 sidecar |
+| Management | Releases, Libraries | **Releases: buildable now** (`releases`, `release-cycles`, `release-folders` — root id 1 verified, probe 15). **Libraries: not reachable** — libraries/baselines are absent from REST (`CLAUDE.md`) |
+| Requirements | Requirements, Business Models | **Requirements: done.** Business Models: `bpm-folders` is on the collection allowlist but untried; BPT components are REST-403 and OTA-only (probe 8) |
+| Testing | Test Resources, Test Plan, Test Lab, Test Runs | **Test Plan / Test Lab / Test Runs: read paths exist** (`tests`, `test-sets`, `test-instances`, `runs`). Test Resources: untried |
+| Defects | Defects | **Read path exists** |
+
+⚠️ **The rail is a capability claim, and most of it is not backed yet.** Rendering the full ALM rail
+as live links would advertise six modules Alt-ALM cannot open, which is the single most misleading
+thing this UI could do — a user clicking "Libraries" would get an error for a feature that is not
+merely unbuilt but **unreachable over the documented API**. So:
+
+- Items with a working read path are navigable.
+- Items that are unbuilt-but-buildable render **disabled with a "not yet" affordance**.
+- Items gated on the OTA sidecar render disabled and say **why**, tied to the capability flag ADR
+  0003 already requires — they must not silently look like ordinary unbuilt features, because they
+  will still be unavailable in any deployment without the Windows sidecar.
+- Nothing in the rail is a dead link.
+
+This is deliberately a *presentation* task over the existing read paths, not new API surface. The
+one genuine addition is the capability-state model the rail needs to render honestly, which P6's
+sidecar work would otherwise have had to invent later anyway.
+
+### Added to P1 scope 2026-08-17 — one tab per Memo field in the detail pane (user request)
+
+ALM gives **each Memo / multi-line-text field its own tab**, which is what the reference screenshots
+show: `Description`, `Comments`, `Rich Text`, `Draft/Rejection Reason`, `RTM Addl Info` are not
+fixed sections — they are that project's memo fields, rendered one per tab, beside system tabs
+(`Attachments`, `History`, `Revision History`, `Signatures`).
+
+Alt-ALM currently collapses **all** memo fields into a single "Description" tab, which is wrong in
+the way that matters: a requirement with five memo fields shows them stacked under one heading, and
+the field a user is looking for is not where ALM taught them it is.
+
+- **Metadata-driven, no hardcoded tab list** (ADR 0005). The tab set is "every field of type
+  `MEMO` that this project defines", and the tab label is that field's own label — the same rule
+  that made `owner` render as "Author" in one project and "Initiator" in another.
+- **Tab order follows metadata order**, with `description` first when present, since that is ALM's
+  own lead tab.
+- **Empty memo fields still get a tab** (ALM shows them), but the tab is marked empty rather than
+  silently omitted — omitting it makes the field look absent from the project rather than blank on
+  this record.
+- Rendering stays **plain text**, not HTML: memo bodies are a full `<html><body>` document and the
+  sanitiser's allowed set is deployment-specific (`CLAUDE.md`), so real rich-text display remains a
+  P5 concern. The tabs are the structure; P5 fills them in.
+- ⚠️ **Read-only.** These are text *editors* in ALM. P1 renders; editing is P2/P5.
+
+The system tabs (`Attachments`, `History`, `Revision History`, `Signatures`) are **not** in P1:
+attachments and audit history are separate reads, and audit coverage is known-partial
+(`api-ref §9`). The tab strip should not show tabs it cannot fill.
+
+**Also noted from the same reference screenshots, NOT in scope**: ALM's per-column filter row under
+the grid header, the icon-only status columns (attachment / alarm / flag), and the bottom-docked
+detail panel position. Recorded so they are decisions rather than oversights.
+
 ---
 
 ## P2 — Write core
