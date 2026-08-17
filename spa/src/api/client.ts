@@ -334,6 +334,64 @@ export function fetchDetail(
   )
 }
 
+/**
+ * One related-entity tab — Attachments, Linked Defects, Requirement Traceability…
+ *
+ * The set is derived from ALM's own `customization/entities/{e}/relations/` per project, never
+ * hardcoded: requirement has 22 relations, test 27, defect 17, and the labels are per-project
+ * customization.
+ */
+export interface RelatedTab {
+  /** Stable id for requesting this tab's rows. Derived from entities, not the label. */
+  key: string
+  label: string
+  /** The collection the rows come from, so the UI can say where they are from. */
+  collection: string
+  /** Attachments render differently — they are files, not records. */
+  attachment: boolean
+  /** The ALM relation names merged into this tab; shown when a tab's contents look surprising. */
+  relations: string[]
+}
+
+export interface TabStrip {
+  collection: string
+  tabs: RelatedTab[]
+  /**
+   * Candidate relations that did NOT become tabs, each with the rule that discarded it.
+   *
+   * Worth surfacing rather than dropping on the floor: ALM shows a "Business Models Linkage" tab
+   * and we cannot, because `bpm-links` 404s (probe 23). Without this the absence is inexplicable.
+   */
+  dropped: Record<string, string>
+}
+
+/** Which related-entity tabs this collection has in this project. Metadata only — reads no records. */
+export function fetchTabs(project: string, collection: string): Promise<TabStrip> {
+  const params = new URLSearchParams({ project })
+  return apiGet<TabStrip>(
+    `/api/tabs/${encodeURIComponent(collection)}?${params.toString()}`,
+  )
+}
+
+/**
+ * The rows behind one tab, for one record.
+ *
+ * Comes back shaped as a grid, so the same column/row rendering works. Throws ApiError 404 when the
+ * tab key is not one this entity has — which is a real answer, since the strip is per-project.
+ */
+export function fetchTabRows(
+  project: string,
+  collection: string,
+  id: string,
+  tabKey: string,
+): Promise<GridResponse> {
+  const params = new URLSearchParams({ project })
+  return apiGet<GridResponse>(
+    `/api/tabs/${encodeURIComponent(collection)}/${encodeURIComponent(id)}/` +
+      `${encodeURIComponent(tabKey)}?${params.toString()}`,
+  )
+}
+
 /** Server-side group-by counts for one field. */
 export function fetchGroups(
   project: string,

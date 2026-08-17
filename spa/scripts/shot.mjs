@@ -116,7 +116,15 @@ for (const theme of themes) {
     const wantTab = opt('tab')
     if (wantTab) {
       await page.getByRole('tab', { name: new RegExp(wantTab, 'i') }).first().click().catch(() => {})
-      await page.waitForTimeout(500)
+      // Wait for the panel's CONTENT, not a fixed delay. A related-entity tab fetches its rows on
+      // open, so 500ms captured the loading skeleton — which looks exactly like a broken render.
+      // This is the same mistake this script was written to stop making; it just moved one level in.
+      await page
+        .waitForSelector(
+          '.related-table, .related-empty, .detail-memo-body, .detail-memo-empty, .detail-fields',
+          { timeout: 15000 },
+        )
+        .catch(() => console.log(`  (tab "${wantTab}" showed no content within 15s)`))
     }
 
     // Blank the project selector before capturing. A screenshot of the running app otherwise

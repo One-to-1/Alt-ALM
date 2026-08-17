@@ -578,7 +578,17 @@ not wired to anything.
    are not a fixed list; they are that project's **memo fields, one per tab**. Alt-ALM currently
    stacks them all under a single "Description" tab. Metadata-driven, labels from the project, empty
    ones shown-but-marked. Still plain text — real rich-text rendering stays P5.
-0c. 🟡 **The entity detail tab strip — BFF half BUILT 2026-08-17, no UI yet.** `AlmRelation`,
+0c. ✅ **The entity detail tab strip — BUILT AND RENDERING 2026-08-17** (BFF + SPA; 193 tests).
+   Verified in the browser against a borrowed project: 6 related tabs beside the field-backed ones,
+   Test Coverage showing real rows, Linked Defects showing its empty state, both themes, no console
+   errors. ⚠️ **Two things to decide, not bugs:**
+   - **The strip now wraps to three rows** — 11 tabs for a requirement. That is the documented
+     over-showing made visible: "Traced To Requirements" sits next to "Trace", and "Test Coverage"
+     next to "Requirement to Tests that cover Requirement". Both pairs are real ALM relations
+     reaching the same rows two ways. Merging them is the rule that re-breaks defect (probe 22.5).
+   - **History is still missing** — it is the `/audits` sub-resource, not a relation, so `relations`
+     never enumerates it. Separate work, and its coverage is known-partial (api-ref §9).
+   Details below from when the BFF half landed: `AlmRelation`,
    `AlmRelationParser` (offline, fixture-tested) and `AlmRelationSelector` are in, wired through
    `AlmMetadataClient.fetchRelations` → `AlmMetadataCache.relations` → `AlmMetadataCatalog`.
    **183 tests green.** Probe 22 captured the fixtures and corrected three things worth not

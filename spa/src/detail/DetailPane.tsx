@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
-import type { GridColumn, GridResponse } from '../api/client.ts'
-import { ApiError, fetchDetail } from '../api/client.ts'
+import type { GridColumn, GridResponse, RelatedTab } from '../api/client.ts'
+import { ApiError, fetchDetail, fetchTabs } from '../api/client.ts'
 import { htmlToPlainText, renderCell } from '../grid/renderers.tsx'
+import { RelatedRows } from './RelatedRows.tsx'
 import './DetailPane.css'
 
 interface Props {
@@ -56,6 +57,17 @@ const HEADER_FIELDS = ['id', 'name', 'type-id']
 /** Probe 21: the `active && !visibleInWebUI` group — ALM's own Risk Analysis tab. */
 const RISK_TAB = 'risk'
 
+/**
+ * Related-entity tab ids are namespaced.
+ *
+ * Their keys come from ALM (`attachment`, `req-trace`) and memo tab ids are field names — nothing
+ * stops a project defining a memo field called `attachment`, and the collision would silently show
+ * the wrong panel.
+ */
+function tabKeyOf(tab: RelatedTab): string {
+  return `rel:${tab.key}`
+}
+
 type Status = 'idle' | 'loading' | 'ready' | 'missing' | 'error'
 
 export function DetailPane({ project, collection, entityId }: Props) {
@@ -63,6 +75,29 @@ export function DetailPane({ project, collection, entityId }: Props) {
   const [status, setStatus] = useState<Status>('idle')
   const [error, setError] = useState<string | null>(null)
   const [tab, setTab] = useState<Tab>(DETAILS)
+  const [related, setRelated] = useState<RelatedTab[]>([])
+
+  // The related-entity tab set is metadata, not record data: it depends on project + collection and
+  // not on which record is open. Fetching it here rather than with the record means arrowing through
+  // a hundred rows costs one strip request, not a hundred.
+  useEffect(() => {
+    let cancelled = false
+    setRelated([])
+
+    fetchTabs(project, collection)
+      .then((strip) => {
+        if (!cancelled) setRelated(strip.tabs)
+      })
+      .catch(() => {
+        // A missing strip degrades to the field-backed tabs, which are the ones that matter most.
+        // Failing the whole pane because Attachments could not be enumerated would be worse.
+        if (!cancelled) setRelated([])
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [project, collection])
 
   useEffect(() => {
     if (!entityId) {
@@ -149,7 +184,8 @@ export function DetailPane({ project, collection, entityId }: Props) {
     tab === DETAILS ||
     tab === ALL ||
     (tab === RISK_TAB && (parts?.risk.length ?? 0) > 0) ||
-    (parts?.memos.some((c) => c.name === tab) ?? false)
+    (parts?.memos.some((c) => c.name === tab) ?? false) ||
+    related.some((t) => tabKeyOf(t) === tab)
   useEffect(() => {
     if (!tabExists) setTab(DETAILS)
   }, [tabExists])
@@ -207,6 +243,7 @@ export function DetailPane({ project, collection, entityId }: Props) {
   const { row, populated, memos, ordered, risk, memoText } = parts
   const title = row.values['name']?.[0] ?? `Record ${row.id}`
   const activeMemo = memos.find((c) => c.name === tab)
+  const activeRelated = related.find((t) => tabKeyOf(t) === tab)
 
   return (
     <Shell>
@@ -250,6 +287,18 @@ export function DetailPane({ project, collection, entityId }: Props) {
         {risk.length > 0 && (
           <Tab id={RISK_TAB} active={tab} onSelect={setTab} label="Risk Analysis" />
         )}
+        {/* Related-entity tabs, enumerated from ALM's own relations for THIS project. No dot: a
+            dot would have to claim whether the tab holds anything, and knowing that would cost one
+            query per tab per record — which is exactly what ALM's own client declines to spend. */}
+        {related.map((rel) => (
+          <Tab
+            key={rel.key}
+            id={tabKeyOf(rel)}
+            active={tab}
+            onSelect={setTab}
+            label={rel.label}
+          />
+        ))}
         <Tab id={ALL} active={tab} onSelect={setTab} label={`All fields (${data.columns.length})`} />
       </div>
 
@@ -277,6 +326,18 @@ export function DetailPane({ project, collection, entityId }: Props) {
           ))}
 
         {tab === RISK_TAB && <FieldTable columns={risk} row={row} showEmpty />}
+
+        {activeRelated && entityId && (
+          <RelatedRows
+            // Remount on tab change so the loading state restarts rather than showing the previous
+            // tab's rows while the next request is in flight.
+            key={activeRelated.key}
+            project={project}
+            collection={collection}
+            entityId={entityId}
+            tab={activeRelated}
+          />
+        )}
 
         {tab === ALL && (
           <>
