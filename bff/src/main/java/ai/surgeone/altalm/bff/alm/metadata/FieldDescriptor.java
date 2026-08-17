@@ -14,6 +14,13 @@ package ai.surgeone.altalm.bff.alm.metadata;
  * @param system        true for built-in fields; false for UDFs ({@code user-NN})
  * @param virtual       computed server-side; never writable
  * @param supportsMultivalue only two fields in the entire model have this
+ * @param active        metadata's Active flag. With {@code visibleInWebUI}, approximates the field
+ *                      set ALM's own Details form renders — see {@link #onDetailsForm()}
+ * @param visibleInWebUI metadata's VisibleInWebUI flag. ⚠️ Note this is <em>not</em> the
+ *                      similarly-named {@code visible} attribute, which the parser deliberately
+ *                      ignores: probe 21 found {@code visible} true for <strong>every field of
+ *                      every entity in all nine probed projects</strong>, so it carries no
+ *                      information while looking exactly like the flag you want
  * @param listId        for {@link AlmFieldType#LOOKUP_LIST}, the bound list; 0 when unbound.
  *                      <strong>Instance-specific — never hardcode</strong> (ADR 0005).
  * @param size          declared size; {@code -1} means unlimited (memo fields)
@@ -28,6 +35,8 @@ public record FieldDescriptor(
         boolean system,
         boolean virtual,
         boolean supportsMultivalue,
+        boolean active,
+        boolean visibleInWebUI,
         int listId,
         int size) {
 
@@ -45,6 +54,35 @@ public record FieldDescriptor(
     /** Memo fields declare size -1 (unlimited) and hold a full {@code <html><body>} document. */
     public boolean isUnboundedMemo() {
         return type == AlmFieldType.MEMO && size == -1;
+    }
+
+    /**
+     * Whether ALM's own Details form would <em>probably</em> render this field.
+     *
+     * <p><strong>An approximation, and known to be imperfect.</strong> Probe 21 compared this rule
+     * against the stock client's Requirement Details dialog for a real record: it predicts the right
+     * <em>number</em> of fields and 16 of the 17 names, and is wrong in both directions —
+     * {@code father-name} ("Req Parent") satisfies the rule but is absent from the form, and
+     * {@code req-type} ("Old Type (obsolete)") fails it but is present.
+     *
+     * <p>The real layout is not exposed by any documented API, so this is the closest an API-only
+     * client can get. It is named "probably" in spirit for that reason: do not build anything that
+     * silently depends on it being exact.
+     */
+    public boolean onDetailsForm() {
+        return active && visibleInWebUI;
+    }
+
+    /**
+     * The risk-analysis group — {@code active} but hidden from the web UI's main form.
+     *
+     * <p>Probe 21: this set is <strong>exactly 25 fields in all nine probed projects</strong>
+     * despite their differing customization, and is entirely {@code rbt-*} plus {@code req-type}.
+     * That invariance across independently-configured projects is what identifies it as ALM's
+     * built-in Risk Analysis tab rather than a coincidence of one project's setup.
+     */
+    public boolean inRiskAnalysisGroup() {
+        return active && !visibleInWebUI;
     }
 
     /**

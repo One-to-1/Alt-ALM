@@ -475,7 +475,7 @@ not wired to anything.
 - **Column picker, view toggle (Tree|Grid), resizable detail pane** — all persisted to
   `localStorage`, per project+collection for columns.
 
-**161 tests green** (`./mvnw test`), plus 7 live contract tests with `-Pcontract`.
+**162 tests green** (`./mvnw test`), plus 7 live contract tests with `-Pcontract`.
 
 ### UI decisions worth not re-litigating
 
@@ -529,6 +529,27 @@ not wired to anything.
    not backed**: Libraries and the Dashboard views are **not reachable over REST at all** (OTA-only,
    probe 12), so the rail must render capability state rather than dead links — an item that is
    unbuilt and an item that needs the P6 sidecar are different things and must look different.
+0a. **What ALM renders IS partly discoverable — probe 21 (2026-08-17).** Three results worth not
+   re-deriving:
+   - **`visible` is worthless** — true for every field of every entity in all 9 projects. The real
+     discriminators are **`active`** and **`visibleInWebUI`**, which `FieldDescriptor` now carries.
+     `active ∧ visibleInWebUI` ≈ the Details form (16/17 on a real record — an **approximation**,
+     see below). `active ∧ ¬visibleInWebUI` = **exactly 25 fields in all 9 projects** = the Risk
+     Analysis tab.
+   - **Memo tabs are a filtered subset**: `MEMO ∧ active ∧ visibleInWebUI` gives exactly
+     Description / Comments / Rich Text, and custom MLT fields join them. Not all 9 memo fields.
+   - ⚠️ **`customization/entities/{e}/relations/` enumerates the related-entity tabs** — each
+     relation carries a `Label` that IS the stock tab name ("Linked Defects", "Test Coverage",
+     "Business Models Linkage", "Traced From/To Requirements", "Requirement Attachments") plus its
+     target collection. **This retracts an in-session conclusion of mine that they were not
+     enumerable** — I inferred it from the absence of a per-instance `resource-list` without trying
+     the documented endpoint. Third overturned negative in this project.
+   - ⚠️ **The form layout itself is genuinely unreachable.** ALM keeps it in *workflow scripts*
+     (`PageNo`/`ViewOrder`), which REST does not serve and which OTA's `ICustomizationField4` has no
+     property for either. Also: **per-user-group data hiding is invisible to REST**, so any form we
+     build over-shows fields for restricted groups. Sources in probe 21.8.
+   - **Use `types/{subtypeId}/fields`, not the entity-level `fields`**, for a typed record — the
+     per-type sets genuinely differ (13–20 non-memo by type). Not yet implemented.
 0b. **One tab per Memo field in the detail pane** — added to P1 scope 2026-08-17 (user request).
    ALM's `Description` / `Comments` / `Rich Text` / `Draft-Rejection Reason` / `RTM Addl Info` tabs
    are not a fixed list; they are that project's **memo fields, one per tab**. Alt-ALM currently

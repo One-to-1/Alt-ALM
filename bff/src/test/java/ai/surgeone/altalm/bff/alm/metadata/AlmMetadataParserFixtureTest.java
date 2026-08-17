@@ -105,6 +105,32 @@ class AlmMetadataParserFixtureTest {
     }
 
     @Test
+    @DisplayName("probe 21: the Details-form approximation selects a form-sized subset, not everything")
+    void detailsFormFlagsAreParsedAndDiscriminating() throws IOException {
+        Path requirement = FIXTURES.resolve("customization-fields-requirement.json");
+        assumeThat(Files.exists(requirement)).isTrue();
+        List<FieldDescriptor> fields = AlmMetadataParser.parseFields(Files.readString(requirement));
+
+        long onForm = fields.stream().filter(FieldDescriptor::onDetailsForm).count();
+        long risk = fields.stream().filter(FieldDescriptor::inRiskAnalysisGroup).count();
+
+        // The whole point of these flags is that they DISCRIMINATE. If a future parser change drops
+        // them, every field defaults to false and both counts collapse to zero — or, if someone
+        // wires them to `visible` instead, onForm becomes "all of them". Probe 21 found `visible`
+        // true for 74/74 fields, which is exactly the trap this asserts against.
+        assertThat(fields).hasSizeGreaterThan(60);
+        assertThat(onForm).as("fields on the Details form").isBetween(10L, 40L);
+        assertThat(onForm).isLessThan(fields.size());
+        assertThat(risk).as("the built-in Risk Analysis group").isEqualTo(25);
+
+        // The memo fields that survive the filter are the ones the stock client actually tabs.
+        assertThat(fields.stream()
+                .filter(f -> f.type() == AlmFieldType.MEMO && f.onDetailsForm())
+                .map(FieldDescriptor::label))
+                .containsExactlyInAnyOrder("Comments", "Description", "Rich Text");
+    }
+
+    @Test
     @DisplayName("a malformed payload fails loudly instead of looking like an empty entity")
     void malformedPayloadThrows() {
         assertThat(catchType(() -> AlmMetadataParser.parseFields("{\"Fields\":{}}")))

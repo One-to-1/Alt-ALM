@@ -26,6 +26,17 @@ export interface GridColumn {
   type: FieldType
   listId: number
   multiValue: boolean
+  /**
+   * ALM's own Details form would probably render this field (`active && visibleInWebUI`).
+   *
+   * ⚠️ An approximation, not a derivation — ALM does not expose its form layout over any documented
+   * API. Probe 21 checked it against the stock client for a real record: right count, 16 of 17
+   * names, wrong in both directions. Good enough to choose a default field set; not something to
+   * treat as authoritative.
+   */
+  onDetailsForm: boolean
+  /** ALM's built-in Risk Analysis group (`active && !visibleInWebUI`) — 25 fields in every project probed. */
+  riskGroup: boolean
 }
 
 export interface GridRow {

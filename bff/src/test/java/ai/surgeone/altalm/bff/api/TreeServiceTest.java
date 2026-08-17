@@ -177,10 +177,10 @@ class TreeServiceTest {
         when(metadata.fields(eq(PROJECT), eq("requirement"))).thenReturn(List.of(
                 new ai.surgeone.altalm.bff.alm.metadata.FieldDescriptor(
                         "id", "RQ_REQ_ID", ai.surgeone.altalm.bff.alm.metadata.AlmFieldType.NUMBER,
-                        "Req ID", false, true, true, false, false, 0, 255),
+                        "Req ID", false, true, true, false, false, true, true, 0, 255),
                 new ai.surgeone.altalm.bff.alm.metadata.FieldDescriptor(
                         "name", "RQ_REQ_NAME", ai.surgeone.altalm.bff.alm.metadata.AlmFieldType.STRING,
-                        "Name", false, true, true, false, false, 0, 255)));
+                        "Name", false, true, true, false, false, true, true, 0, 255)));
         stubHierarchy(Map.of(
                 "0", List.of("10", "20"),
                 "10", List.of("11")));

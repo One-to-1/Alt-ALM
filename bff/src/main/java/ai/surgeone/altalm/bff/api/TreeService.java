@@ -156,8 +156,7 @@ public class TreeService {
         // grid view must not disagree about a field's label or type.
         List<FieldDescriptor> fields = metadata.fields(project, AlmCollections.entityOf(collection));
         List<GridDto.Column> columns = fields.stream()
-                .map(f -> new GridDto.Column(f.name(), f.label(), f.type().name(), f.listId(),
-                        f.supportsMultivalue()))
+                .map(GridDto.Column::of)
                 .toList();
 
         List<AlmEntityPage.AlmEntity> entitiesOnLevel = new ArrayList<>();

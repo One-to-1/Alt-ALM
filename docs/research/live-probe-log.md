@@ -1197,6 +1197,198 @@ makes it visible. Recorded as **Q47**.
 
 ---
 
+## Probe 21 — which fields and tabs does ALM render, and can the API tell us? 2026-08-17
+
+Read-only, GET only, all 9 projects. `scripts/probe/probe-field-visibility.py`. Field names, labels
+and flags only — never a field value from a borrowed project.
+
+**Origin**: the user supplied two stock-client screenshots (a Requirements grid with a bottom tab
+strip, and the Requirement Details dialog) and asked whether the tab set and the form's field set
+are discoverable from the API, doubting it was "just the memo fields".
+
+### 21.1 The field-metadata flags — one is useless, two are load-bearing
+
+`customization/entities/requirement/fields` returns **24 attributes per field**, of which our
+`FieldDescriptor` was parsing 11. The three that matter here were all being discarded:
+
+| Flag | Requirements, across all 9 projects |
+|---|---|
+| `visible` | **true for 100% of fields** — 74/74, 76/76, 82/82. Not a visibility signal at all |
+| `visibleInWebUI` | 45–53 of 74–82 |
+| `active` | 42–55 |
+| **`active` ∧ `visibleInWebUI`** | **17–30**, tracking each project's customization |
+| **`active` ∧ ¬`visibleInWebUI`** | **exactly 25 in every one of the 9 projects** |
+
+⚠️ **`visible` looks like the obvious answer and is worthless.** Anyone reaching for a
+"which fields does ALM show" flag will find it first and get all 74.
+
+The invariant 25 are the `rbt-*` risk fields plus `req-type` — i.e. **ALM's Risk Analysis tab**.
+That a customization-driven number is identical across nine independently-configured projects is
+what identifies it as a built-in group rather than a coincidence.
+
+### 21.2 Memo fields → tabs, and it is a filtered subset
+
+Memo fields where `active` ∧ `visibleInWebUI`:
+
+- **8 of 9 projects: exactly `Comments`, `Description`, `Rich Text`** — precisely the memo tabs in
+  the stock client's bottom strip.
+- **1 project also has two custom MLT fields**, both of which are `active` ∧ `visibleInWebUI`, so
+  the rule predicts they get their own tabs too. This is the direct evidence that custom
+  multi-line-text fields become tabs.
+- The other memo fields (`request-note`, the three `rbt-*-data`, `vc-checkin/checkout-comments`)
+  are **not** `active` ∧ `visibleInWebUI`, and the stock client does not tab them.
+
+So Alt-ALM's first cut — one tab per memo field, all nine — was too generous by six.
+
+### 21.3 The Details form set — a 16/17 approximation, NOT a rule
+
+Requirement **605** was located (PROJECT-8, 80 fields). Predicted form set =
+`active` ∧ `visibleInWebUI` ∧ not-Memo = **20 fields**. The stock dialog shows 3 in its header
+(Req ID, Name, Requirement Type) and **17 in the two-column body**. 20 − 3 = 17. The counts agree,
+and **16 of the 17 names agree**.
+
+⚠️ **Two do not, one in each direction:**
+
+| Field | Metadata says | Stock client does |
+|---|---|---|
+| `father-name` "Req Parent" | `active` ∧ `visibleInWebUI` | **not on the form** |
+| `req-type` "Old Type (obsolete)" | `active` ∧ ¬`visibleInWebUI` | **on the form** |
+
+**Therefore `active ∧ visibleInWebUI` is a good approximation of ALM's form, not a derivation of
+it.** It gets the size right and 94% of the membership, and it is wrong in both directions. This is
+exactly the failure shape this project keeps meeting — a rule that looks confirmed because the
+counts line up. Label it an approximation wherever it is used.
+
+### 21.4 ⚠️ RETRACTED — "the related-entity tabs are NOT enumerable" was WRONG
+
+**This section originally concluded that the related-entity tabs cannot be discovered from the API.
+That conclusion was wrong, and it was overturned within the same session — see 21.6.** The
+observation below (that `resource-list` is absent from an entity instance) is accurate; the
+*inference* drawn from it was not.
+
+The mistake is the one `CLAUDE.md` names explicitly: **an unexamined assumption about the shape of
+the question, not too few attempts.** Having found no per-instance resource list, I concluded the
+information did not exist, without asking whether it lived somewhere else — and it does, at a
+documented endpoint (`customization/entities/{entity}/relations/`) that this project had never
+probed. Left in place, unedited, because a retracted verdict is more useful than a quietly
+corrected one: this is now the **third** confident negative this project has had to overturn.
+
+The accurate part follows.
+
+### 21.4a `resource-list` is absent from an entity instance
+
+The remaining tabs (Attachments, History, Linked Defects, Requirement Traceability, Test Coverage,
+Business Models Linkage) are related entities, not fields. Asked whether an entity advertises them:
+
+| Read | `resource-list` present? |
+|---|---|
+| `GET requirements/{id}`, `Accept: application/json` | **No** — keys are only `Fields`, `Type`, `children-count` |
+| `GET requirements/{id}`, `Accept: application/xml` | **No** |
+| `GET requirements`, `Accept: application/xml` | **No** |
+
+Checked in XML explicitly because this project has twice recorded a confident negative that was
+wrong, and because `CLAUDE.md` tells us to re-read the per-instance `resource-list` for sibling
+collections — that guidance came from a **site-level** resource list
+(`tests/fixtures/resource-list-site.json`), not a per-entity one. **A requirement instance does not
+advertise its sub-resources.** That observation stands; see 21.6 for where the information actually
+lives.
+
+### 21.5 Per-subtype fields are real, but do NOT explain the 16/17 mismatch
+
+Web research named `customization/entities/{entity}/types/{subtypeId}/fields` as the documented
+mechanism that narrows fields per requirement type. Probed on record 605's project:
+
+| Type | id | fields | active+web | non-memo |
+|---|---|---|---|---|
+| **Undefined** (record 605's type) | 0 | 78 | 23 | **20** |
+| Folder | 1 | 70 | 16 | 13 |
+| Group | 2 | 70 | 16 | 13 |
+| Functional | 3 | 71 | 17 | 14 |
+| Business | 4 | 70 | 16 | 13 |
+| Testing | 5 | 71 | 17 | 14 |
+| Performance | 6 | 71 | 17 | 14 |
+| Business Model | 66 | 71 | 17 | 14 |
+
+**Subtype filtering is real and should be used** — the per-type sets genuinely differ, and using the
+entity-level `fields` for a typed record over-shows. But for record 605 (type 0, "Undefined") the
+non-memo set is still **20, with `father-name` present and `req-type` absent** — identical to the
+entity-level answer. So the two discrepancies in 21.3 are **not** a subtype artefact and remain
+unexplained by any metadata we can read. Consistent with the web finding that the real layout lives
+in workflow-script `PageNo`/`ViewOrder`, which REST does not serve.
+
+### 21.6 ✅ The related-entity tabs ARE enumerable — `customization/entities/{e}/relations/`
+
+`GET …/customization/entities/requirement/relations/` → **HTTP 200**, 22 relations, each carrying a
+human-readable **`Label`** and a **`Features`** array whose members are `UI_HIERARCHY` and
+`UI_LINKED_ENTITIES`. The labels are the stock client's tab names, verbatim:
+
+| Relation `Label` | `TargetEntity` | Dialog tab in the reference screenshot |
+|---|---|---|
+| `Requirement Attachments` | `attachment` | **Attachments** |
+| `Linked Defects` | `defect` / `defect-link` | **Linked Defects** |
+| `Traced From Requirements` / `Traced To Requirements` | `req-trace` | **Requirement Traceability** |
+| `Test Coverage` / `Requirement Coverage` | `requirement-coverage` | **Test Coverage** |
+| `Business Models Linkage` | `requirement` via `bpm-link` | **Business Models Linkage** |
+| `Comments` | `comment` | (the Comments memo tab) |
+| `Requirement to Release` / `Requirement to Cycle` | `release`, `release-cycle` | — (field-backed) |
+
+`test` returns 27 relations (Design Steps, Test Parameters, Test Configurations, Test Instances,
+Run, Linked Defects…), `defect` returns 17. **This is a per-project, per-entity, API-derived source
+for the related-entity tab set** — no hardcoded list needed, and it names the target collection to
+read for each tab.
+
+⚠️ **`UI_HIERARCHY` and `UI_LINKED_ENTITIES` are the only two feature names observed**, and both
+appear on every relation returned, so they do **not** discriminate which relations become tabs. The
+`Label` is the useful signal; the features are not a filter. Do not read more into them than that.
+
+Not covered by relations: **History** (the `…/{id}/audits` sub-resource, coverage known-partial per
+api-ref §9) and **Risk Analysis** (the `active` ∧ ¬`visibleInWebUI` field group from 21.1).
+
+### 21.8 What the documentation says — why the form itself is unreachable
+
+Web research (agent pass, sources below) settles *why* 21.3's two mismatches cannot be resolved from
+metadata: **ALM does not store the form as data.**
+
+- Which fields appear, in what order, **on which page/tab**, and for which user group is set at
+  runtime by **workflow scripts** — `SetFieldApp(FieldName, Vis, Req, PNo, VOrder)` in the desktop
+  client's VBScript, and the identical `field.IsVisible / IsRequired / PageNo / ViewOrder` quadruple
+  in the Web Client's JavaScript
+  ([Project script examples](https://admhelp.microfocus.com/alm/en/25.1/online_help/Content/Web_Runner/wf-examples.htm)).
+  The Script Generators expose exactly three levers and nothing else: field visibility per user
+  group, display order, and page/tab organisation
+  ([Script Generators](https://admhelp.microfocus.com/alm/en/26.1/online_help/Content/Project_Customization/cust_wkflw_scripts_toc.htm)).
+- **REST does not serve script text**, and this matches probe 12's OTA finding that
+  `Customization.Workflow` exposes only dirty flags.
+- ⚠️ **OTA cannot recover it either.** `ICustomizationField4` has 47 documented properties including
+  the per-group `VisibleForGroups` / `IsVisibleInNewBug` / `GrantModifyForGroup`, but **no `PageNo`,
+  `ViewOrder`, `Tab` or `Page` property at all**
+  ([ICustomizationField4](https://admhelp.microfocus.com/alm/api_refs/ota_docx/topic4367.html)).
+  So the COM sidecar is not a route to the layout — worth knowing before anyone proposes it as one.
+- The REST reference **defines none of** `Visible`, `VisibleInWebUI`, `System`, `Virtual`,
+  `Editable`, `CanChangeRequired`. The only primary definition found is OTA's `IsActive` — *"Checks
+  if the field can be displayed in the user interface"*
+  ([IsActive](https://admhelp.microfocus.com/alm/api_refs/ota_docx/topic2167.html)) — which is
+  consistent with what 21.1 measured.
+- ⚠️ **The tempting reading that `visible` = desktop and `visibleInWebUI` = web client is
+  UNVERIFIED.** No source states it. Our own measurement is only that `visible` is true for every
+  field, which is equally consistent with other explanations.
+- ⚠️ **Per-user-group data hiding is invisible to REST.** An admin can hide fields per group
+  ([Hiding Data for a User Group](https://admhelp.microfocus.com/alm/en/15.5/online_help/Content/Admin/cust_groups_perms_hide_data.htm)),
+  and none of it is reflected in the `fields` booleans. **A form built from this metadata will
+  over-show fields for restricted groups.** That is a correctness limitation to state in the UI, not
+  a rendering detail.
+
+### 21.7 Consequences
+
+- `FieldDescriptor` must carry `active` and `visibleInWebUI`. It currently drops both, so the BFF
+  cannot express any of this.
+- The detail pane's memo tabs must filter to `active` ∧ `visibleInWebUI` (3, not 9).
+- A "Risk Analysis" grouping is available for free: `active` ∧ ¬`visibleInWebUI`.
+- The form field set can be approximated but **not derived**; the two mismatches must be visible in
+  the code as a known limitation, not smoothed over.
+
+---
+
 ## Open items for the next probe round
 
 1. ~~Map `SiteVersion 20.0 (20.00.0.143)` → marketing version~~ **DONE: ALM 26.1** (probe 3).

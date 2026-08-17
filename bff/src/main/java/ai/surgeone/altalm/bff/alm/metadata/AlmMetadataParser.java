@@ -62,6 +62,11 @@ public final class AlmMetadataParser {
                     f.path("system").asBoolean(false),
                     f.path("virtual").asBoolean(false),
                     f.path("supportsMultivalue").asBoolean(false),
+                    // Probe 21: `active` and `visibleInWebUI` together approximate the field set
+                    // ALM's own Details form renders. `visible` is deliberately NOT read — it is
+                    // true for every field in every project probed, so it carries no information.
+                    f.path("active").asBoolean(false),
+                    f.path("visibleInWebUI").asBoolean(false),
                     f.path("List-Id").asInt(f.path("listId").asInt(0)),
                     f.path("size").asInt(0)));
         }

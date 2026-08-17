@@ -64,8 +64,7 @@ public class GridService {
         // Metadata for THIS project, not the credentialed one — see AlmMetadataCatalog.
         List<FieldDescriptor> fields = metadata.fields(project, entityOf(collection));
         List<GridDto.Column> columns = fields.stream()
-                .map(f -> new GridDto.Column(f.name(), f.label(), f.type().name(), f.listId(),
-                        f.supportsMultivalue()))
+                .map(GridDto.Column::of)
                 .toList();
 
         AlmQuery query = AlmQuery.none().pageSize(pageSize).startIndex(startIndex);

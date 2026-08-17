@@ -50,6 +50,12 @@ const ALL = 'all'
 /** ALM leads with Description; the rest follow in metadata order. */
 const LEAD_MEMO = 'description'
 
+/** ALM's Requirement Details dialog puts these three in its header, not in the two-column body. */
+const HEADER_FIELDS = ['id', 'name', 'type-id']
+
+/** Probe 21: the `active && !visibleInWebUI` group — ALM's own Risk Analysis tab. */
+const RISK_TAB = 'risk'
+
 type Status = 'idle' | 'loading' | 'ready' | 'missing' | 'error'
 
 export function DetailPane({ project, collection, entityId }: Props) {
@@ -100,34 +106,50 @@ export function DetailPane({ project, collection, entityId }: Props) {
 
     const populated = data.columns.filter(isPopulated)
 
-    // EVERY memo field this project defines gets a tab, populated or not — that is what ALM does,
-    // and it is the difference between "this record has no description" and "this project has no
-    // description field". The previous version only showed memo content when the selected record
-    // happened to have some, so on most records the fields were invisible entirely.
-    const memos = data.columns.filter((c) => c.type === 'MEMO')
+    // Memo fields the stock client actually tabs — probe 21: `active && visibleInWebUI`, which the
+    // server sends as onDetailsForm. On the probed projects this is exactly Description, Comments
+    // and Rich Text, and it correctly excludes the six ALM hides (PPM Request Note, the three RBQM
+    // data blobs, and the two version-control comment fields). A project with custom MLT fields
+    // gets them as extra tabs, which is the behaviour the reference screenshots show.
+    //
+    // Populated-or-not is deliberate: every such field gets a tab even when empty on this record,
+    // because hiding it would say the field does not exist in this project — a different claim.
+    const memos = data.columns.filter((c) => c.type === 'MEMO' && c.onDetailsForm)
     memos.sort((a, b) => {
       if (a.name === LEAD_MEMO) return -1
       if (b.name === LEAD_MEMO) return 1
       return 0
     })
 
-    const scalars = populated.filter((c) => c.type !== 'MEMO' && c.name !== 'name')
+    // The Details form: the fields ALM would probably show, minus the three it puts in the header.
+    // Falls back to "everything populated" for a project where the flags select nothing, so a
+    // metadata shape we have not seen degrades to the old behaviour instead of an empty pane.
+    const formCandidates = data.columns.filter(
+      (c) => c.type !== 'MEMO' && c.onDetailsForm && !HEADER_FIELDS.includes(c.name),
+    )
+    const scalars = (formCandidates.length > 0 ? formCandidates : populated).filter(
+      (c) => c.type !== 'MEMO' && c.name !== 'name',
+    )
     const rank = (c: GridColumn) => {
       const i = LEAD_FIELDS.indexOf(c.name)
       return i === -1 ? LEAD_FIELDS.length : i
     }
     const ordered = [...scalars].sort((a, b) => rank(a) - rank(b))
+    const risk = data.columns.filter((c) => c.riskGroup)
 
     const memoText = (c: GridColumn) =>
       (row.values[c.name] ?? []).map(htmlToPlainText).filter(Boolean).join('\n\n')
 
-    return { row, populated, memos, ordered, memoText }
+    return { row, populated, memos, ordered, risk, memoText }
   }, [data])
 
   // Reset to Details when the record changes — but only if the open tab does not exist on the new
   // record's project. Staying on "Comments" while arrowing through records is the useful behaviour.
   const tabExists =
-    tab === DETAILS || tab === ALL || (parts?.memos.some((c) => c.name === tab) ?? false)
+    tab === DETAILS ||
+    tab === ALL ||
+    (tab === RISK_TAB && (parts?.risk.length ?? 0) > 0) ||
+    (parts?.memos.some((c) => c.name === tab) ?? false)
   useEffect(() => {
     if (!tabExists) setTab(DETAILS)
   }, [tabExists])
@@ -182,7 +204,7 @@ export function DetailPane({ project, collection, entityId }: Props) {
     )
   }
 
-  const { row, populated, memos, ordered, memoText } = parts
+  const { row, populated, memos, ordered, risk, memoText } = parts
   const title = row.values['name']?.[0] ?? `Record ${row.id}`
   const activeMemo = memos.find((c) => c.name === tab)
 
@@ -223,6 +245,11 @@ export function DetailPane({ project, collection, entityId }: Props) {
             hasContent={memoText(col) !== ''}
           />
         ))}
+        {/* ALM's Risk Analysis tab: the fields that are active but hidden from the main form.
+            Probe 21 measured this group at exactly 25 fields in all nine projects probed. */}
+        {risk.length > 0 && (
+          <Tab id={RISK_TAB} active={tab} onSelect={setTab} label="Risk Analysis" />
+        )}
         <Tab id={ALL} active={tab} onSelect={setTab} label={`All fields (${data.columns.length})`} />
       </div>
 
@@ -241,12 +268,15 @@ export function DetailPane({ project, collection, entityId }: Props) {
             <p className="detail-memo-body">{memoText(activeMemo)}</p>
           ))}
 
+        {tab === RISK_TAB && <FieldTable columns={risk} row={row} showEmpty />}
+
         {tab === ALL && (
           <>
             <FieldTable columns={data.columns.filter((c) => c.type !== 'MEMO')} row={row} showEmpty />
             <p className="detail-note">
               {populated.length} of {data.columns.length} fields hold a value on this record.
-              {memos.length > 0 && ` ${memos.length} memo fields are shown as tabs above.`}
+              {' '}The Details tab shows the {ordered.length} ALM would probably render — an
+              approximation, since ALM keeps its form layout in workflow scripts that no API serves.
             </p>
           </>
         )}

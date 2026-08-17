@@ -24,8 +24,26 @@ public final class GridDto {
      * @param listId  lookup-list binding for {@code LOOKUP_LIST} columns, 0 when unbound.
      *                Instance-specific — the SPA resolves values through the API, never a constant.
      * @param multiValue true for the two multivalue fields that exist in the whole model
+     * @param onDetailsForm ALM's own Details form would <em>probably</em> render this field —
+     *                      {@code active && visibleInWebUI}. ⚠️ An approximation, not a derivation:
+     *                      probe 21 matched 16 of 17 fields against the stock client and was wrong
+     *                      in both directions. The real layout is not exposed by any documented API
+     * @param riskGroup     the field belongs to ALM's built-in Risk Analysis group
+     *                      ({@code active && !visibleInWebUI}) — exactly 25 fields in every project
+     *                      probed
      */
-    public record Column(String name, String label, String type, int listId, boolean multiValue) {
+    public record Column(String name, String label, String type, int listId, boolean multiValue,
+                         boolean onDetailsForm, boolean riskGroup) {
+
+        /**
+         * The one mapping from field metadata to a column, shared by the grid and the tree-grid —
+         * the two views must not disagree about what a field is called, what type it is, or whether
+         * ALM would show it.
+         */
+        public static Column of(ai.surgeone.altalm.bff.alm.metadata.FieldDescriptor f) {
+            return new Column(f.name(), f.label(), f.type().name(), f.listId(),
+                    f.supportsMultivalue(), f.onDetailsForm(), f.inRiskAnalysisGroup());
+        }
     }
 
     /**
