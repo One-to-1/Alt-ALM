@@ -94,6 +94,49 @@ export function Folder(props: IconProps) {
   )
 }
 
+/**
+ * Folder that opens with its node. The lid tilting back is the same affordance as the twisty,
+ * read a second way — useful when a row is scanned rather than read.
+ */
+export function FolderIcon({ open = false, ...props }: IconProps & { open?: boolean }) {
+  if (!open) return <Folder {...props} />
+  return (
+    <Svg {...props}>
+      <path d="M2 11.5V4.5A1.5 1.5 0 0 1 3.5 3h2.2a1 1 0 0 1 .8.4l.8 1.1h4.2A1.5 1.5 0 0 1 13 6v1" />
+      <path d="M2 11.5 3.7 7.4A1 1 0 0 1 4.6 6.8h9.1a.6.6 0 0 1 .56.83l-1.6 4.1a1 1 0 0 1-.93.63H3.5A1.5 1.5 0 0 1 2 11.5Z" />
+    </Svg>
+  )
+}
+
+/** Explicit light choice. */
+export function Sun(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <circle cx="8" cy="8" r="3" />
+      <path d="M8 1.5v1.2M8 13.3v1.2M14.5 8h-1.2M2.7 8H1.5M12.6 3.4l-.85.85M4.25 11.75l-.85.85M12.6 12.6l-.85-.85M4.25 4.25l-.85-.85" />
+    </Svg>
+  )
+}
+
+/** Explicit dark choice. */
+export function Moon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M13 9.6A5.6 5.6 0 0 1 6.4 3a5.6 5.6 0 1 0 6.6 6.6Z" />
+    </Svg>
+  )
+}
+
+/** Follow the OS — a monitor, because the choice is "whatever this machine says". */
+export function Monitor(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <rect x="2" y="3" width="12" height="8" rx="1.25" />
+      <path d="M6 13.5h4M8 11v2.5" />
+    </Svg>
+  )
+}
+
 /** A leaf record rather than a container. */
 export function Doc(props: IconProps) {
   return (

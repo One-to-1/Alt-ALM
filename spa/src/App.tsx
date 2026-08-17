@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { GridColumn, Project, TreeNode } from './api/client.ts'
+import type { GridColumn, Project, TreeNode, TreeRow } from './api/client.ts'
 import { ApiError, fetchProjects } from './api/client.ts'
 import { DataGrid } from './grid/DataGrid.tsx'
 import { ColumnPicker } from './grid/ColumnPicker.tsx'
-import { FolderTree } from './tree/FolderTree.tsx'
+import { TreeGrid } from './tree/TreeGrid.tsx'
 import { DetailPane } from './detail/DetailPane.tsx'
 import { Splitter } from './shell/Splitter.tsx'
-import { ChevronLeft, Close, GridView, Search, TreeView } from './shell/icons.tsx'
+import { ChevronLeft, Close, GridView, Moon, Monitor, Search, Sun, TreeView } from './shell/icons.tsx'
+import { applyTheme, readTheme, THEMES, type Theme } from './shell/theme.ts'
 import {
   clearKey,
   defaultColumns,
@@ -72,9 +73,12 @@ function App() {
     readString<Density>('density', 'compact', DENSITIES),
   )
   const [view, setView] = useState<View>(() => readString<View>('view', 'tree', VIEWS))
+  const [theme, setTheme] = useState<Theme>(readTheme)
   const [detailWidth, setDetailWidth] = useState(() =>
     readNumber('detailWidth', 460, DETAIL_MIN, DETAIL_MAX),
   )
+
+  useEffect(() => applyTheme(theme), [theme])
 
   const [folder, setFolder] = useState<TreeNode | null>(null)
   const [selectedRowId, setSelectedRowId] = useState<string | null>(null)
@@ -205,19 +209,23 @@ function App() {
 
   /** Tree click: show the record, never navigate away from the tree. */
   const handleTreeSelect = useCallback(
-    (node: TreeNode | null) => {
-      if (!node) return
+    (row: TreeRow) => {
       pushHistory()
-      setSelectedRowId(node.id)
+      setSelectedRowId(row.id)
     },
     [pushHistory],
   )
 
-  /** Double-click, or the explicit action: show this folder's rows in the grid. */
+  /** Double-click: scope the flat grid to this node and switch to it. */
   const handleOpenInGrid = useCallback(
-    (node: TreeNode) => {
+    (row: TreeRow) => {
       pushHistory()
-      setFolder(node)
+      setFolder({
+        id: row.id,
+        name: row.values['name']?.[0] ?? `#${row.id}`,
+        parentId: row.parentId,
+        hasChildren: row.hasChildren,
+      })
       setSelectedRowId(null)
       setView('grid')
     },
@@ -298,6 +306,26 @@ function App() {
         </nav>
 
         <div className="app-bar-right">
+          {/* Three states, not two: "system" stamps no attribute and lets the OS decide, so a
+              machine that switches at sunset carries the app with it. */}
+          <div className="app-themetoggle" role="group" aria-label="Colour theme">
+            {THEMES.map((t) => (
+              <button
+                key={t}
+                type="button"
+                className={`app-themebtn${theme === t ? ' is-active' : ''}`}
+                aria-pressed={theme === t}
+                title={t === 'system' ? 'Follow the system theme' : `Always ${t}`}
+                onClick={() => setTheme(t)}
+              >
+                {t === 'light' ? <Sun /> : t === 'dark' ? <Moon /> : <Monitor />}
+                <span className="sr-only">
+                  {t === 'system' ? 'Follow the system theme' : `Always ${t}`}
+                </span>
+              </button>
+            ))}
+          </div>
+
           <label className="app-field">
             <span className="sr-only">Project</span>
             <select
@@ -437,12 +465,29 @@ function App() {
           aria-label={showTree ? 'Folders' : COLLECTION_LABELS[collection]}
         >
           {showTree && treeCollection ? (
-            <FolderTree
+            <TreeGrid
               project={selectedProjectKey}
               collection={treeCollection}
               selectedId={selectedRowId}
               onSelect={handleTreeSelect}
               onOpenInGrid={handleOpenInGrid}
+              onColumnsLoaded={resolveColumns}
+              visibleColumns={columns ?? undefined}
+              renderToolbar={(available) => (
+                <>
+                  <span className="grid-toolbar-label">
+                    {COLLECTION_LABELS[collection]} hierarchy
+                  </span>
+                  <div className="grid-toolbar-right">
+                    <ColumnPicker
+                      columns={available}
+                      visible={columns ?? defaultColumns(available)}
+                      onChange={changeColumns}
+                      onReset={() => resetColumns(available)}
+                    />
+                  </div>
+                </>
+              )}
             />
           ) : (
             <DataGrid
@@ -452,26 +497,24 @@ function App() {
               selectedId={selectedRowId}
               onSelectRow={handleSelectRow}
               onClearFilters={clearScope}
+              onColumnsLoaded={resolveColumns}
               visibleColumns={columns ?? undefined}
-              renderToolbar={(available) => {
-                resolveColumns(available)
-                return (
-                  <>
-                    <span className="grid-toolbar-label">
-                      {COLLECTION_LABELS[collection]}
-                      {folder && <span className="grid-toolbar-scope"> in {folder.name}</span>}
-                    </span>
-                    <div className="grid-toolbar-right">
-                      <ColumnPicker
-                        columns={available}
-                        visible={columns ?? defaultColumns(available)}
-                        onChange={changeColumns}
-                        onReset={() => resetColumns(available)}
-                      />
-                    </div>
-                  </>
-                )
-              }}
+              renderToolbar={(available) => (
+                <>
+                  <span className="grid-toolbar-label">
+                    {COLLECTION_LABELS[collection]}
+                    {folder && <span className="grid-toolbar-scope"> in {folder.name}</span>}
+                  </span>
+                  <div className="grid-toolbar-right">
+                    <ColumnPicker
+                      columns={available}
+                      visible={columns ?? defaultColumns(available)}
+                      onChange={changeColumns}
+                      onReset={() => resetColumns(available)}
+                    />
+                  </div>
+                </>
+              )}
             />
           )}
         </section>

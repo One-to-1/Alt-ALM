@@ -25,38 +25,8 @@ import java.util.Map;
 @Service
 public class GridService {
 
-    /**
-     * Collection → singular entity name, and <strong>an allowlist, not a lookup table with a
-     * fallback.</strong>
-     *
-     * <p>Two reasons it is closed rather than derived by trimming a trailing "s".
-     *
-     * <p>First, correctness: the metadata endpoint wants the singular, and a collection whose name
-     * does not resolve produces a grid with <em>no columns</em> rather than an error — a silent,
-     * plausible-looking failure of exactly the kind this project keeps finding.
-     *
-     * <p>Second, and the reason there is no fallback at all: {@code collection} arrives as a path
-     * variable from the browser and is interpolated into the ALM request URL. Accepting anything
-     * that merely ends in "s" would let a caller aim the BFF's authenticated session at arbitrary
-     * REST paths. An allowlist means the set of things a request can reach is the set written here.
-     */
-    private static final Map<String, String> ENTITY_OF = Map.ofEntries(
-            Map.entry("requirements", "requirement"),
-            Map.entry("tests", "test"),
-            Map.entry("defects", "defect"),
-            Map.entry("test-sets", "test-set"),
-            Map.entry("test-instances", "test-instance"),
-            Map.entry("runs", "run"),
-            Map.entry("design-steps", "design-step"),
-            Map.entry("test-folders", "test-folder"),
-            Map.entry("test-set-folders", "test-set-folder"),
-            Map.entry("releases", "release"),
-            Map.entry("release-cycles", "release-cycle"),
-            Map.entry("release-folders", "release-folder"),
-            Map.entry("resource-folders", "resource-folder"),
-            Map.entry("bpm-folders", "bpm-folder"),
-            Map.entry("run-steps", "run-step"),
-            Map.entry("test-configs", "test-config"));
+    // The collection allowlist lives in AlmCollections — TreeService needs the same one, and a
+    // security boundary copied into two places is one that will eventually differ between them.
 
     private final AlmEntityClient entities;
     private final AlmMetadataCatalog metadata;
@@ -205,12 +175,6 @@ public class GridService {
     }
 
     private static String entityOf(String collection) {
-        String entity = ENTITY_OF.get(collection);
-        if (entity == null) {
-            throw new IllegalArgumentException(
-                    "no known entity name for collection '" + collection + "' — add it to ENTITY_OF "
-                            + "rather than deriving one, since this value reaches the ALM request URL");
-        }
-        return entity;
+        return AlmCollections.entityOf(collection);
     }
 }

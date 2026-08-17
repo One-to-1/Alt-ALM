@@ -80,8 +80,13 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* Dark palette, defined once and applied from two places:
+ *   - the OS preference, unless an explicit light choice overrides it
+ *   - an explicit dark choice, which must win even when the OS says light
+ * Both selectors carry the same body, so a token can never be defined in only one of them. */
+
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme='light']) {
     --bg: #131519;
     --surface: #1a1d23;
     --surface-alt: #22262e;
@@ -106,6 +111,41 @@
 
     --shadow-pop: 0 6px 16px -4px rgb(0 0 0 / 55%), 0 2px 5px -2px rgb(0 0 0 / 40%);
   }
+}
+
+:root[data-theme='dark'] {
+  --bg: #131519;
+  --surface: #1a1d23;
+  --surface-alt: #22262e;
+  --surface-sunken: #16191e;
+
+  --border: #2c313a;
+  --border-strong: #3d444f;
+
+  --text-h: #eef1f5;
+  --text: #a6b0bd;
+  --text-muted: #8a95a3;
+
+  --accent: #7cb0f0;
+  --accent-bg: #1d2c40;
+
+  --danger: #ff9b93;
+  --danger-bg: #33201f;
+  --warning: #f0c04a;
+  --warning-bg: #302713;
+  --success: #79d998;
+  --success-bg: #16301f;
+
+  --shadow-pop: 0 6px 16px -4px rgb(0 0 0 / 55%), 0 2px 5px -2px rgb(0 0 0 / 40%);
+}
+
+/* Native widgets (select, checkbox, scrollbar chrome) follow this, not the CSS above. */
+:root[data-theme='dark'] {
+  color-scheme: dark;
+}
+
+:root[data-theme='light'] {
+  color-scheme: light;
 }
 
 *,

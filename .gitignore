@@ -35,6 +35,12 @@ coverage/
 playwright-report/
 test-results/
 
+# UI screenshots (scripts/shot.mjs). NEVER committed: a screenshot of the running app renders
+# borrowed projects' real requirement names, owners and field values, which the read-only grant
+# forbids putting in this repo. Counts and shapes only, per CLAUDE.md.
+.shots/
+*.shot.png
+
 # Editors / OS
 .vscode/
 .idea/

@@ -75,34 +75,49 @@ export function clearKey(key: string): void {
 /**
  * The columns a grid shows before the user chooses.
  *
- * Rendering all 76 columns of a requirement is unusable, and picking "the first N" would lead
- * with internal ids. This prefers the fields a person actually scans, then tops up in metadata
- * order so narrow entities still fill out.
+ * The head of this list is **ALM's own default Requirements column set**, taken from the stock
+ * client: Name, Req ID, Direct Cover Status, Initiator, Modified.
+ *
+ * Those are matched by FIELD NAME, not by label, and the difference is not pedantic — checked
+ * against live metadata, "Direct Cover Status" is the field `status` (there is no field named
+ * anything like it), and "Initiator" is `owner`, which another project in the same tenant labels
+ * "Author". Labels are per-project customization (ADR 0005), so pinning the label would show the
+ * wrong header on the first project that renamed it, while pinning the field shows each project's
+ * own wording.
+ *
+ * Everything after those is a top-up in metadata order, so entities that lack them still fill out.
+ * Rendering all 76 columns of a requirement is unusable, and "the first N" would lead with
+ * internal ids.
  */
 const PREFERRED = [
+  // ALM's stock Requirements columns, in its order.
   'id',
   'name',
   'status',
-  'type-id',
   'owner',
+  'last-modified',
+  // Reasonable next choices for the other modules, which share this function.
+  'type-id',
   'priority',
   'severity',
+  'req-priority',
   'target-rel',
   'target-rcyc',
-  'req-priority',
   'creation-time',
-  'last-modified',
   'detected-by',
   'assigned-to',
 ]
 
-export function defaultColumns(available: { name: string }[], limit = 8): string[] {
-  const names = available.map((c) => c.name)
-  const chosen = PREFERRED.filter((p) => names.includes(p))
-  for (const n of names) {
+/** Five is ALM's own count for Requirements, and it fits without horizontal scrolling. */
+export function defaultColumns(available: { name: string }[], limit = 5): string[] {
+  const names = new Set(available.map((c) => c.name))
+  const chosen = PREFERRED.filter((p) => names.has(p))
+  for (const c of available) {
     if (chosen.length >= limit) break
-    if (!chosen.includes(n)) chosen.push(n)
+    if (!chosen.includes(c.name)) chosen.push(c.name)
   }
-  // Return in metadata order so the grid matches the picker's ordering.
-  return names.filter((n) => chosen.slice(0, limit).includes(n))
+  // PREFERRED order, NOT metadata order. ALM shows Req ID, Direct Cover Status, Initiator,
+  // Modified in that sequence; metadata order would render them alphabetically-ish
+  // (Author, Direct Cover Status, Modified, Req ID), which is not what anyone reads.
+  return chosen.slice(0, limit)
 }

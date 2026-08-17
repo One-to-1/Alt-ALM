@@ -475,7 +475,7 @@ not wired to anything.
 - **Column picker, view toggle (Tree|Grid), resizable detail pane** — all persisted to
   `localStorage`, per project+collection for columns.
 
-**159 tests green** (`./mvnw test`), plus 7 live contract tests with `-Pcontract`.
+**161 tests green** (`./mvnw test`), plus 7 live contract tests with `-Pcontract`.
 
 ### UI decisions worth not re-litigating
 
@@ -494,6 +494,20 @@ not wired to anything.
 - **One request per tree LEVEL, not per node.** `GET /api/tree/{collection}/children` takes a
   repeated `parentId`. The client also prefetches one level ahead, so expanding is usually instant.
   Chunked at 120 ids per query (Q48: no probed ceiling on query length).
+- **The tree IS a grid.** ALM's Requirements module is one table whose first column indents and
+  expands, with Req ID / Direct Cover Status / Initiator / Modified beside it — not a tree *or* a
+  grid. `TreeGrid.tsx` reproduces that; `GET /api/tree/{collection}/rows` returns hierarchy and full
+  field values together. The old `FolderTree` is deleted.
+- **Default columns are ALM's own set, matched by FIELD NAME not label.** Checked against live
+  metadata: "Direct Cover Status" is the field `status` (nothing is named like the label), and
+  "Initiator" is `owner`, which another tenant project labels **"Author"**. Labels are per-project
+  customization (ADR 0005), so pinning a label would show the wrong header on the next project.
+- **Columns render in the CHOSEN order, not metadata order.** Metadata order produced
+  "Author, Direct Cover Status, Modified, Req ID" — alphabetical-ish and not what anyone reads.
+- **Theme is three states**: light, dark, and system. `system` stamps no attribute and lets
+  `prefers-color-scheme` decide; the explicit choices set `data-theme` and must override the OS in
+  *both* directions, which is why the dark palette is defined under two selectors. Verified in all
+  three combinations, not just the easy one.
 - **A tree click selects, it does not navigate.** Clicking a node shows it in the detail pane and
   opens it; it never swaps the main pane to the grid. Double-click (or the crumb) scopes the grid to
   that folder. Clicking a row never *collapses* it — closing is the twisty's job.
@@ -523,9 +537,20 @@ not wired to anything.
    skeleton loading, real empty states, themed scrollbars/selection/focus. PRODUCT.md / DESIGN.md
    are still **not** written, so there is no recorded visual world to check future work against —
    that is the next design step, not more component polish.
-7. **The UI has not been looked at in a browser by the agent** — no screenshot tool in this
-   environment. Correctness was verified by API-level checks and a token-resolution scan; *visual*
-   verification has only ever been the user's eye. Treat layout regressions as unguarded.
+7. ~~**The UI has not been looked at in a browser**~~ **SOLVED 2026-08-14.** `spa/scripts/shot.mjs`
+   (Playwright, a devDependency) screenshots the running app in both themes and widths, reports
+   console errors / failed requests / 4xx-5xx, and can switch project, expand levels and select a
+   row. It found two real bugs immediately: a `setState`-during-render between App and TreeGrid,
+   and a Name column that stopped short of its header because `display:flex` on a `<td>` drops the
+   cell out of table layout.
+   - ⚠️ **`.shots/` is git-ignored and must stay so** — a screenshot of the running app renders a
+     borrowed project's real requirement names and owners. The script blanks the project selector
+     before capturing, and `--mask` blurs value cells.
+   - ⚠️ **Wait for content, never a fixed delay.** The first version slept 2.5s and captured a
+     skeleton, which looks exactly like a broken render — it sent me chasing a bug that did not
+     exist. It now waits for a row selector.
+   - CI sets `PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1`, since `npm ci` would otherwise pull a ~115 MB
+     browser the build never launches.
 8. **`Children.exact=false` is untested against real data.** It needs a folder with >2,000 direct
    children, which no reachable project has. The fallback path is unit-tested only.
 

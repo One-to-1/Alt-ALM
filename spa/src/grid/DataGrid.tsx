@@ -24,6 +24,11 @@ interface DataGridProps {
   visibleColumns?: string[]
   /** Rendered into the grid toolbar; the picker lives here so it can see the loaded columns. */
   renderToolbar?: (columns: GridColumn[]) => React.ReactNode
+  /**
+   * Fired from an effect once this project's columns are known — never during render, which would
+   * mean updating the parent's state mid-render (React 19 warns, and the update may be dropped).
+   */
+  onColumnsLoaded?: (columns: GridColumn[]) => void
   /** Shown in the empty state, so a filtered-to-nothing grid can offer the way out. */
   onClearFilters?: () => void
 }
@@ -38,6 +43,7 @@ export function DataGrid({
   onSelectRow,
   visibleColumns,
   renderToolbar,
+  onColumnsLoaded,
   onClearFilters,
 }: DataGridProps) {
   const [start, setStart] = useState(1)
@@ -95,6 +101,11 @@ export function DataGrid({
     // `filters` is listed for correctness; callers must memoize it (App does) or every render
     // would refetch. filterKey is kept so a value change re-runs even if identity is stable.
   }, [project, collection, start, sort, desc, retryToken, filterKey, filters])
+
+  const loadedColumns = data?.columns
+  useEffect(() => {
+    if (loadedColumns && loadedColumns.length > 0) onColumnsLoaded?.(loadedColumns)
+  }, [loadedColumns, onColumnsLoaded])
 
   const handleSort = (columnName: string) => {
     setStart(1)
@@ -169,11 +180,12 @@ export function DataGrid({
 
   const rangeEnd = start + data.page.rowsReturned - 1
 
-  // Metadata order is preserved regardless of the order names arrive in, so toggling a column
-  // on never reshuffles the grid under the user.
+  // Rendered in the CHOSEN order, so the grid matches ALM's own column sequence rather than
+  // whatever order the metadata happens to list fields in.
+  const byName = new Map(data.columns.map((c) => [c.name, c]))
   const shownColumns =
     visibleColumns && visibleColumns.length > 0
-      ? data.columns.filter((c) => visibleColumns.includes(c.name))
+      ? visibleColumns.map((n) => byName.get(n)).filter((c): c is GridColumn => c !== undefined)
       : data.columns
 
   return (

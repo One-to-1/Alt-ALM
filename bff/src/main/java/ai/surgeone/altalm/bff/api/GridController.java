@@ -106,6 +106,18 @@ public class GridController {
     }
 
     /**
+     * The same level with full field values and this project's columns — the tree-grid.
+     *
+     * <p>ALM renders Requirements as one table whose first column indents; this is what feeds it.
+     */
+    @GetMapping("/tree/{collection}/rows")
+    public TreeDto.Rows treeRows(@PathVariable String collection,
+                                 @RequestParam List<String> parentId,
+                                 @RequestParam(required = false) String project) {
+        return trees.rows(resolve(project), collection, parentId);
+    }
+
+    /**
      * Parses repeated {@code filter=field:value} parameters.
      *
      * <p>Colon-delimited because ALM field names cannot contain one, so the split is unambiguous —

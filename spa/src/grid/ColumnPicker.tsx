@@ -56,9 +56,9 @@ export function ColumnPicker({ columns, visible, onChange, onReset }: Props) {
       if (visible.length === 1) return
       onChange(visible.filter((n) => n !== name))
     } else {
-      // Keep metadata order rather than click order, so the grid stays stable.
-      const next = columns.filter((c) => visibleSet.has(c.name) || c.name === name).map((c) => c.name)
-      onChange(next)
+      // Append. The grid renders in the CHOSEN order now, so re-deriving the whole list from
+      // metadata order would silently reshuffle columns the user had arranged.
+      onChange([...visible, name])
     }
   }
 

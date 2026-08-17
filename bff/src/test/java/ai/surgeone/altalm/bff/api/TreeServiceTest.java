@@ -31,7 +31,11 @@ class TreeServiceTest {
     private static final AlmProjectRef PROJECT = new AlmProjectRef("D", "P");
 
     private final AlmEntityClient entities = mock(AlmEntityClient.class);
-    private final TreeService service = new TreeService(entities);
+    private final ai.surgeone.altalm.bff.alm.metadata.AlmMetadataCatalog metadata =
+            mock(ai.surgeone.altalm.bff.alm.metadata.AlmMetadataCatalog.class);
+    private final ai.surgeone.altalm.bff.alm.read.AlmAccessPolicy policy =
+            new ai.surgeone.altalm.bff.alm.read.AlmAccessPolicy(PROJECT, java.util.Set.of());
+    private final TreeService service = new TreeService(entities, metadata, policy);
 
     private static AlmEntityPage.AlmEntity node(String id, String name, String parentId) {
         return new AlmEntityPage.AlmEntity("requirement",
@@ -165,6 +169,41 @@ class TreeServiceTest {
         // 10 was NOT seen as a parent, but the page may have been cut off — so it must not be
         // reported as a leaf. A missing expander hides a subtree; a spurious one costs one request.
         assertThat(children.nodes()).extracting(TreeDto.Node::hasChildren).containsExactly(true);
+    }
+
+    @Test
+    @DisplayName("rows() carries field values and this project's columns, plus exact hasChildren")
+    void rowsCarryValuesAndColumns() {
+        when(metadata.fields(eq(PROJECT), eq("requirement"))).thenReturn(List.of(
+                new ai.surgeone.altalm.bff.alm.metadata.FieldDescriptor(
+                        "id", "RQ_REQ_ID", ai.surgeone.altalm.bff.alm.metadata.AlmFieldType.NUMBER,
+                        "Req ID", false, true, true, false, false, 0, 255),
+                new ai.surgeone.altalm.bff.alm.metadata.FieldDescriptor(
+                        "name", "RQ_REQ_NAME", ai.surgeone.altalm.bff.alm.metadata.AlmFieldType.STRING,
+                        "Name", false, true, true, false, false, 0, 255)));
+        stubHierarchy(Map.of(
+                "0", List.of("10", "20"),
+                "10", List.of("11")));
+
+        TreeDto.Rows rows = service.rows(PROJECT, "requirements", List.of("0"));
+
+        assertThat(rows.columns()).extracting(GridDto.Column::label).containsExactly("Req ID", "Name");
+        assertThat(rows.nodes()).extracting(TreeDto.Row::id).containsExactlyInAnyOrder("10", "20");
+        assertThat(rows.nodes()).filteredOn(n -> n.id().equals("10"))
+                .extracting(TreeDto.Row::hasChildren).containsExactly(true);
+        assertThat(rows.nodes()).filteredOn(n -> n.id().equals("20"))
+                .extracting(TreeDto.Row::hasChildren).containsExactly(false);
+        // The values map is the entity's own fields, so the tree-grid can render any column.
+        assertThat(rows.nodes().getFirst().values()).containsKey("name");
+        assertThat(rows.exact()).isTrue();
+    }
+
+    @Test
+    @DisplayName("rows() refuses a non-tree collection just as children() does")
+    void rowsRejectsNonTree() {
+        assertThatThrownBy(() -> service.rows(PROJECT, "defects", List.of("0")))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("not a tree collection");
     }
 
     @Test

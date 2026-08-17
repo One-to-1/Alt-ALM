@@ -92,6 +92,25 @@ export interface TreeChildren {
   exact: boolean
 }
 
+/** A tree node carrying its full field values — hierarchy and columns in one payload. */
+export interface TreeRow {
+  id: string
+  parentId: string
+  hasChildren: boolean
+  values: Record<string, string[]>
+  error: string | null
+}
+
+/** A level of tree rows plus this project's columns. */
+export interface TreeRows {
+  collection: string
+  writable: boolean
+  columns: GridColumn[]
+  parentIds: string[]
+  nodes: TreeRow[]
+  exact: boolean
+}
+
 /** One server-side group-by bucket. `size` here IS a real count, unlike GridPage.reportedTotal. */
 export interface GroupBucket {
   value: string
@@ -269,6 +288,26 @@ export function fetchTreeChildren(
   }
   return apiGet<TreeChildren>(
     `/api/tree/${encodeURIComponent(collection)}/children?${params.toString()}`,
+  )
+}
+
+/**
+ * One or more tree levels WITH field values and columns — the tree-grid's read.
+ *
+ * Same batching as fetchTreeChildren; this variant drops the id/name/parent-id projection so the
+ * table beside the tree column has something to render.
+ */
+export function fetchTreeRows(
+  project: string,
+  collection: string,
+  parentIds: string | string[],
+): Promise<TreeRows> {
+  const params = new URLSearchParams({ project })
+  for (const id of Array.isArray(parentIds) ? parentIds : [parentIds]) {
+    params.append('parentId', id)
+  }
+  return apiGet<TreeRows>(
+    `/api/tree/${encodeURIComponent(collection)}/rows?${params.toString()}`,
   )
 }
 

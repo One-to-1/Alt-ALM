@@ -1,5 +1,8 @@
 package ai.surgeone.altalm.bff.api;
 
+import ai.surgeone.altalm.bff.alm.metadata.AlmMetadataCatalog;
+import ai.surgeone.altalm.bff.alm.metadata.FieldDescriptor;
+import ai.surgeone.altalm.bff.alm.read.AlmAccessPolicy;
 import ai.surgeone.altalm.bff.alm.read.AlmEntityClient;
 import ai.surgeone.altalm.bff.alm.read.AlmEntityPage;
 import ai.surgeone.altalm.bff.alm.read.AlmProjectRef;
@@ -41,9 +44,13 @@ public class TreeService {
     private static final int IDS_PER_QUERY = 120;
 
     private final AlmEntityClient entities;
+    private final AlmMetadataCatalog metadata;
+    private final AlmAccessPolicy policy;
 
-    public TreeService(AlmEntityClient entities) {
+    public TreeService(AlmEntityClient entities, AlmMetadataCatalog metadata, AlmAccessPolicy policy) {
         this.entities = entities;
+        this.metadata = metadata;
+        this.policy = policy;
     }
 
     /** Every tree's root, with per-tree failures reported rather than thrown. */
@@ -123,6 +130,83 @@ public class TreeService {
     /** Convenience for the single-parent case. */
     public TreeDto.Children children(AlmProjectRef project, String collection, String parentId) {
         return children(project, collection, List.of(parentId == null ? "" : parentId));
+    }
+
+    /**
+     * The same level, but carrying every field value — a tree rendered <em>as a grid</em>.
+     *
+     * <p>ALM's Requirements module is one table whose first column indents and expands, with Req ID,
+     * Direct Cover Status, Initiator and Modified sitting beside it as ordinary columns. That needs
+     * hierarchy and field values together, which {@link #children} deliberately does not carry: it
+     * projects down to {@code id,name,parent-id} because a folder tree does not need 76 fields per
+     * node. This method drops the projection for the requested level only — the extra level fetched
+     * to settle {@code hasChildren} stays projected, since all it contributes is a set of ids.
+     */
+    public TreeDto.Rows rows(AlmProjectRef project, String collection, List<String> parentIds) {
+        if (!TREES.contains(collection)) {
+            throw new IllegalArgumentException(
+                    "'" + collection + "' is not a tree collection; expected one of " + TREES);
+        }
+        List<String> parents = clean(parentIds);
+        if (parents.isEmpty()) {
+            throw new IllegalArgumentException("at least one parentId is required");
+        }
+
+        // Columns from THIS project's metadata, exactly as the grid does it — the tree view and the
+        // grid view must not disagree about a field's label or type.
+        List<FieldDescriptor> fields = metadata.fields(project, AlmCollections.entityOf(collection));
+        List<GridDto.Column> columns = fields.stream()
+                .map(f -> new GridDto.Column(f.name(), f.label(), f.type().name(), f.listId(),
+                        f.supportsMultivalue()))
+                .toList();
+
+        List<AlmEntityPage.AlmEntity> entitiesOnLevel = new ArrayList<>();
+        boolean complete = true;
+        for (int from = 0; from < parents.size(); from += IDS_PER_QUERY) {
+            List<String> chunk = parents.subList(from, Math.min(from + IDS_PER_QUERY, parents.size()));
+            AlmEntityPage page = entities.page(project, collection,
+                    AlmQuery.none()
+                            .filterAnyOf("parent-id", chunk)
+                            .orderBy("name")
+                            .pageSize(MAX_PAGE));
+            entitiesOnLevel.addAll(page.entities());
+            if (page.entities().size() >= MAX_PAGE) {
+                complete = false;
+            }
+        }
+
+        List<String> ids = entitiesOnLevel.stream()
+                .map(e -> e.id().orElse(""))
+                .filter(id -> !id.isBlank())
+                .toList();
+
+        Set<String> haveChildren = Set.of();
+        boolean exact = complete;
+        if (!ids.isEmpty()) {
+            Fetch below = fetchChildren(project, collection, ids);
+            haveChildren = below.rows.stream()
+                    .map(Row::parentId)
+                    .collect(HashSet::new, HashSet::add, HashSet::addAll);
+            exact = exact && below.complete;
+        }
+
+        final Set<String> parentsWithChildren = haveChildren;
+        final boolean isExact = exact;
+        List<TreeDto.Row> nodes = entitiesOnLevel.stream()
+                .map(e -> {
+                    String id = e.id().orElse("");
+                    return new TreeDto.Row(
+                            id,
+                            e.fields().getOrDefault("parent-id", List.of("")).getFirst(),
+                            // Same degradation rule as children(): when the answer may be truncated,
+                            // claim expandable rather than hide a subtree.
+                            !isExact || parentsWithChildren.contains(id),
+                            new LinkedHashMap<>(e.fields()),
+                            e.isError() ? e.errorMessage() : null);
+                })
+                .toList();
+
+        return new TreeDto.Rows(collection, policy.isWritable(project), columns, parents, nodes, exact);
     }
 
     /**

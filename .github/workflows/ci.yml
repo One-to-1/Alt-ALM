@@ -60,6 +60,11 @@ jobs:
 
       - name: Install
         working-directory: spa
+        # Playwright is a devDependency for scripts/shot.mjs (local UI screenshots only). Its
+        # postinstall would pull a ~115 MB browser CI never launches, so skip that download —
+        # the build and typecheck do not touch it.
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
         run: npm ci
 
       - name: Typecheck and build

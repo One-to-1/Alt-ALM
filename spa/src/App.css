@@ -87,6 +87,41 @@
   margin-inline-start: auto;
 }
 
+/* ---- theme toggle ---- */
+
+.app-themetoggle {
+  display: inline-flex;
+  padding: 2px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface-alt);
+}
+
+.app-themebtn {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 20px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--text-muted);
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 120ms ease, color 120ms ease;
+}
+
+.app-themebtn:hover {
+  color: var(--text-h);
+}
+
+.app-themebtn.is-active {
+  background: var(--surface);
+  color: var(--accent);
+  box-shadow: 0 1px 2px rgb(16 24 40 / 12%);
+}
+
 /* ---- sub bar: where you are, and how to get back ---- */
 
 .app-subbar {

@@ -58,4 +58,26 @@ public final class TreeDto {
      */
     public record Children(String collection, List<String> parentIds, List<Node> nodes, boolean exact) {
     }
+
+    /**
+     * One tree node carrying its full field values, so a tree can be rendered <em>as a grid</em>.
+     *
+     * <p>ALM's own Requirements module is not a tree beside a grid — it is one table whose first
+     * column happens to indent and expand, with Req ID / Direct Cover Status / Initiator / Modified
+     * as ordinary columns next to it. Reproducing that needs hierarchy and field values in the same
+     * payload, which is what this is for.
+     */
+    public record Row(String id, String parentId, boolean hasChildren,
+                      java.util.Map<String, List<String>> values, String error) {
+    }
+
+    /**
+     * A level of tree rows plus the columns to render them with.
+     *
+     * <p>Columns come from this project's metadata, exactly as the grid's do (ADR 0005) — the two
+     * views must not disagree about what a field is called or what type it is.
+     */
+    public record Rows(String collection, boolean writable, List<GridDto.Column> columns,
+                       List<String> parentIds, List<Row> nodes, boolean exact) {
+    }
 }

@@ -175,9 +175,13 @@ class GridServiceTest {
     @Test
     @DisplayName("an unknown collection fails loudly rather than rendering a column-less grid")
     void unknownCollectionIsRejected() {
+        // Asserts the guarantee, not the wording: the rejected name is named back, and the caller
+        // is told what IS allowed. "widgets" ends in "s", which an earlier trim-the-plural
+        // implementation happily accepted — that bug is what made this an allowlist.
         assertThatThrownBy(() -> service.grid(READONLY, "widgets", 50, 1, null, false))
                 .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("no known entity name");
+                .hasMessageContaining("widgets")
+                .hasMessageContaining("requirements");
     }
 
     @Test
