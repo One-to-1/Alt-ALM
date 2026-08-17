@@ -1,0 +1,698 @@
+{
+  "Relation": [
+    {
+      "Label": "Defect Attachments",
+      "Name": "defectToAttachmentAttachment",
+      "SourceEntity": "defect",
+      "TargetEntity": "attachment",
+      "StorageDescriptor": {
+        "customizationStorageDescriptor": {
+          "ReferenceStorage": {
+            "ReferenceIdColumn": "parent-id",
+            "ReferenceLocation": "IN_TARGET_ENTITY",
+            "ReferenceTypeColumn": "parent-type"
+          }
+        }
+      },
+      "Type": "attachment",
+      "TargetAliases": [
+        {
+          "Name": "attached-to-attachment",
+          "Unique": true
+        },
+        {
+          "Name": "attachment",
+          "Unique": true
+        }
+      ],
+      "Features": [
+        {
+          "Name": "UI_HIERARCHY",
+          "Propagated": false
+        },
+        {
+          "Name": "UI_LINKED_ENTITIES",
+          "Propagated": false
+        }
+      ]
+    },
+    {
+      "Label": "Linked to Defects",
+      "Name": "defectToDefectConnection",
+      "SourceEntity": "defect",
+      "TargetEntity": "defect",
+      "StorageDescriptor": {
+        "customizationStorageDescriptor": {
+          "AssociationStorage": {
+            "AssociationEntity": "defect-link",
+            "AssociationSourceIdColumn": "second-endpoint-id",
+            "AssociationSourceTypeColumn": "second-endpoint-type",
+            "AssociationTargetIdColumn": "first-endpoint-id",
+            "AssociationTargetTypeColumn": null
+          }
+        }
+      },
+      "Type": "connection",
+      "TargetAliases": [
+        {
+          "Name": "defect",
+          "Unique": false
+        },
+        {
+          "Name": "connected-to-defect",
+          "Unique": false
+        },
+        {
+          "Name": "to-connected-to-defect",
+          "Unique": true
+        }
+      ],
+      "Features": [
+        {
+          "Name": "UI_LINKED_ENTITIES",
+          "Propagated": true
+        },
+        {
+          "Name": "UI_HIERARCHY",
+          "Propagated": false
+        }
+      ],
+      "AggregatedRelations": [
+        "defectToDefectLinkLinkLeft",
+        "defectToDefectLinkLink"
+      ]
+    },
+    {
+      "Label": "Linked from Defects",
+      "Name": "defectToDefectConnection_mirrored",
+      "SourceEntity": "defect",
+      "TargetEntity": "defect",
+      "StorageDescriptor": {
+        "customizationStorageDescriptor": {
+          "AssociationStorage": {
+            "AssociationEntity": "defect-link",
+            "AssociationSourceIdColumn": "first-endpoint-id",
+            "AssociationSourceTypeColumn": null,
+            "AssociationTargetIdColumn": "second-endpoint-id",
+            "AssociationTargetTypeColumn": "second-endpoint-type"
+          }
+        }
+      },
+      "Type": "connection",
+      "TargetAliases": [
+        {
+          "Name": "from-connected-to-defect",
+          "Unique": true
+        },
+        {
+          "Name": "defect",
+          "Unique": false
+        },
+        {
+          "Name": "connected-to-defect",
+          "Unique": false
+        }
+      ],
+      "Features": [
+        {
+          "Name": "UI_HIERARCHY",
+          "Propagated": false
+        },
+        {
+          "Name": "UI_LINKED_ENTITIES",
+          "Propagated": true
+        }
+      ],
+      "AggregatedRelations": [
+        "defectToDefectLinkLink",
+        "defectToDefectLinkLinkLeft"
+      ]
+    },
+    {
+      "Label": "Defect to Defect_link",
+      "Name": "defectToDefectLinkLink",
+      "SourceEntity": "defect",
+      "TargetEntity": "defect-link",
+      "StorageDescriptor": {
+        "customizationStorageDescriptor": {
+          "ReferenceStorage": {
+            "ReferenceIdColumn": "first-endpoint-id",
+            "ReferenceLocation": "IN_TARGET_ENTITY",
+            "ReferenceTypeColumn": null
+          }
+        }
+      },
+      "Type": "link",
+      "TargetAliases": [
+        {
+          "Name": "defect-link",
+          "Unique": false
+        },
+        {
+          "Name": "is-linked-by-defect-link",
+          "Unique": false
+        },
+        {
+          "Name": "linked-defect-link",
+          "Unique": true
+        }
+      ],
+      "Features": [
+        {
+          "Name": "UI_HIERARCHY",
+          "Propagated": false
+        },
+        {
+          "Name": "UI_LINKED_ENTITIES",
+          "Propagated": false
+        }
+      ]
+    },
+    {
+      "Label": "Entity (Defect) to Defect_link",
+      "Name": "defectToDefectLinkLinkLeft",
+      "SourceEntity": "defect",
+      "TargetEntity": "defect-link",
+      "StorageDescriptor": {
+        "customizationStorageDescriptor": {
+          "ReferenceStorage": {
+            "ReferenceIdColumn": "second-endpoint-id",
+            "ReferenceLocation": "IN_TARGET_ENTITY",
+            "ReferenceTypeColumn": "second-endpoint-type"
+          }
+        }
+      },
+      "Type": "link",
+      "TargetAliases": [
+        {
+          "Name": "is-linked-by-defect-link",
+          "Unique": false
+        },
+        {
+          "Name": "defect-link",
+          "Unique": false
+        },
+        {
+          "Name": "to-linked-to-defect-link-link-left",
+          "Unique": true
+        }
+      ],
+      "Features": [
+        {
+          "Name": "UI_HIERARCHY",
+          "Propagated": false
+        },
+        {
+          "Name": "UI_LINKED_ENTITIES",
+          "Propagated": false
+        }
+      ]
+    },
+    {
+      "Name": "defectToDetectedInReleaseConnection",
+      "SourceEntity": "defect",
+      "TargetEntity": "release",
+      "StorageDescriptor": {
+        "customizationStorageDescriptor": {
+          "ReferenceStorage": {
+            "ReferenceIdColumn": "detected-in-rel",
+            "ReferenceLocation": "IN_SOURCE_ENTITY",
+            "ReferenceTypeColumn": null
+          }
+        }
+      },
+      "Type": "connection",
+      "TargetAliases": [
+        {
+          "Name": "connected-to-release",
+          "Unique": false
+        },
+        {
+          "Name": "release",
+          "Unique": false
+        },
+        {
+          "Name": "defect-to-detected-release-mirror",
+          "Unique": true
+        }
+      ],
+      "Features": [
+        {
+          "Name": "UI_HIERARCHY",
+          "Propagated": false
+        },
+        {
+          "Name": "UI_LINKED_ENTITIES",
+          "Propagated": false
+        }
+      ]
+    },
+    {
+      "Name": "defectToDetectedInReleaseCycleConnection",
+      "SourceEntity": "defect",
+      "TargetEntity": "release-cycle",
+      "StorageDescriptor": {
+        "customizationStorageDescriptor": {
+          "ReferenceStorage": {
+            "ReferenceIdColumn": "detected-in-rcyc",
+            "ReferenceLocation": "IN_SOURCE_ENTITY",
+            "ReferenceTypeColumn": null
+          }
+        }
+      },
+      "Type": "connection",
+      "TargetAliases": [
+        {
+          "Name": "connected-to-release-cycle",
+          "Unique": false
+        },
+        {
+          "Name": "release-cycle",
+          "Unique": false
+        },
+        {
+          "Name": "defect-to-detected-rcycl-mirror",
+          "Unique": true
+        }
+      ],
+      "Features": [
+        {
+          "Name": "UI_LINKED_ENTITIES",
+          "Propagated": false
+        },
+        {
+          "Name": "UI_HIERARCHY",
+          "Propagated": false
+        }
+      ]
+    },
+    {
+      "Name": "defectToEnvironmentConnection",
+      "SourceEntity": "defect",
+      "TargetEntity": "environment",
+      "StorageDescriptor": {
+        "customizationStorageDescriptor": {
+          "ReferenceStorage": {
+            "ReferenceIdColumn": "environment",
+            "ReferenceLocation": "IN_SOURCE_ENTITY",
+            "ReferenceTypeColumn": null
+          }
+        }
+      },
+      "Type": "connection",
+      "TargetAliases": [
+        {
+          "Name": "connected-to-environment",
+          "Unique": true
+        },
+        {
+          "Name": "environment",
+          "Unique": true
+        }
+      ],
+      "Features": [
+        {
+          "Name": "UI_HIERARCHY",
+          "Propagated": false
+        },
+        {
+          "Name": "UI_LINKED_ENTITIES",
+          "Propagated": false
+        }
+      ]
+    },
+    {
+      "Name": "defectToTargetReleaseConnection",
+      "SourceEntity": "defect",
+      "TargetEntity": "release",
+      "StorageDescriptor": {
+        "customizationStorageDescriptor": {
+          "ReferenceStorage": {
+            "ReferenceIdColumn": "target-rel",
+            "ReferenceLocation": "IN_SOURCE_ENTITY",
+            "ReferenceTypeColumn": null
+          }
+        }
+      },
+      "Type": "connection",
+      "TargetAliases": [
+        {
+          "Name": "release",
+          "Unique": false
+        },
+        {
+          "Name": "defect-to-target-release-mirror",
+          "Unique": true
+        },
+        {
+          "Name": "connected-to-release",
+          "Unique": false
+        }
+      ],
+      "Features": [
+        {
+          "Name": "UI_LINKED_ENTITIES",
+          "Propagated": false
+        },
+        {
+          "Name": "UI_HIERARCHY",
+          "Propagated": false
+        }
+      ]
+    },
+    {
+      "Name": "defectToTargetReleaseCycleConnection",
+      "SourceEntity": "defect",
+      "TargetEntity": "release-cycle",
+      "StorageDescriptor": {
+        "customizationStorageDescriptor": {
+          "ReferenceStorage": {
+            "ReferenceIdColumn": "target-rcyc",
+            "ReferenceLocation": "IN_SOURCE_ENTITY",
+            "ReferenceTypeColumn": null
+          }
+        }
+      },
+      "Type": "connection",
+      "TargetAliases": [
+        {
+          "Name": "connected-to-release-cycle",
+          "Unique": false
+        },
+        {
+          "Name": "defect-to-target-rcycl-mirror",
+          "Unique": true
+        },
+        {
+          "Name": "release-cycle",
+          "Unique": false
+        }
+      ],
+      "Features": [
+        {
+          "Name": "UI_HIERARCHY",
+          "Propagated": false
+        },
+        {
+          "Name": "UI_LINKED_ENTITIES",
+          "Propagated": false
+        }
+      ]
+    },
+    {
+      "Label": "Linked Requirements",
+      "Name": "requirementToDefectConnection_mirrored",
+      "SourceEntity": "defect",
+      "TargetEntity": "requirement",
+      "StorageDescriptor": {
+        "customizationStorageDescriptor": {
+          "AssociationStorage": {
+            "AssociationEntity": "defect-link",
+            "AssociationSourceIdColumn": "first-endpoint-id",
+            "AssociationSourceTypeColumn": null,
+            "AssociationTargetIdColumn": "second-endpoint-id",
+            "AssociationTargetTypeColumn": "second-endpoint-type"
+          }
+        }
+      },
+      "Type": "connection",
+      "TargetAliases": [
+        {
+          "Name": "connected-to-requirement",
+          "Unique": true
+        },
+        {
+          "Name": "requirement",
+          "Unique": true
+        }
+      ],
+      "Features": [
+        {
+          "Name": "UI_LINKED_ENTITIES",
+          "Propagated": true
+        },
+        {
+          "Name": "UI_HIERARCHY",
+          "Propagated": false
+        }
+      ],
+      "AggregatedRelations": [
+        "defectToDefectLinkLink",
+        "requirementToDefectLinkLink"
+      ]
+    },
+    {
+      "Label": "Defect to Run Step",
+      "Name": "runStepToDefectConnection_mirrored",
+      "SourceEntity": "defect",
+      "TargetEntity": "run-step",
+      "StorageDescriptor": {
+        "customizationStorageDescriptor": {
+          "AssociationStorage": {
+            "AssociationEntity": "defect-link",
+            "AssociationSourceIdColumn": "first-endpoint-id",
+            "AssociationSourceTypeColumn": null,
+            "AssociationTargetIdColumn": "second-endpoint-id",
+            "AssociationTargetTypeColumn": "second-endpoint-type"
+          }
+        }
+      },
+      "Type": "connection",
+      "TargetAliases": [
+        {
+          "Name": "connected-to-run-step",
+          "Unique": true
+        },
+        {
+          "Name": "run-step",
+          "Unique": true
+        }
+      ],
+      "Features": [
+        {
+          "Name": "UI_LINKED_ENTITIES",
+          "Propagated": false
+        },
+        {
+          "Name": "UI_HIERARCHY",
+          "Propagated": false
+        }
+      ],
+      "AggregatedRelations": [
+        "defectToDefectLinkLink",
+        "runStepToDefectLinkLink"
+      ]
+    },
+    {
+      "Label": "Linked Runs",
+      "Name": "runToDefectConnection_mirrored",
+      "SourceEntity": "defect",
+      "TargetEntity": "run",
+      "StorageDescriptor": {
+        "customizationStorageDescriptor": {
+          "AssociationStorage": {
+            "AssociationEntity": "defect-link",
+            "AssociationSourceIdColumn": "first-endpoint-id",
+            "AssociationSourceTypeColumn": null,
+            "AssociationTargetIdColumn": "second-endpoint-id",
+            "AssociationTargetTypeColumn": "second-endpoint-type"
+          }
+        }
+      },
+      "Type": "connection",
+      "TargetAliases": [
+        {
+          "Name": "connected-to-run",
+          "Unique": true
+        },
+        {
+          "Name": "run",
+          "Unique": true
+        }
+      ],
+      "Features": [
+        {
+          "Name": "UI_HIERARCHY",
+          "Propagated": false
+        },
+        {
+          "Name": "UI_LINKED_ENTITIES",
+          "Propagated": false
+        }
+      ],
+      "AggregatedRelations": [
+        "defectToDefectLinkLink",
+        "runToDefectLinkLink"
+      ]
+    },
+    {
+      "Label": "Defect to Test Configurations",
+      "Name": "testConfigToDefectConnection_mirrored",
+      "SourceEntity": "defect",
+      "TargetEntity": "test-config",
+      "StorageDescriptor": {
+        "customizationStorageDescriptor": {
+          "AssociationStorage": {
+            "AssociationEntity": "defect-link",
+            "AssociationSourceIdColumn": "first-endpoint-id",
+            "AssociationSourceTypeColumn": null,
+            "AssociationTargetIdColumn": "second-endpoint-id",
+            "AssociationTargetTypeColumn": "second-endpoint-type"
+          }
+        }
+      },
+      "Type": "connection",
+      "TargetAliases": [
+        {
+          "Name": "test-config",
+          "Unique": true
+        },
+        {
+          "Name": "connected-to-test-config",
+          "Unique": true
+        }
+      ],
+      "Features": [
+        {
+          "Name": "UI_HIERARCHY",
+          "Propagated": false
+        },
+        {
+          "Name": "UI_LINKED_ENTITIES",
+          "Propagated": false
+        }
+      ],
+      "AggregatedRelations": [
+        "defectToDefectLinkLink",
+        "testConfigToDefectLinkLink"
+      ]
+    },
+    {
+      "Label": "Defect to Test Instance",
+      "Name": "testInstanceToDefectConnection_mirrored",
+      "SourceEntity": "defect",
+      "TargetEntity": "test-instance",
+      "StorageDescriptor": {
+        "customizationStorageDescriptor": {
+          "AssociationStorage": {
+            "AssociationEntity": "defect-link",
+            "AssociationSourceIdColumn": "first-endpoint-id",
+            "AssociationSourceTypeColumn": null,
+            "AssociationTargetIdColumn": "second-endpoint-id",
+            "AssociationTargetTypeColumn": "second-endpoint-type"
+          }
+        }
+      },
+      "Type": "connection",
+      "TargetAliases": [
+        {
+          "Name": "connected-to-test-instance",
+          "Unique": true
+        },
+        {
+          "Name": "test-instance",
+          "Unique": true
+        }
+      ],
+      "Features": [
+        {
+          "Name": "UI_LINKED_ENTITIES",
+          "Propagated": false
+        },
+        {
+          "Name": "UI_HIERARCHY",
+          "Propagated": false
+        }
+      ],
+      "AggregatedRelations": [
+        "defectToDefectLinkLink",
+        "testInstanceToDefectLinkLink"
+      ]
+    },
+    {
+      "Label": "Defect to Test Sets",
+      "Name": "testSetToDefectConnection_mirrored",
+      "SourceEntity": "defect",
+      "TargetEntity": "test-set",
+      "StorageDescriptor": {
+        "customizationStorageDescriptor": {
+          "AssociationStorage": {
+            "AssociationEntity": "defect-link",
+            "AssociationSourceIdColumn": "first-endpoint-id",
+            "AssociationSourceTypeColumn": null,
+            "AssociationTargetIdColumn": "second-endpoint-id",
+            "AssociationTargetTypeColumn": "second-endpoint-type"
+          }
+        }
+      },
+      "Type": "connection",
+      "TargetAliases": [
+        {
+          "Name": "test-set",
+          "Unique": true
+        },
+        {
+          "Name": "connected-to-test-set",
+          "Unique": true
+        }
+      ],
+      "Features": [
+        {
+          "Name": "UI_LINKED_ENTITIES",
+          "Propagated": false
+        },
+        {
+          "Name": "UI_HIERARCHY",
+          "Propagated": false
+        }
+      ],
+      "AggregatedRelations": [
+        "defectToDefectLinkLink",
+        "testSetToDefectLinkLink"
+      ]
+    },
+    {
+      "Label": "Linked Tests",
+      "Name": "testToDefectConnection_mirrored",
+      "SourceEntity": "defect",
+      "TargetEntity": "test",
+      "StorageDescriptor": {
+        "customizationStorageDescriptor": {
+          "AssociationStorage": {
+            "AssociationEntity": "defect-link",
+            "AssociationSourceIdColumn": "first-endpoint-id",
+            "AssociationSourceTypeColumn": null,
+            "AssociationTargetIdColumn": "second-endpoint-id",
+            "AssociationTargetTypeColumn": "second-endpoint-type"
+          }
+        }
+      },
+      "Type": "connection",
+      "TargetAliases": [
+        {
+          "Name": "test",
+          "Unique": true
+        },
+        {
+          "Name": "connected-to-test",
+          "Unique": true
+        }
+      ],
+      "Features": [
+        {
+          "Name": "UI_HIERARCHY",
+          "Propagated": false
+        },
+        {
+          "Name": "UI_LINKED_ENTITIES",
+          "Propagated": true
+        }
+      ],
+      "AggregatedRelations": [
+        "defectToDefectLinkLink",
+        "testToDefectLinkLink"
+      ]
+    }
+  ],
+  "TotalResults": 17
+}

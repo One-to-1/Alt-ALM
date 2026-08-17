@@ -60,8 +60,23 @@ public final class AlmMetadataClient {
      * @param entity  wire entity name
      */
     public List<FieldDescriptor> fetchFields(AlmProjectRef project, String entity) {
+        return AlmMetadataParser.parseFields(getCustomization(project, entity, "fields"));
+    }
+
+    /**
+     * Fetches the relation list for one entity — the candidate set for the detail pane's
+     * related-entity tabs (probe 21.6, captured as fixtures by probe 22).
+     *
+     * <p>⚠️ The <strong>trailing slash matters</strong>: the path is {@code …/relations/}, not
+     * {@code …/relations}, unlike its {@code fields} sibling.
+     */
+    public List<AlmRelation> fetchRelations(AlmProjectRef project, String entity) {
+        return AlmRelationParser.parseRelations(getCustomization(project, entity, "relations/"));
+    }
+
+    private String getCustomization(AlmProjectRef project, String entity, String sub) {
         String path = project.restBase(credentials.baseUrl()) + "/customization/entities/"
-                + URLEncoder.encode(entity, StandardCharsets.UTF_8) + "/fields";
+                + URLEncoder.encode(entity, StandardCharsets.UTF_8) + "/" + sub;
 
         AlmSession session;
         try {
@@ -71,7 +86,7 @@ public final class AlmMetadataClient {
             throw new IllegalStateException("interrupted while waiting for an ALM session", e);
         }
         try {
-            String body = http.get()
+            return http.get()
                     // URI, not the String overload: that one treats braces as URI variables, and ALM
                     // query syntax is made of braces. Harmless here, a trap the moment this is copied.
                     .uri(URI.create(path))
@@ -79,7 +94,6 @@ public final class AlmMetadataClient {
                     .accept(MediaType.APPLICATION_JSON)
                     .retrieve()
                     .body(String.class);
-            return AlmMetadataParser.parseFields(body);
         } finally {
             pool.release(session);
         }

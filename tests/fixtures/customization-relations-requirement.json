@@ -1,0 +1,873 @@
+{
+  "Relation": [
+    {
+      "Label": "Business Models Linkage",
+      "Name": "representativeRequirementToRequirementConnection",
+      "SourceEntity": "requirement",
+      "TargetEntity": "requirement",
+      "StorageDescriptor": {
+        "customizationStorageDescriptor": {
+          "AssociationStorage": {
+            "AssociationEntity": "bpm-link",
+            "AssociationSourceIdColumn": "first-endpoint-id",
+            "AssociationSourceTypeColumn": null,
+            "AssociationTargetIdColumn": "second-endpoint-id",
+            "AssociationTargetTypeColumn": null
+          }
+        }
+      },
+      "Type": "connection",
+      "TargetAliases": [
+        {
+          "Name": "connected-to-requirement",
+          "Unique": false
+        },
+        {
+          "Name": "to-connected-to-requirement",
+          "Unique": true
+        },
+        {
+          "Name": "requirement",
+          "Unique": false
+        }
+      ],
+      "Features": [
+        {
+          "Name": "UI_LINKED_ENTITIES",
+          "Propagated": false
+        },
+        {
+          "Name": "UI_HIERARCHY",
+          "Propagated": false
+        }
+      ],
+      "AggregatedRelations": [
+        "requirementToBpmLinkLinkLeft",
+        "requirementToBpmLinkLinkRight"
+      ]
+    },
+    {
+      "Label": "Requirement to Requirement Business Models Linkage",
+      "Name": "representativeRequirementToRequirementConnection_mirrored",
+      "SourceEntity": "requirement",
+      "TargetEntity": "requirement",
+      "StorageDescriptor": {
+        "customizationStorageDescriptor": {
+          "AssociationStorage": {
+            "AssociationEntity": "bpm-link",
+            "AssociationSourceIdColumn": "second-endpoint-id",
+            "AssociationSourceTypeColumn": null,
+            "AssociationTargetIdColumn": "first-endpoint-id",
+            "AssociationTargetTypeColumn": null
+          }
+        }
+      },
+      "Type": "connection",
+      "TargetAliases": [
+        {
+          "Name": "from-connected-to-requirement",
+          "Unique": true
+        },
+        {
+          "Name": "requirement",
+          "Unique": false
+        },
+        {
+          "Name": "connected-to-requirement",
+          "Unique": false
+        }
+      ],
+      "Features": [
+        {
+          "Name": "UI_HIERARCHY",
+          "Propagated": false
+        },
+        {
+          "Name": "UI_LINKED_ENTITIES",
+          "Propagated": false
+        }
+      ],
+      "AggregatedRelations": [
+        "requirementToBpmLinkLinkRight",
+        "requirementToBpmLinkLinkLeft"
+      ]
+    },
+    {
+      "Label": "Test Coverage",
+      "Name": "requirementCoverageToRequirementLink",
+      "SourceEntity": "requirement",
+      "TargetEntity": "requirement-coverage",
+      "StorageDescriptor": {
+        "customizationStorageDescriptor": {
+          "ReferenceStorage": {
+            "ReferenceIdColumn": "requirement-id",
+            "ReferenceLocation": "IN_TARGET_ENTITY",
+            "ReferenceTypeColumn": null
+          }
+        }
+      },
+      "Type": "link",
+      "TargetAliases": [
+        {
+          "Name": "is-linked-by-requirement-coverage",
+          "Unique": true
+        },
+        {
+          "Name": "requirement-coverage",
+          "Unique": false
+        }
+      ],
+      "Features": [
+        {
+          "Name": "UI_HIERARCHY",
+          "Propagated": false
+        },
+        {
+          "Name": "UI_LINKED_ENTITIES",
+          "Propagated": false
+        }
+      ]
+    },
+    {
+      "Label": "Owner (Requirement) to Asset Relations",
+      "Name": "requirementToAssetsRelationLink",
+      "SourceEntity": "requirement",
+      "TargetEntity": "assets-relation",
+      "StorageDescriptor": {
+        "customizationStorageDescriptor": {
+          "ReferenceStorage": {
+            "ReferenceIdColumn": "to-endpoint-id",
+            "ReferenceLocation": "IN_TARGET_ENTITY",
+            "ReferenceTypeColumn": "to-endpoint-type"
+          }
+        }
+      },
+      "Type": "link",
+      "TargetAliases": [
+        {
+          "Name": "assets-relation",
+          "Unique": true
+        },
+        {
+          "Name": "is-linked-by-assets-relation",
+          "Unique": true
+        }
+      ],
+      "Features": [
+        {
+          "Name": "UI_HIERARCHY",
+          "Propagated": false
+        },
+        {
+          "Name": "UI_LINKED_ENTITIES",
+          "Propagated": false
+        }
+      ]
+    },
+    {
+      "Label": "Requirement Attachments",
+      "Name": "requirementToAttachmentAttachment",
+      "SourceEntity": "requirement",
+      "TargetEntity": "attachment",
+      "StorageDescriptor": {
+        "customizationStorageDescriptor": {
+          "ReferenceStorage": {
+            "ReferenceIdColumn": "parent-id",
+            "ReferenceLocation": "IN_TARGET_ENTITY",
+            "ReferenceTypeColumn": "parent-type"
+          }
+        }
+      },
+      "Type": "attachment",
+      "TargetAliases": [
+        {
+          "Name": "attached-to-attachment",
+          "Unique": true
+        },
+        {
+          "Name": "attachment",
+          "Unique": true
+        }
+      ],
+      "Features": [
+        {
+          "Name": "UI_HIERARCHY",
+          "Propagated": false
+        },
+        {
+          "Name": "UI_LINKED_ENTITIES",
+          "Propagated": false
+        }
+      ]
+    },
+    {
+      "Label": "(Left) Requirement to BP Model Link",
+      "Name": "requirementToBpmLinkLinkLeft",
+      "SourceEntity": "requirement",
+      "TargetEntity": "bpm-link",
+      "StorageDescriptor": {
+        "customizationStorageDescriptor": {
+          "ReferenceStorage": {
+            "ReferenceIdColumn": "first-endpoint-id",
+            "ReferenceLocation": "IN_TARGET_ENTITY",
+            "ReferenceTypeColumn": null
+          }
+        }
+      },
+      "Type": "link",
+      "TargetAliases": [
+        {
+          "Name": "is-linked-by-bpm-link",
+          "Unique": false
+        },
+        {
+          "Name": "to-requirement-to-bpm-link-link-left",
+          "Unique": true
+        },
+        {
+          "Name": "bpm-link",
+          "Unique": false
+        }
+      ],
+      "Features": [
+        {
+          "Name": "UI_HIERARCHY",
+          "Propagated": false
+        },
+        {
+          "Name": "UI_LINKED_ENTITIES",
+          "Propagated": false
+        }
+      ]
+    },
+    {
+      "Label": "(Right) Requirement to BP Model Link",
+      "Name": "requirementToBpmLinkLinkRight",
+      "SourceEntity": "requirement",
+      "TargetEntity": "bpm-link",
+      "StorageDescriptor": {
+        "customizationStorageDescriptor": {
+          "ReferenceStorage": {
+            "ReferenceIdColumn": "second-endpoint-id",
+            "ReferenceLocation": "IN_TARGET_ENTITY",
+            "ReferenceTypeColumn": null
+          }
+        }
+      },
+      "Type": "link",
+      "TargetAliases": [
+        {
+          "Name": "is-linked-by-bpm-link",
+          "Unique": false
+        },
+        {
+          "Name": "bpm-link",
+          "Unique": false
+        },
+        {
+          "Name": "to-linked-to-bpm-link-link-right",
+          "Unique": true
+        }
+      ],
+      "Features": [
+        {
+          "Name": "UI_LINKED_ENTITIES",
+          "Propagated": false
+        },
+        {
+          "Name": "UI_HIERARCHY",
+          "Propagated": false
+        }
+      ]
+    },
+    {
+      "Label": "Comments",
+      "Name": "requirementToCommentCompositionRelation",
+      "SourceEntity": "requirement",
+      "TargetEntity": "comment",
+      "StorageDescriptor": {
+        "customizationStorageDescriptor": {
+          "ReferenceStorage": {
+            "ReferenceIdColumn": "parent-id",
+            "ReferenceLocation": "IN_TARGET_ENTITY",
+            "ReferenceTypeColumn": "parent-type"
+          }
+        }
+      },
+      "Type": "composition",
+      "TargetAliases": [
+        {
+          "Name": "comment",
+          "Unique": true
+        },
+        {
+          "Name": "-",
+          "Unique": true
+        },
+        {
+          "Name": "part-of-comment",
+          "Unique": true
+        }
+      ],
+      "Features": [
+        {
+          "Name": "UI_LINKED_ENTITIES",
+          "Propagated": false
+        },
+        {
+          "Name": "UI_HIERARCHY",
+          "Propagated": false
+        }
+      ]
+    },
+    {
+      "Label": "Linked Defects",
+      "Name": "requirementToDefectConnection",
+      "SourceEntity": "requirement",
+      "TargetEntity": "defect",
+      "StorageDescriptor": {
+        "customizationStorageDescriptor": {
+          "AssociationStorage": {
+            "AssociationEntity": "defect-link",
+            "AssociationSourceIdColumn": "second-endpoint-id",
+            "AssociationSourceTypeColumn": "second-endpoint-type",
+            "AssociationTargetIdColumn": "first-endpoint-id",
+            "AssociationTargetTypeColumn": null
+          }
+        }
+      },
+      "Type": "connection",
+      "TargetAliases": [
+        {
+          "Name": "connected-to-defect",
+          "Unique": true
+        },
+        {
+          "Name": "defect",
+          "Unique": true
+        }
+      ],
+      "Features": [
+        {
+          "Name": "UI_HIERARCHY",
+          "Propagated": false
+        },
+        {
+          "Name": "UI_LINKED_ENTITIES",
+          "Propagated": true
+        }
+      ],
+      "AggregatedRelations": [
+        "requirementToDefectLinkLink",
+        "defectToDefectLinkLink"
+      ]
+    },
+    {
+      "Label": "Linked Defects",
+      "Name": "requirementToDefectLinkLink",
+      "SourceEntity": "requirement",
+      "TargetEntity": "defect-link",
+      "StorageDescriptor": {
+        "customizationStorageDescriptor": {
+          "ReferenceStorage": {
+            "ReferenceIdColumn": "second-endpoint-id",
+            "ReferenceLocation": "IN_TARGET_ENTITY",
+            "ReferenceTypeColumn": "second-endpoint-type"
+          }
+        }
+      },
+      "Type": "link",
+      "TargetAliases": [
+        {
+          "Name": "defect-link",
+          "Unique": true
+        },
+        {
+          "Name": "is-linked-by-defect-link",
+          "Unique": true
+        }
+      ],
+      "Features": [
+        {
+          "Name": "UI_HIERARCHY",
+          "Propagated": false
+        },
+        {
+          "Name": "UI_LINKED_ENTITIES",
+          "Propagated": false
+        }
+      ]
+    },
+    {
+      "Label": "Requirement to Release",
+      "Name": "requirementToReleaseConnection",
+      "SourceEntity": "requirement",
+      "TargetEntity": "release",
+      "StorageDescriptor": {
+        "customizationStorageDescriptor": {
+          "AssociationStorage": {
+            "AssociationEntity": "requirement-target-release",
+            "AssociationSourceIdColumn": "first-endpoint-id",
+            "AssociationSourceTypeColumn": null,
+            "AssociationTargetIdColumn": "second-endpoint-id",
+            "AssociationTargetTypeColumn": null
+          }
+        }
+      },
+      "Type": "connection",
+      "TargetAliases": [
+        {
+          "Name": "release",
+          "Unique": true
+        },
+        {
+          "Name": "connected-to-release",
+          "Unique": true
+        }
+      ],
+      "Features": [
+        {
+          "Name": "UI_LINKED_ENTITIES",
+          "Propagated": false
+        },
+        {
+          "Name": "UI_HIERARCHY",
+          "Propagated": false
+        }
+      ],
+      "AggregatedRelations": [
+        "requirementToRequirementTargetReleaseLink",
+        "releaseToRequirementTargetReleaseLink"
+      ]
+    },
+    {
+      "Label": "Requirement to Cycle",
+      "Name": "requirementToReleaseCycleConnection",
+      "SourceEntity": "requirement",
+      "TargetEntity": "release-cycle",
+      "StorageDescriptor": {
+        "customizationStorageDescriptor": {
+          "AssociationStorage": {
+            "AssociationEntity": "requirement-target-cycle",
+            "AssociationSourceIdColumn": "first-endpoint-id",
+            "AssociationSourceTypeColumn": null,
+            "AssociationTargetIdColumn": "second-endpoint-id",
+            "AssociationTargetTypeColumn": null
+          }
+        }
+      },
+      "Type": "connection",
+      "TargetAliases": [
+        {
+          "Name": "connected-to-release-cycle",
+          "Unique": true
+        },
+        {
+          "Name": "release-cycle",
+          "Unique": true
+        }
+      ],
+      "Features": [
+        {
+          "Name": "UI_HIERARCHY",
+          "Propagated": false
+        },
+        {
+          "Name": "UI_LINKED_ENTITIES",
+          "Propagated": false
+        }
+      ],
+      "AggregatedRelations": [
+        "requirementToRequirementTargetCycleLink",
+        "releaseCycleToRequirementTargetCycleLink"
+      ]
+    },
+    {
+      "Label": "Traced From Requirements",
+      "Name": "requirementToReqTraceLinkLeft",
+      "SourceEntity": "requirement",
+      "TargetEntity": "req-trace",
+      "StorageDescriptor": {
+        "customizationStorageDescriptor": {
+          "ReferenceStorage": {
+            "ReferenceIdColumn": "from-req-id",
+            "ReferenceLocation": "IN_TARGET_ENTITY",
+            "ReferenceTypeColumn": null
+          }
+        }
+      },
+      "Type": "link",
+      "TargetAliases": [
+        {
+          "Name": "is-linked-by-req-trace",
+          "Unique": false
+        },
+        {
+          "Name": "to-linked-to-req-trace-link-left",
+          "Unique": true
+        },
+        {
+          "Name": "req-trace",
+          "Unique": false
+        }
+      ],
+      "Features": [
+        {
+          "Name": "UI_LINKED_ENTITIES",
+          "Propagated": false
+        },
+        {
+          "Name": "UI_HIERARCHY",
+          "Propagated": false
+        }
+      ]
+    },
+    {
+      "Label": "Traced To Requirements",
+      "Name": "requirementToReqTraceLinkRight",
+      "SourceEntity": "requirement",
+      "TargetEntity": "req-trace",
+      "StorageDescriptor": {
+        "customizationStorageDescriptor": {
+          "ReferenceStorage": {
+            "ReferenceIdColumn": "to-req-id",
+            "ReferenceLocation": "IN_TARGET_ENTITY",
+            "ReferenceTypeColumn": null
+          }
+        }
+      },
+      "Type": "link",
+      "TargetAliases": [
+        {
+          "Name": "to-linked-to-req-trace-link-right",
+          "Unique": true
+        },
+        {
+          "Name": "req-trace",
+          "Unique": false
+        },
+        {
+          "Name": "is-linked-by-req-trace",
+          "Unique": false
+        }
+      ],
+      "Features": [
+        {
+          "Name": "UI_HIERARCHY",
+          "Propagated": false
+        },
+        {
+          "Name": "UI_LINKED_ENTITIES",
+          "Propagated": false
+        }
+      ]
+    },
+    {
+      "Label": "Requirement to contained Requirements",
+      "Name": "requirementToRequirementContainment",
+      "SourceEntity": "requirement",
+      "TargetEntity": "requirement",
+      "StorageDescriptor": {
+        "customizationStorageDescriptor": {
+          "ReferenceStorage": {
+            "ReferenceIdColumn": "parent-id",
+            "ReferenceLocation": "IN_TARGET_ENTITY",
+            "ReferenceTypeColumn": null
+          }
+        }
+      },
+      "Type": "containment",
+      "TargetAliases": [
+        {
+          "Name": "contained-in-requirement",
+          "Unique": true
+        },
+        {
+          "Name": "requirement",
+          "Unique": false
+        }
+      ],
+      "Features": [
+        {
+          "Name": "UI_HIERARCHY",
+          "Propagated": true
+        },
+        {
+          "Name": "UI_LINKED_ENTITIES",
+          "Propagated": false
+        }
+      ]
+    },
+    {
+      "Label": "Requirement to contained Requirements",
+      "Name": "requirementToRequirementContainment_mirrored",
+      "SourceEntity": "requirement",
+      "TargetEntity": "requirement",
+      "StorageDescriptor": {
+        "customizationStorageDescriptor": {
+          "ReferenceStorage": {
+            "ReferenceIdColumn": "parent-id",
+            "ReferenceLocation": "IN_SOURCE_ENTITY",
+            "ReferenceTypeColumn": null
+          }
+        }
+      },
+      "Type": "containment",
+      "TargetAliases": [
+        {
+          "Name": "contains-requirement",
+          "Unique": true
+        },
+        {
+          "Name": "requirement",
+          "Unique": false
+        }
+      ],
+      "Features": [
+        {
+          "Name": "UI_LINKED_ENTITIES",
+          "Propagated": false
+        },
+        {
+          "Name": "UI_HIERARCHY",
+          "Propagated": false
+        }
+      ]
+    },
+    {
+      "Label": "Requirement Coverage",
+      "Name": "requirementToRequirementCoverageComposition",
+      "SourceEntity": "requirement",
+      "TargetEntity": "requirement-coverage",
+      "StorageDescriptor": {
+        "customizationStorageDescriptor": {
+          "ReferenceStorage": {
+            "ReferenceIdColumn": "requirement-id",
+            "ReferenceLocation": "IN_TARGET_ENTITY",
+            "ReferenceTypeColumn": null
+          }
+        }
+      },
+      "Type": "containment",
+      "TargetAliases": [
+        {
+          "Name": "requirement-coverage",
+          "Unique": false
+        },
+        {
+          "Name": "contained-in-requirement-coverage",
+          "Unique": true
+        }
+      ],
+      "Features": [
+        {
+          "Name": "UI_HIERARCHY",
+          "Propagated": false
+        },
+        {
+          "Name": "UI_LINKED_ENTITIES",
+          "Propagated": false
+        }
+      ]
+    },
+    {
+      "Label": "Trace",
+      "Name": "requirementToRequirementDependency",
+      "SourceEntity": "requirement",
+      "TargetEntity": "requirement",
+      "StorageDescriptor": {
+        "customizationStorageDescriptor": {
+          "AssociationStorage": {
+            "AssociationEntity": "req-trace",
+            "AssociationSourceIdColumn": "from-req-id",
+            "AssociationSourceTypeColumn": null,
+            "AssociationTargetIdColumn": "to-req-id",
+            "AssociationTargetTypeColumn": null
+          }
+        }
+      },
+      "Type": "dependency",
+      "TargetAliases": [
+        {
+          "Name": "requirement",
+          "Unique": false
+        },
+        {
+          "Name": "has-dependent-requirement",
+          "Unique": true
+        }
+      ],
+      "Features": [
+        {
+          "Name": "UI_HIERARCHY",
+          "Propagated": false
+        },
+        {
+          "Name": "UI_LINKED_ENTITIES",
+          "Propagated": true
+        }
+      ],
+      "AggregatedRelations": [
+        "requirementToReqTraceLinkLeft",
+        "requirementToReqTraceLinkRight"
+      ]
+    },
+    {
+      "Label": "Trace From",
+      "Name": "requirementToRequirementDependency_mirrored",
+      "SourceEntity": "requirement",
+      "TargetEntity": "requirement",
+      "StorageDescriptor": {
+        "customizationStorageDescriptor": {
+          "AssociationStorage": {
+            "AssociationEntity": "req-trace",
+            "AssociationSourceIdColumn": "to-req-id",
+            "AssociationSourceTypeColumn": null,
+            "AssociationTargetIdColumn": "from-req-id",
+            "AssociationTargetTypeColumn": null
+          }
+        }
+      },
+      "Type": "dependency",
+      "TargetAliases": [
+        {
+          "Name": "requirement",
+          "Unique": false
+        },
+        {
+          "Name": "depends-on-requirement",
+          "Unique": true
+        }
+      ],
+      "Features": [
+        {
+          "Name": "UI_LINKED_ENTITIES",
+          "Propagated": true
+        },
+        {
+          "Name": "UI_HIERARCHY",
+          "Propagated": false
+        }
+      ],
+      "AggregatedRelations": [
+        "requirementToReqTraceLinkRight",
+        "requirementToReqTraceLinkLeft"
+      ]
+    },
+    {
+      "Label": "Requirement to Requirement Target Cycle",
+      "Name": "requirementToRequirementTargetCycleLink",
+      "SourceEntity": "requirement",
+      "TargetEntity": "requirement-target-cycle",
+      "StorageDescriptor": {
+        "customizationStorageDescriptor": {
+          "ReferenceStorage": {
+            "ReferenceIdColumn": "first-endpoint-id",
+            "ReferenceLocation": "IN_TARGET_ENTITY",
+            "ReferenceTypeColumn": null
+          }
+        }
+      },
+      "Type": "link",
+      "TargetAliases": [
+        {
+          "Name": "requirement-target-cycle",
+          "Unique": true
+        },
+        {
+          "Name": "is-linked-by-requirement-target-cycle",
+          "Unique": true
+        }
+      ],
+      "Features": [
+        {
+          "Name": "UI_LINKED_ENTITIES",
+          "Propagated": false
+        },
+        {
+          "Name": "UI_HIERARCHY",
+          "Propagated": false
+        }
+      ]
+    },
+    {
+      "Label": "Requirement to Target Release",
+      "Name": "requirementToRequirementTargetReleaseLink",
+      "SourceEntity": "requirement",
+      "TargetEntity": "requirement-target-release",
+      "StorageDescriptor": {
+        "customizationStorageDescriptor": {
+          "ReferenceStorage": {
+            "ReferenceIdColumn": "first-endpoint-id",
+            "ReferenceLocation": "IN_TARGET_ENTITY",
+            "ReferenceTypeColumn": null
+          }
+        }
+      },
+      "Type": "link",
+      "TargetAliases": [
+        {
+          "Name": "is-linked-by-requirement-target-release",
+          "Unique": true
+        },
+        {
+          "Name": "requirement-target-release",
+          "Unique": true
+        }
+      ],
+      "Features": [
+        {
+          "Name": "UI_HIERARCHY",
+          "Propagated": false
+        },
+        {
+          "Name": "UI_LINKED_ENTITIES",
+          "Propagated": false
+        }
+      ]
+    },
+    {
+      "Label": "Requirement to Tests that cover Requirement",
+      "Name": "requirementToTestConnection",
+      "SourceEntity": "requirement",
+      "TargetEntity": "test",
+      "StorageDescriptor": {
+        "customizationStorageDescriptor": {
+          "AssociationStorage": {
+            "AssociationEntity": "requirement-coverage",
+            "AssociationSourceIdColumn": "requirement-id",
+            "AssociationSourceTypeColumn": null,
+            "AssociationTargetIdColumn": "test-id",
+            "AssociationTargetTypeColumn": "entity-type"
+          }
+        }
+      },
+      "Type": "connection",
+      "TargetAliases": [
+        {
+          "Name": "test",
+          "Unique": true
+        },
+        {
+          "Name": "connected-to-test",
+          "Unique": true
+        }
+      ],
+      "Features": [
+        {
+          "Name": "UI_LINKED_ENTITIES",
+          "Propagated": true
+        },
+        {
+          "Name": "UI_HIERARCHY",
+          "Propagated": false
+        }
+      ],
+      "AggregatedRelations": [
+        "requirementCoverageToRequirementLink",
+        "requirementCoverageToTestDependency"
+      ]
+    }
+  ],
+  "TotalResults": 22
+}

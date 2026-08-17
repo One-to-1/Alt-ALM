@@ -1389,6 +1389,70 @@ metadata: **ALM does not store the form as data.**
 
 ---
 
+## Probe 22 — the relations payload, captured (2026-08-17)
+
+Read-only, **sandbox only**, GET only. `scripts/probe/probe-relations.py`. Probe 21.6 read this
+endpoint live and recorded counts; it saved no payload, so `AlmRelationParser` had nothing to be
+built against. Fixtures now exist: `tests/fixtures/customization-relations-{requirement,test,defect}.json`.
+
+**Sandbox only, deliberately.** A relations document is schema, not data — no record names, no
+owners, no field values. It is still per-project customization, and the borrowed-project rule is
+"counts and shapes only". Someone else's schema is their content; ours is not.
+
+### 22.1 Shape
+
+`{"Relation":[…],"TotalResults":22}` — singular key holding an array, and **PascalCase** property
+names (`Label`, `TargetEntity`, `Type`), the opposite of the lowerCamel `fields` sibling uses. Also
+⚠️ the path needs a **trailing slash**: `…/relations/`, where `…/fields` has none.
+
+Counts confirm 21.6: requirement 22, test 27, defect 17.
+
+### 22.2 ⚠️ Not every relation has a Label — this corrects 21.6
+
+21.6 said "each carrying a human-readable `Label`". Measured on `requirement` alone, that was true.
+**5 of `defect`'s 17 relations have no `Label` at all**, and every one is a field-backed reference:
+`defectToTargetReleaseConnection`, `…DetectedInRelease…`, `…DetectedInReleaseCycle…`,
+`…TargetReleaseCycle…`, `…EnvironmentConnection`. Those belong on the Details form, where they
+already are. Absence of a label is therefore a usable signal, not a data defect.
+
+### 22.3 ⚠️ `TargetEntity` is not what you read — the join entity is
+
+Each relation's storage descriptor is either a `ReferenceStorage` (plain FK) or an
+`AssociationStorage`, and the latter names its own `AssociationEntity`. So
+`requirementToDefectConnection` has `TargetEntity: defect` but its rows live in **`defect-link`**.
+Conflating the two yields a tab that queries the wrong collection and comes back plausibly empty.
+
+### 22.4 ⚠️ `defect-link` and `assets-relation` are POLYMORPHIC join tables
+
+The finding that shaped the implementation. **Nine of `defect`'s relations read `defect-link`**, to
+nine different far ends — defect, requirement, run, run-step, test, test-config, test-instance,
+test-set. Six of `test`'s read `assets-relation` similarly. Grouping tabs by "what gets read" —
+the obvious rule, and the first one written — merges all nine into a single tab and shows linked
+runs under the heading "Linked to Defects". Group by the **pair** (far end, entity read).
+
+### 22.5 The tab set is an approximation, and cannot be better than one
+
+With the pair rule plus "no label", "self-referential containment is the tree" and "a tab nothing
+can fill is not shown", `requirement` reduces to **8** related tabs where the stock dialog has 5.
+All three extras are the same shape — a join entity reachable both directly and through an
+association (`req-trace`, `requirement-coverage`, `bpm-link` each appear twice).
+
+⚠️ **The rule that would merge those is the rule that breaks `defect`.** Collapsing groups that
+share a read entity fixes all three and simultaneously re-creates 22.4. **No rule derivable from
+this payload gets both right**, because ALM's tab organisation is per-entity and lives in workflow
+scripts no API serves (21.8). Documented limit, not a to-do.
+
+The chosen error direction is over-showing: an extra tab is visible and dismissible, a wrong merge
+silently shows one relation's rows under another's name. `AlmRelationSelector.Selection.dropped()`
+records every discarded candidate with its reason, so the invisible direction stays auditable.
+
+### 22.6 Relation `Type` values observed
+
+Eight across the three captures: `link`, `connection`, `containment`, `composition`, `usage`,
+`dependency`, `attachment`, `realization`. **Recorded, not enforced** — unlike field types, where
+the closure over exactly 8 is a probe-verified invariant worth failing a parse on. An unseen ninth
+relation type must not break an otherwise fine document.
+
 ## Open items for the next probe round
 
 1. ~~Map `SiteVersion 20.0 (20.00.0.143)` → marketing version~~ **DONE: ALM 26.1** (probe 3).

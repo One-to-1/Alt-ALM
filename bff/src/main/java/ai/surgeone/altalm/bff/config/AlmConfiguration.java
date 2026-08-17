@@ -122,7 +122,11 @@ public class AlmConfiguration {
     /** Project-scoped by construction: the cache is keyed to the credentials' domain/project. */
     @Bean
     public AlmMetadataCache almMetadataCache(AlmCredentials creds, AlmMetadataClient client) {
-        return new AlmMetadataCache(creds.domain(), creds.project(), client::fetchFields);
+        return new AlmMetadataCache(creds.domain(), creds.project(),
+                client::fetchFields,
+                entity -> client.fetchRelations(
+                        new ai.surgeone.altalm.bff.alm.read.AlmProjectRef(
+                                creds.domain(), creds.project()), entity));
     }
 
     /**

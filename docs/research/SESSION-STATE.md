@@ -578,7 +578,23 @@ not wired to anything.
    are not a fixed list; they are that project's **memo fields, one per tab**. Alt-ALM currently
    stacks them all under a single "Description" tab. Metadata-driven, labels from the project, empty
    ones shown-but-marked. Still plain text — real rich-text rendering stays P5.
-0c. **The entity detail tab strip** — added to P1 scope 2026-08-17 (user request). ALM's left rail
+0c. 🟡 **The entity detail tab strip — BFF half BUILT 2026-08-17, no UI yet.** `AlmRelation`,
+   `AlmRelationParser` (offline, fixture-tested) and `AlmRelationSelector` are in, wired through
+   `AlmMetadataClient.fetchRelations` → `AlmMetadataCache.relations` → `AlmMetadataCatalog`.
+   **183 tests green.** Probe 22 captured the fixtures and corrected three things worth not
+   re-deriving:
+   - ⚠️ **Not every relation has a `Label`** — 5 of defect's 17 have none, and all 5 are
+     field-backed references. This corrects probe 21.6, which measured `requirement` only.
+   - ⚠️ **`TargetEntity` is not the collection to read.** An `AssociationStorage` names its own
+     join entity: `requirementToDefectConnection` targets `defect` but its rows are in `defect-link`.
+   - ⚠️ **`defect-link` and `assets-relation` are polymorphic** — 9 of defect's relations read
+     `defect-link` to 9 different far ends. Group tabs by the **pair** (far end, entity read); the
+     obvious "group by what gets read" rule shows linked runs under "Linked to Defects".
+   **The reduction over-shows and cannot do better**: requirement gives 8 tabs where ALM shows 5,
+   and the rule that would merge the 3 duplicates is the rule that re-breaks defect. Chosen error
+   direction, documented on the class. **Still to do: the `/api/tabs` endpoint, the per-tab reads,
+   and the SPA rendering.**
+   Original scope note, still accurate — ALM's left rail
    inside Requirement Details: Details · Rich Text · Attachments · Linked Defects · Requirement
    Traceability · Test Coverage · Risk Analysis · Business Models Linkage · History. **Enumerate
    from `customization/entities/{e}/relations/`, never hardcode** — probe 21.6 proved the `Label`

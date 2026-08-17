@@ -1,0 +1,1039 @@
+{
+  "Relation": [
+    {
+      "Label": "Test to BP Components it uses",
+      "Name": "bpComponentToTestConnection_mirrored",
+      "SourceEntity": "test",
+      "TargetEntity": "bp-component",
+      "StorageDescriptor": {
+        "customizationStorageDescriptor": {
+          "ReferenceStorage": {
+            "ReferenceIdColumn": "parent-id",
+            "ReferenceLocation": "IN_TARGET_ENTITY",
+            "ReferenceTypeColumn": "parent-type"
+          }
+        }
+      },
+      "Type": "connection",
+      "TargetAliases": [
+        {
+          "Name": "connected-to-bp-component",
+          "Unique": true
+        },
+        {
+          "Name": "bp-component",
+          "Unique": false
+        }
+      ],
+      "Features": [
+        {
+          "Name": "UI_HIERARCHY",
+          "Propagated": false
+        },
+        {
+          "Name": "UI_LINKED_ENTITIES",
+          "Propagated": false
+        }
+      ]
+    },
+    {
+      "Label": "Test to Design Steps called by Test",
+      "Name": "designStepToTestUsage_mirrored",
+      "SourceEntity": "test",
+      "TargetEntity": "design-step",
+      "StorageDescriptor": {
+        "customizationStorageDescriptor": {
+          "ReferenceStorage": {
+            "ReferenceIdColumn": "link-test",
+            "ReferenceLocation": "IN_TARGET_ENTITY",
+            "ReferenceTypeColumn": null
+          }
+        }
+      },
+      "Type": "usage",
+      "TargetAliases": [
+        {
+          "Name": "design-step",
+          "Unique": false
+        },
+        {
+          "Name": "uses-design-step",
+          "Unique": true
+        }
+      ],
+      "Features": [
+        {
+          "Name": "UI_LINKED_ENTITIES",
+          "Propagated": false
+        },
+        {
+          "Name": "UI_HIERARCHY",
+          "Propagated": false
+        }
+      ]
+    },
+    {
+      "Label": "Requirement Coverage",
+      "Name": "requirementCoverageToTestDependency_mirrored",
+      "SourceEntity": "test",
+      "TargetEntity": "requirement-coverage",
+      "StorageDescriptor": {
+        "customizationStorageDescriptor": {
+          "ReferenceStorage": {
+            "ReferenceIdColumn": "test-id",
+            "ReferenceLocation": "IN_TARGET_ENTITY",
+            "ReferenceTypeColumn": "entity-type"
+          }
+        }
+      },
+      "Type": "dependency",
+      "TargetAliases": [
+        {
+          "Name": "depends-on-requirement-coverage",
+          "Unique": true
+        },
+        {
+          "Name": "requirement-coverage",
+          "Unique": true
+        }
+      ],
+      "Features": [
+        {
+          "Name": "UI_LINKED_ENTITIES",
+          "Propagated": false
+        },
+        {
+          "Name": "UI_HIERARCHY",
+          "Propagated": false
+        }
+      ]
+    },
+    {
+      "Label": "Test to covered Requirements",
+      "Name": "requirementToTestConnection_mirrored",
+      "SourceEntity": "test",
+      "TargetEntity": "requirement",
+      "StorageDescriptor": {
+        "customizationStorageDescriptor": {
+          "AssociationStorage": {
+            "AssociationEntity": "requirement-coverage",
+            "AssociationSourceIdColumn": "test-id",
+            "AssociationSourceTypeColumn": "entity-type",
+            "AssociationTargetIdColumn": "requirement-id",
+            "AssociationTargetTypeColumn": null
+          }
+        }
+      },
+      "Type": "connection",
+      "TargetAliases": [
+        {
+          "Name": "requirement",
+          "Unique": true
+        },
+        {
+          "Name": "connected-to-requirement",
+          "Unique": true
+        }
+      ],
+      "Features": [
+        {
+          "Name": "UI_LINKED_ENTITIES",
+          "Propagated": true
+        },
+        {
+          "Name": "UI_HIERARCHY",
+          "Propagated": false
+        }
+      ],
+      "AggregatedRelations": [
+        "requirementCoverageToTestDependency",
+        "requirementCoverageToRequirementLink"
+      ]
+    },
+    {
+      "Label": "Run",
+      "Name": "runToTestUsage_mirrored",
+      "SourceEntity": "test",
+      "TargetEntity": "run",
+      "StorageDescriptor": {
+        "customizationStorageDescriptor": {
+          "ReferenceStorage": {
+            "ReferenceIdColumn": "test-id",
+            "ReferenceLocation": "IN_TARGET_ENTITY",
+            "ReferenceTypeColumn": null
+          }
+        }
+      },
+      "Type": "usage",
+      "TargetAliases": [
+        {
+          "Name": "uses-run",
+          "Unique": true
+        },
+        {
+          "Name": "run",
+          "Unique": true
+        }
+      ],
+      "Features": [
+        {
+          "Name": "UI_LINKED_ENTITIES",
+          "Propagated": false
+        },
+        {
+          "Name": "UI_HIERARCHY",
+          "Propagated": false
+        }
+      ]
+    },
+    {
+      "Label": "Test to containing folder",
+      "Name": "testFolderToTestContainment_mirrored",
+      "SourceEntity": "test",
+      "TargetEntity": "test-folder",
+      "StorageDescriptor": {
+        "customizationStorageDescriptor": {
+          "ReferenceStorage": {
+            "ReferenceIdColumn": "parent-id",
+            "ReferenceLocation": "IN_SOURCE_ENTITY",
+            "ReferenceTypeColumn": null
+          }
+        }
+      },
+      "Type": "containment",
+      "TargetAliases": [
+        {
+          "Name": "contains-test-folder",
+          "Unique": true
+        },
+        {
+          "Name": "test-folder",
+          "Unique": true
+        }
+      ],
+      "Features": [
+        {
+          "Name": "UI_HIERARCHY",
+          "Propagated": false
+        },
+        {
+          "Name": "UI_LINKED_ENTITIES",
+          "Propagated": false
+        }
+      ]
+    },
+    {
+      "Label": "Owner (Test) to Asset Relations",
+      "Name": "testToAssetsRelationLinkLeft",
+      "SourceEntity": "test",
+      "TargetEntity": "assets-relation",
+      "StorageDescriptor": {
+        "customizationStorageDescriptor": {
+          "ReferenceStorage": {
+            "ReferenceIdColumn": "from-endpoint-id",
+            "ReferenceLocation": "IN_TARGET_ENTITY",
+            "ReferenceTypeColumn": "from-endpoint-type"
+          }
+        }
+      },
+      "Type": "link",
+      "TargetAliases": [
+        {
+          "Name": "assets-relation",
+          "Unique": false
+        },
+        {
+          "Name": "to-test-to-asset-relation-link-left",
+          "Unique": true
+        },
+        {
+          "Name": "is-linked-by-assets-relation",
+          "Unique": false
+        }
+      ],
+      "Features": [
+        {
+          "Name": "UI_HIERARCHY",
+          "Propagated": false
+        },
+        {
+          "Name": "UI_LINKED_ENTITIES",
+          "Propagated": false
+        }
+      ]
+    },
+    {
+      "Label": "Related Test to Asset Relations",
+      "Name": "testToAssetsRelationLinkRight",
+      "SourceEntity": "test",
+      "TargetEntity": "assets-relation",
+      "StorageDescriptor": {
+        "customizationStorageDescriptor": {
+          "ReferenceStorage": {
+            "ReferenceIdColumn": "to-endpoint-id",
+            "ReferenceLocation": "IN_TARGET_ENTITY",
+            "ReferenceTypeColumn": "to-endpoint-type"
+          }
+        }
+      },
+      "Type": "link",
+      "TargetAliases": [
+        {
+          "Name": "assets-relation",
+          "Unique": false
+        },
+        {
+          "Name": "is-linked-by-assets-relation",
+          "Unique": false
+        },
+        {
+          "Name": "to-linked-to-asset-relation-link-right",
+          "Unique": true
+        }
+      ],
+      "Features": [
+        {
+          "Name": "UI_HIERARCHY",
+          "Propagated": false
+        },
+        {
+          "Name": "UI_LINKED_ENTITIES",
+          "Propagated": false
+        }
+      ]
+    },
+    {
+      "Label": "Test Attachments",
+      "Name": "testToAttachmentAttachment",
+      "SourceEntity": "test",
+      "TargetEntity": "attachment",
+      "StorageDescriptor": {
+        "customizationStorageDescriptor": {
+          "ReferenceStorage": {
+            "ReferenceIdColumn": "parent-id",
+            "ReferenceLocation": "IN_TARGET_ENTITY",
+            "ReferenceTypeColumn": "parent-type"
+          }
+        }
+      },
+      "Type": "attachment",
+      "TargetAliases": [
+        {
+          "Name": "attachment",
+          "Unique": true
+        },
+        {
+          "Name": "attached-to-attachment",
+          "Unique": true
+        }
+      ],
+      "Features": [
+        {
+          "Name": "UI_LINKED_ENTITIES",
+          "Propagated": false
+        },
+        {
+          "Name": "UI_HIERARCHY",
+          "Propagated": false
+        }
+      ]
+    },
+    {
+      "Label": "Component Instances",
+      "Name": "testToBPComponentComposition",
+      "SourceEntity": "test",
+      "TargetEntity": "bp-component",
+      "StorageDescriptor": {
+        "customizationStorageDescriptor": {
+          "ReferenceStorage": {
+            "ReferenceIdColumn": "bpt-id",
+            "ReferenceLocation": "IN_TARGET_ENTITY",
+            "ReferenceTypeColumn": null
+          }
+        }
+      },
+      "Type": "composition",
+      "TargetAliases": [
+        {
+          "Name": "part-of-bp-component",
+          "Unique": true
+        },
+        {
+          "Name": "bp-component",
+          "Unique": false
+        }
+      ],
+      "Features": [
+        {
+          "Name": "UI_HIERARCHY",
+          "Propagated": false
+        },
+        {
+          "Name": "UI_LINKED_ENTITIES",
+          "Propagated": false
+        }
+      ]
+    },
+    {
+      "Label": "Components",
+      "Name": "testToComponentComposition",
+      "SourceEntity": "test",
+      "TargetEntity": "component",
+      "StorageDescriptor": {
+        "customizationStorageDescriptor": {
+          "ReferenceStorage": {
+            "ReferenceIdColumn": "bpta-flow-test-id",
+            "ReferenceLocation": "IN_TARGET_ENTITY",
+            "ReferenceTypeColumn": null
+          }
+        }
+      },
+      "Type": "composition",
+      "TargetAliases": [
+        {
+          "Name": "component",
+          "Unique": false
+        },
+        {
+          "Name": "part-of-component",
+          "Unique": true
+        }
+      ],
+      "Features": [
+        {
+          "Name": "UI_LINKED_ENTITIES",
+          "Propagated": false
+        },
+        {
+          "Name": "UI_HIERARCHY",
+          "Propagated": false
+        }
+      ]
+    },
+    {
+      "Label": "Test to Components it uses",
+      "Name": "testToComponentUsage",
+      "SourceEntity": "test",
+      "TargetEntity": "component",
+      "StorageDescriptor": {
+        "customizationStorageDescriptor": {
+          "AssociationStorage": {
+            "AssociationEntity": "assets-relation",
+            "AssociationSourceIdColumn": "from-endpoint-id",
+            "AssociationSourceTypeColumn": "from-endpoint-type",
+            "AssociationTargetIdColumn": "to-endpoint-id",
+            "AssociationTargetTypeColumn": "to-endpoint-type"
+          }
+        }
+      },
+      "Type": "usage",
+      "TargetAliases": [
+        {
+          "Name": "used-by-component",
+          "Unique": true
+        },
+        {
+          "Name": "component",
+          "Unique": false
+        }
+      ],
+      "Features": [
+        {
+          "Name": "UI_LINKED_ENTITIES",
+          "Propagated": false
+        },
+        {
+          "Name": "UI_HIERARCHY",
+          "Propagated": false
+        }
+      ],
+      "AggregatedRelations": [
+        "testToAssetsRelationLinkLeft",
+        "componentToAssetsRelationLink"
+      ]
+    },
+    {
+      "Label": "Linked Defects",
+      "Name": "testToDefectConnection",
+      "SourceEntity": "test",
+      "TargetEntity": "defect",
+      "StorageDescriptor": {
+        "customizationStorageDescriptor": {
+          "AssociationStorage": {
+            "AssociationEntity": "defect-link",
+            "AssociationSourceIdColumn": "second-endpoint-id",
+            "AssociationSourceTypeColumn": "second-endpoint-type",
+            "AssociationTargetIdColumn": "first-endpoint-id",
+            "AssociationTargetTypeColumn": null
+          }
+        }
+      },
+      "Type": "connection",
+      "TargetAliases": [
+        {
+          "Name": "connected-to-defect",
+          "Unique": true
+        },
+        {
+          "Name": "defect",
+          "Unique": true
+        }
+      ],
+      "Features": [
+        {
+          "Name": "UI_LINKED_ENTITIES",
+          "Propagated": true
+        },
+        {
+          "Name": "UI_HIERARCHY",
+          "Propagated": false
+        }
+      ],
+      "AggregatedRelations": [
+        "testToDefectLinkLink",
+        "defectToDefectLinkLink"
+      ]
+    },
+    {
+      "Label": "Entity (Test) to Defect Links",
+      "Name": "testToDefectLinkLink",
+      "SourceEntity": "test",
+      "TargetEntity": "defect-link",
+      "StorageDescriptor": {
+        "customizationStorageDescriptor": {
+          "ReferenceStorage": {
+            "ReferenceIdColumn": "second-endpoint-id",
+            "ReferenceLocation": "IN_TARGET_ENTITY",
+            "ReferenceTypeColumn": "second-endpoint-type"
+          }
+        }
+      },
+      "Type": "link",
+      "TargetAliases": [
+        {
+          "Name": "is-linked-by-defect-link",
+          "Unique": true
+        },
+        {
+          "Name": "defect-link",
+          "Unique": true
+        }
+      ],
+      "Features": [
+        {
+          "Name": "UI_LINKED_ENTITIES",
+          "Propagated": false
+        },
+        {
+          "Name": "UI_HIERARCHY",
+          "Propagated": false
+        }
+      ]
+    },
+    {
+      "Label": "Test to Deleted Asset Info used by Test",
+      "Name": "testToDeletedAssetInfoUsage",
+      "SourceEntity": "test",
+      "TargetEntity": "deleted-asset-info",
+      "StorageDescriptor": {
+        "customizationStorageDescriptor": {
+          "AssociationStorage": {
+            "AssociationEntity": "assets-relation",
+            "AssociationSourceIdColumn": "from-endpoint-id",
+            "AssociationSourceTypeColumn": "from-endpoint-type",
+            "AssociationTargetIdColumn": "to-endpoint-id",
+            "AssociationTargetTypeColumn": "to-endpoint-type"
+          }
+        }
+      },
+      "Type": "usage",
+      "TargetAliases": [
+        {
+          "Name": "deleted-asset-info",
+          "Unique": true
+        },
+        {
+          "Name": "used-by-deleted-asset-info",
+          "Unique": true
+        }
+      ],
+      "Features": [
+        {
+          "Name": "UI_HIERARCHY",
+          "Propagated": false
+        },
+        {
+          "Name": "UI_LINKED_ENTITIES",
+          "Propagated": false
+        }
+      ],
+      "AggregatedRelations": [
+        "testToAssetsRelationLinkLeft",
+        "deletedAssetInfoToAssetsRelationLink"
+      ]
+    },
+    {
+      "Label": "Design Steps",
+      "Name": "testToDesignStepComposition",
+      "SourceEntity": "test",
+      "TargetEntity": "design-step",
+      "StorageDescriptor": {
+        "customizationStorageDescriptor": {
+          "ReferenceStorage": {
+            "ReferenceIdColumn": "parent-id",
+            "ReferenceLocation": "IN_TARGET_ENTITY",
+            "ReferenceTypeColumn": null
+          }
+        }
+      },
+      "Type": "composition",
+      "TargetAliases": [
+        {
+          "Name": "part-of-design-step",
+          "Unique": true
+        },
+        {
+          "Name": "design-step",
+          "Unique": false
+        }
+      ],
+      "Features": [
+        {
+          "Name": "UI_HIERARCHY",
+          "Propagated": false
+        },
+        {
+          "Name": "UI_LINKED_ENTITIES",
+          "Propagated": false
+        }
+      ]
+    },
+    {
+      "Label": "Test Parameters",
+      "Name": "testToParameterComposition",
+      "SourceEntity": "test",
+      "TargetEntity": "test-parameter",
+      "StorageDescriptor": {
+        "customizationStorageDescriptor": {
+          "ReferenceStorage": {
+            "ReferenceIdColumn": "parent-id",
+            "ReferenceLocation": "IN_TARGET_ENTITY",
+            "ReferenceTypeColumn": null
+          }
+        }
+      },
+      "Type": "composition",
+      "TargetAliases": [
+        {
+          "Name": "test-parameter",
+          "Unique": true
+        },
+        {
+          "Name": "part-of-test-parameter",
+          "Unique": true
+        }
+      ],
+      "Features": [
+        {
+          "Name": "UI_HIERARCHY",
+          "Propagated": false
+        },
+        {
+          "Name": "UI_LINKED_ENTITIES",
+          "Propagated": false
+        }
+      ]
+    },
+    {
+      "Label": "Test to Resources it uses",
+      "Name": "testToResourceUsage",
+      "SourceEntity": "test",
+      "TargetEntity": "resource",
+      "StorageDescriptor": {
+        "customizationStorageDescriptor": {
+          "AssociationStorage": {
+            "AssociationEntity": "assets-relation",
+            "AssociationSourceIdColumn": "from-endpoint-id",
+            "AssociationSourceTypeColumn": "from-endpoint-type",
+            "AssociationTargetIdColumn": "to-endpoint-id",
+            "AssociationTargetTypeColumn": "to-endpoint-type"
+          }
+        }
+      },
+      "Type": "usage",
+      "TargetAliases": [
+        {
+          "Name": "resource",
+          "Unique": true
+        },
+        {
+          "Name": "used-by-resource",
+          "Unique": true
+        }
+      ],
+      "Features": [
+        {
+          "Name": "UI_HIERARCHY",
+          "Propagated": false
+        },
+        {
+          "Name": "UI_LINKED_ENTITIES",
+          "Propagated": false
+        }
+      ],
+      "AggregatedRelations": [
+        "testToAssetsRelationLinkLeft",
+        "resourceToAssetsRelationLink"
+      ]
+    },
+    {
+      "Label": "Test Configurations",
+      "Name": "testToTestConfigComposition",
+      "SourceEntity": "test",
+      "TargetEntity": "test-config",
+      "StorageDescriptor": {
+        "customizationStorageDescriptor": {
+          "ReferenceStorage": {
+            "ReferenceIdColumn": "parent-id",
+            "ReferenceLocation": "IN_TARGET_ENTITY",
+            "ReferenceTypeColumn": null
+          }
+        }
+      },
+      "Type": "composition",
+      "TargetAliases": [
+        {
+          "Name": "part-of-test-config",
+          "Unique": true
+        },
+        {
+          "Name": "test-config",
+          "Unique": true
+        }
+      ],
+      "Features": [
+        {
+          "Name": "UI_LINKED_ENTITIES",
+          "Propagated": false
+        },
+        {
+          "Name": "UI_HIERARCHY",
+          "Propagated": false
+        }
+      ]
+    },
+    {
+      "Label": "Test Criterions",
+      "Name": "testToTestCriterionComposition",
+      "SourceEntity": "test",
+      "TargetEntity": "test-criterion",
+      "StorageDescriptor": {
+        "customizationStorageDescriptor": {
+          "ReferenceStorage": {
+            "ReferenceIdColumn": "parent-id",
+            "ReferenceLocation": "IN_TARGET_ENTITY",
+            "ReferenceTypeColumn": null
+          }
+        }
+      },
+      "Type": "composition",
+      "TargetAliases": [
+        {
+          "Name": "test-criterion",
+          "Unique": true
+        },
+        {
+          "Name": "part-of-test-criterion",
+          "Unique": true
+        }
+      ],
+      "Features": [
+        {
+          "Name": "UI_HIERARCHY",
+          "Propagated": false
+        },
+        {
+          "Name": "UI_LINKED_ENTITIES",
+          "Propagated": false
+        }
+      ]
+    },
+    {
+      "Label": "Test Instances",
+      "Name": "testToTestInstanceRelization",
+      "SourceEntity": "test",
+      "TargetEntity": "test-instance",
+      "StorageDescriptor": {
+        "customizationStorageDescriptor": {
+          "ReferenceStorage": {
+            "ReferenceIdColumn": "test-id",
+            "ReferenceLocation": "IN_TARGET_ENTITY",
+            "ReferenceTypeColumn": null
+          }
+        }
+      },
+      "Type": "realization",
+      "TargetAliases": [
+        {
+          "Name": "test-instance",
+          "Unique": true
+        },
+        {
+          "Name": "realizes-test-instance",
+          "Unique": true
+        }
+      ],
+      "Features": [
+        {
+          "Name": "UI_HIERARCHY",
+          "Propagated": false
+        },
+        {
+          "Name": "UI_LINKED_ENTITIES",
+          "Propagated": false
+        }
+      ]
+    },
+    {
+      "Label": "Test to Tests it calls",
+      "Name": "testToTestUsage",
+      "SourceEntity": "test",
+      "TargetEntity": "test",
+      "StorageDescriptor": {
+        "customizationStorageDescriptor": {
+          "AssociationStorage": {
+            "AssociationEntity": "assets-relation",
+            "AssociationSourceIdColumn": "from-endpoint-id",
+            "AssociationSourceTypeColumn": "from-endpoint-type",
+            "AssociationTargetIdColumn": "to-endpoint-id",
+            "AssociationTargetTypeColumn": "to-endpoint-type"
+          }
+        }
+      },
+      "Type": "usage",
+      "TargetAliases": [
+        {
+          "Name": "used-by-test",
+          "Unique": true
+        },
+        {
+          "Name": "test",
+          "Unique": false
+        }
+      ],
+      "Features": [
+        {
+          "Name": "UI_HIERARCHY",
+          "Propagated": false
+        },
+        {
+          "Name": "UI_LINKED_ENTITIES",
+          "Propagated": false
+        }
+      ],
+      "AggregatedRelations": [
+        "testToAssetsRelationLinkLeft",
+        "testToAssetsRelationLinkRight"
+      ]
+    },
+    {
+      "Label": "Test to Tests that call it",
+      "Name": "testToTestUsage_mirrored",
+      "SourceEntity": "test",
+      "TargetEntity": "test",
+      "StorageDescriptor": {
+        "customizationStorageDescriptor": {
+          "AssociationStorage": {
+            "AssociationEntity": "assets-relation",
+            "AssociationSourceIdColumn": "to-endpoint-id",
+            "AssociationSourceTypeColumn": "to-endpoint-type",
+            "AssociationTargetIdColumn": "from-endpoint-id",
+            "AssociationTargetTypeColumn": "from-endpoint-type"
+          }
+        }
+      },
+      "Type": "usage",
+      "TargetAliases": [
+        {
+          "Name": "uses-test",
+          "Unique": true
+        },
+        {
+          "Name": "test",
+          "Unique": false
+        }
+      ],
+      "Features": [
+        {
+          "Name": "UI_LINKED_ENTITIES",
+          "Propagated": false
+        },
+        {
+          "Name": "UI_HIERARCHY",
+          "Propagated": false
+        }
+      ],
+      "AggregatedRelations": [
+        "testToAssetsRelationLinkRight",
+        "testToAssetsRelationLinkLeft"
+      ]
+    },
+    {
+      "Label": "Test to User Assets",
+      "Name": "testToUserAssetComposition",
+      "SourceEntity": "test",
+      "TargetEntity": "user-asset",
+      "StorageDescriptor": {
+        "customizationStorageDescriptor": {
+          "ReferenceStorage": {
+            "ReferenceIdColumn": "parent-id",
+            "ReferenceLocation": "IN_TARGET_ENTITY",
+            "ReferenceTypeColumn": "parent-type"
+          }
+        }
+      },
+      "Type": "composition",
+      "TargetAliases": [
+        {
+          "Name": "part-of-user-asset",
+          "Unique": true
+        },
+        {
+          "Name": "user-asset",
+          "Unique": false
+        }
+      ],
+      "Features": [
+        {
+          "Name": "UI_HIERARCHY",
+          "Propagated": false
+        },
+        {
+          "Name": "UI_LINKED_ENTITIES",
+          "Propagated": false
+        }
+      ]
+    },
+    {
+      "Label": "Test to User Assets used by the Test",
+      "Name": "testToUserAssetUsage",
+      "SourceEntity": "test",
+      "TargetEntity": "user-asset",
+      "StorageDescriptor": {
+        "customizationStorageDescriptor": {
+          "AssociationStorage": {
+            "AssociationEntity": "assets-relation",
+            "AssociationSourceIdColumn": "from-endpoint-id",
+            "AssociationSourceTypeColumn": "from-endpoint-type",
+            "AssociationTargetIdColumn": "to-endpoint-id",
+            "AssociationTargetTypeColumn": "to-endpoint-type"
+          }
+        }
+      },
+      "Type": "usage",
+      "TargetAliases": [
+        {
+          "Name": "used-by-user-asset",
+          "Unique": true
+        },
+        {
+          "Name": "user-asset",
+          "Unique": false
+        }
+      ],
+      "Features": [
+        {
+          "Name": "UI_LINKED_ENTITIES",
+          "Propagated": false
+        },
+        {
+          "Name": "UI_HIERARCHY",
+          "Propagated": false
+        }
+      ],
+      "AggregatedRelations": [
+        "testToAssetsRelationLinkLeft",
+        "userAssetToAssetsRelationLink"
+      ]
+    },
+    {
+      "Label": "Test to Repository Items",
+      "Name": "testToUserRepositoryItemComposition",
+      "SourceEntity": "test",
+      "TargetEntity": "repository-item",
+      "StorageDescriptor": {
+        "customizationStorageDescriptor": {
+          "ReferenceStorage": {
+            "ReferenceIdColumn": "parent-id",
+            "ReferenceLocation": "IN_TARGET_ENTITY",
+            "ReferenceTypeColumn": "parent-type"
+          }
+        }
+      },
+      "Type": "composition",
+      "TargetAliases": [
+        {
+          "Name": "repository-item",
+          "Unique": true
+        },
+        {
+          "Name": "part-of-repository-item",
+          "Unique": true
+        }
+      ],
+      "Features": [
+        {
+          "Name": "UI_HIERARCHY",
+          "Propagated": false
+        },
+        {
+          "Name": "UI_LINKED_ENTITIES",
+          "Propagated": false
+        }
+      ]
+    },
+    {
+      "Label": "Test to User Assets that use it",
+      "Name": "userAssetToTestUsage_mirrored",
+      "SourceEntity": "test",
+      "TargetEntity": "user-asset",
+      "StorageDescriptor": {
+        "customizationStorageDescriptor": {
+          "AssociationStorage": {
+            "AssociationEntity": "assets-relation",
+            "AssociationSourceIdColumn": "to-endpoint-id",
+            "AssociationSourceTypeColumn": "to-endpoint-type",
+            "AssociationTargetIdColumn": "from-endpoint-id",
+            "AssociationTargetTypeColumn": "from-endpoint-type"
+          }
+        }
+      },
+      "Type": "usage",
+      "TargetAliases": [
+        {
+          "Name": "user-asset",
+          "Unique": false
+        },
+        {
+          "Name": "uses-user-asset",
+          "Unique": true
+        }
+      ],
+      "Features": [
+        {
+          "Name": "UI_HIERARCHY",
+          "Propagated": false
+        },
+        {
+          "Name": "UI_LINKED_ENTITIES",
+          "Propagated": false
+        }
+      ],
+      "AggregatedRelations": [
+        "testToAssetsRelationLinkRight",
+        "alternativeUserAssetToAssetsRelationLink"
+      ]
+    }
+  ],
+  "TotalResults": 27
+}

@@ -39,6 +39,16 @@ public final class AlmMetadataCatalog {
     }
 
     /**
+     * Relations for one entity in one project — the candidate set for the detail pane's tab strip.
+     *
+     * <p>Project-scoped for the same reason fields are: the relation set differs per project, and
+     * one project's tabs over another's records would be wrong in a way that still renders.
+     */
+    public List<AlmRelation> relations(AlmProjectRef project, String entity) {
+        return cacheFor(project).relations(entity);
+    }
+
+    /**
      * The cache for one project, created on first use.
      *
      * <p>Access-checked here rather than only at the read client, because "which fields exist"
@@ -47,7 +57,9 @@ public final class AlmMetadataCatalog {
     public AlmMetadataCache cacheFor(AlmProjectRef project) {
         policy.checkRead(project);
         return caches.computeIfAbsent(project, p ->
-                new AlmMetadataCache(p.domain(), p.project(), entity -> client.fetchFields(p, entity)));
+                new AlmMetadataCache(p.domain(), p.project(),
+                        entity -> client.fetchFields(p, entity),
+                        entity -> client.fetchRelations(p, entity)));
     }
 
     /** Drops one project's cached metadata — the operator's "refresh metadata" lever (ADR 0005). */

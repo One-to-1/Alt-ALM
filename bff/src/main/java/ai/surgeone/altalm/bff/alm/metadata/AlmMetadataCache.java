@@ -41,21 +41,51 @@ public final class AlmMetadataCache {
 
     private final Map<Key, CompletableFuture<List<FieldDescriptor>>> entries =
             new ConcurrentHashMap<>();
+    /**
+     * Relations live in their own map rather than a second cache object, so that one
+     * {@link #invalidateAll} is still the whole "refresh this project's customization" lever. Two
+     * caches would mean two levers, and an operator who pulled one would get a form built from fresh
+     * fields and stale tabs.
+     */
+    private final Map<Key, CompletableFuture<List<AlmRelation>>> relationEntries =
+            new ConcurrentHashMap<>();
     private final Function<String, List<FieldDescriptor>> loader;
+    private final Function<String, List<AlmRelation>> relationLoader;
     private final String domain;
     private final String project;
 
     /**
-     * @param domain  ALM domain these entries belong to
-     * @param project ALM project these entries belong to
-     * @param loader  fetches field descriptors for one entity; normally
-     *                {@code metadataClient::fetchFields}
+     * @param domain          ALM domain these entries belong to
+     * @param project         ALM project these entries belong to
+     * @param loader          fetches field descriptors for one entity; normally
+     *                        {@code metadataClient::fetchFields}
+     * @param relationLoader  fetches relations for one entity; normally
+     *                        {@code metadataClient::fetchRelations}
      */
     public AlmMetadataCache(String domain, String project,
-                            Function<String, List<FieldDescriptor>> loader) {
+                            Function<String, List<FieldDescriptor>> loader,
+                            Function<String, List<AlmRelation>> relationLoader) {
         this.domain = domain;
         this.project = project;
         this.loader = loader;
+        this.relationLoader = relationLoader;
+    }
+
+    /**
+     * Fields-only cache, for callers that never ask for relations.
+     *
+     * <p>{@link #relations} on such a cache <strong>throws</strong> rather than returning an empty
+     * list. An empty list would render as "this record has no related entities" — a claim that is
+     * never true and that nobody would think to question.
+     */
+    public AlmMetadataCache(String domain, String project,
+                            Function<String, List<FieldDescriptor>> loader) {
+        this(domain, project, loader, entity -> {
+            throw new UnsupportedOperationException(
+                    "this AlmMetadataCache was built without a relation loader, so it cannot answer "
+                            + "relations for '" + entity + "'; construct it with the four-argument "
+                            + "form (normally AlmMetadataClient::fetchRelations)");
+        });
     }
 
     /**
@@ -65,43 +95,34 @@ public final class AlmMetadataCache {
      *                          which would read as "this entity has no fields"
      */
     public List<FieldDescriptor> fields(String entity) {
-        Key key = new Key(domain, project, entity);
-
-        CompletableFuture<List<FieldDescriptor>> existing = entries.get(key);
-        if (existing != null) {
-            return join(existing);
-        }
-        // Publish an incomplete future first, then load. Whoever wins putIfAbsent does the fetch;
-        // everyone else blocks on the same result instead of firing a duplicate request.
-        CompletableFuture<List<FieldDescriptor>> mine = new CompletableFuture<>();
-        CompletableFuture<List<FieldDescriptor>> raced = entries.putIfAbsent(key, mine);
-        if (raced != null) {
-            return join(raced);
-        }
-        try {
-            List<FieldDescriptor> loaded = loader.apply(entity);
-            mine.complete(loaded);
-            return loaded;
-        } catch (RuntimeException | Error e) {
-            // Remove before completing: a waiter that wakes on the exception must not find the failed
-            // entry still installed and conclude the cache is poisoned.
-            entries.remove(key, mine);
-            mine.completeExceptionally(e);
-            throw e;
-        }
+        return load(entries, new Key(domain, project, entity), () -> loader.apply(entity));
     }
 
-    /** Drops one entity's entry. Next read re-fetches. */
+    /**
+     * Returns this entity's relations, fetching them once if absent.
+     *
+     * @throws RuntimeException whatever the loader threw — an empty list would read as "this entity
+     *                          has no related records", which is never true of an ALM entity
+     */
+    public List<AlmRelation> relations(String entity) {
+        return load(relationEntries, new Key(domain, project, entity),
+                () -> relationLoader.apply(entity));
+    }
+
+    /** Drops one entity's entries — both halves, since they describe the same customization. */
     public void invalidate(String entity) {
-        entries.remove(new Key(domain, project, entity));
+        Key key = new Key(domain, project, entity);
+        entries.remove(key);
+        relationEntries.remove(key);
     }
 
     /** The "refresh metadata" action: drops everything for this project. */
     public void invalidateAll() {
         entries.clear();
+        relationEntries.clear();
     }
 
-    /** Entity names currently cached — for the refresh UI and for tests. */
+    /** Entity names with fields currently cached — for the refresh UI and for tests. */
     public Set<String> cachedEntities() {
         return entries.keySet().stream().map(Key::entity).collect(Collectors.toUnmodifiableSet());
     }
@@ -110,8 +131,38 @@ public final class AlmMetadataCache {
         return entries.size();
     }
 
+    /**
+     * Single-flight load, written once and shared by both maps.
+     *
+     * <p>Publishes an incomplete future first, then loads. Whoever wins {@code putIfAbsent} does the
+     * fetch; everyone else blocks on the same result instead of firing a duplicate request.
+     */
+    private static <T> T load(Map<Key, CompletableFuture<T>> map, Key key,
+                              java.util.function.Supplier<T> loader) {
+        CompletableFuture<T> existing = map.get(key);
+        if (existing != null) {
+            return join(existing);
+        }
+        CompletableFuture<T> mine = new CompletableFuture<>();
+        CompletableFuture<T> raced = map.putIfAbsent(key, mine);
+        if (raced != null) {
+            return join(raced);
+        }
+        try {
+            T loaded = loader.get();
+            mine.complete(loaded);
+            return loaded;
+        } catch (RuntimeException | Error e) {
+            // Remove before completing: a waiter that wakes on the exception must not find the failed
+            // entry still installed and conclude the cache is poisoned.
+            map.remove(key, mine);
+            mine.completeExceptionally(e);
+            throw e;
+        }
+    }
+
     /** Unwraps the future, rethrowing the loader's own exception rather than a CompletionException. */
-    private static List<FieldDescriptor> join(CompletableFuture<List<FieldDescriptor>> f) {
+    private static <T> T join(CompletableFuture<T> f) {
         try {
             return f.join();
         } catch (CompletionException e) {
