@@ -1,4 +1,4 @@
-# Session State — updated 2026-08-18 (**P1 COMPLETE except rich text**; P2 is the write path)
+# Session State — updated 2026-08-18 (**P1 COMPLETE**; P2 is the write path)
 
 Working state, written immediately before a context compact so the continuation loses nothing.
 Original kickoff: [docs/prompts/fable-5-research-and-plan.md](../prompts/fable-5-research-and-plan.md).
@@ -470,8 +470,13 @@ a tree-grid, metadata-driven columns, working detail tabs, a theme toggle and a 
 
 ### Where P1 stands after 2026-08-18 (read this first)
 
-**Every gap on the 2026-08-17 list is now closed except rich-text rendering (0d), which the user
-deferred.** 221 tests green; SPA builds and lints clean; all 35 referenced CSS tokens resolve.
+**Every gap on the 2026-08-17 list is now closed. P1 is feature-complete.** 221 BFF tests plus
+**27 SPA tests** green; SPA builds and lints clean; all 35 referenced CSS tokens resolve.
+
+⚠️ **The SPA now has a test runner** (vitest + jsdom, `npm test` in `spa/`, gated in CI). It was
+added for one reason — the memo sanitiser is a security boundary and shipping one with no tests was
+not defensible — and its suite is a payload suite, not an example suite. If you add SPA tests, that
+is the bar the existing file sets.
 
 Closed today, in order:
 
@@ -513,16 +518,32 @@ grammar keyword and returned **233 rows against a group count of 8**. `AlmQuery`
 containing whitespace, which is what ALM's own group `expression` does. This affected the grid's name
 search too, so any two-word search had been silently matching everything.
 
+**Rich text (0d) closed last, 2026-08-18.** The decision it was gated on, and the reasoning, live
+in `spa/src/detail/richText.ts`; the short version:
+
+- **DOMPurify, in the browser, not in the BFF.** Sanitising server-side was the tempting symmetry
+  with ADR 0001, and it is the weaker answer: a server-side sanitiser parses with a *different* HTML
+  parser than the one that finally renders, and that gap is the mutation-XSS class. Sanitising in
+  the engine that renders removes the gap instead of arguing about its width.
+- ⚠️ **`USE_PROFILES` overrides `ALLOWED_TAGS`, it does not intersect with it.** With
+  `USE_PROFILES: { html: true }` set alongside a deliberately narrow tag list, `<form>` and
+  `<input>` sailed through. Caught only because the tests assert on **output** rather than on
+  configuration — a test written against the config would have passed.
+- **DOMPurify does not sanitise CSS.** Defensible on its part (`expression()` is dead, `url(js:)`
+  does not execute), but `url(https://…)` in a style attribute is a beacon, so declarations are
+  filtered separately.
+- **Probe 27 found ALM strips executable memo markup on write itself** — and that changed nothing,
+  because it is one instance's undocumented behaviour on the REST path only. What ALM does *not*
+  strip is the remote `<img src>`, which is exactly the case the renderer handles.
+
 **Next, in order:**
 
-1. **Rich-text rendering (0d)** — the only P1 gap left open, deferred by the user. Gated on a
-   client-side sanitiser decision, not on effort. Memo bodies are other teams' `<html><body>`
-   documents, so `dangerouslySetInnerHTML` without our own sanitiser is stored-XSS by construction.
-2. **Test Lab's drill-down** — test set → instances → runs. Runs is now a rail module (ALM lists it
+1. **Test Lab's drill-down** — test set → instances → runs. Runs is now a rail module (ALM lists it
    as one); instances remain a link target only, as in ALM.
-3. **The `EntityStatus` question** (open item 12 in the probe log) — `AlmEntityParser`'s failure-row
+2. **The `EntityStatus` question** (open item 12 in the probe log) — `AlmEntityParser`'s failure-row
    handling is still a reasonable construction rather than a probed fact, and the UI now has places
    that would surface it.
+3. **P2 — the write path.** Nothing in P1 is left blocking it.
 4. Then P2: the write path, against the hazards already built and unit-tested but wired to nothing.
 
 **⚠️ The dependency-ordered list that used to sit here is gone because every item on it is done**
@@ -555,7 +576,10 @@ what is actually left.
 
 - **No write path.** Unchanged and still enforced in four places — see the section below, which is
   current.
-- **No rich-text rendering** (gap 0d). Memo tabs exist and show plain text with a banner saying so.
+- **No attachment fetching.** This is the visible edge of rich text: a memo's images are stored in
+  ALM, the browser cannot fetch them (different origin, no session cookie, no proxy), so they render
+  as labelled placeholders and the pane says how many. Inline `data:` images do render.
+- **No memo editing.** Rich text renders; it is not authored here. That is P2.
 - **No Test Lab drill-down.** A test set does not open its instances; instances and runs are
   reachable only by following a link or the Test Runs rail entry.
 - **Only Requirements has been exercised end to end.** Test Plan, Test Lab, Test Runs and Defects

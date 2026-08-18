@@ -71,6 +71,12 @@ jobs:
         working-directory: spa
         run: npm run build
 
+      # The sanitiser is a security boundary and its suite is a payload suite, so it gates the
+      # build like the BFF's does. jsdom only - no browser download.
+      - name: Test
+        working-directory: spa
+        run: npm test
+
   secret-scan:
     name: No credentials committed
     runs-on: ubuntu-latest

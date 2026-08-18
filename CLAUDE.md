@@ -145,15 +145,28 @@ finding in the project surfaced by product code under test rather than a hand-wr
   Cause UNVERIFIED, possibly the same load-balancer intermittency as Q40. P1's grid needs a
   **bounded retry on 5xx reads** — separate from the 5xx-on-*write* verify-by-query rule (**Q46**).
 
-🟢 **P1 is feature-complete except rich text (2026-08-18). 221 tests green.** Grid (metadata-driven
+🟢 **P1 IS FEATURE-COMPLETE (2026-08-18). 221 BFF tests + 27 SPA tests green.** Grid (metadata-driven
 columns, sort, filter, paging, **group-by with real counts**), folder tree, detail pane with a
 **collapsing icon rail** (blue when a tab holds rows), **History/Audit Log**, related-record tabs
 with cross-module navigation, **ALM's module rail** rendering three distinct kinds of "unavailable",
 per-subtype field sets, column picker, Tree|Grid toggle, resizable detail pane.
 
-⚠️ **Rich-text rendering (gap 0d) is the one P1 gap still open** — user-deferred, and gated on a
-client-side sanitiser decision rather than on effort. Memo bodies are other teams' `<html><body>`
-documents.
+✅ **Rich text renders (gap 0d closed 2026-08-18)** — `spa/src/detail/richText.ts`, DOMPurify **in
+the browser, not the BFF**: a server-side sanitiser parses with a different HTML parser than the one
+that renders, and that gap *is* the mutation-XSS class. ⚠️ **`USE_PROFILES` overrides `ALLOWED_TAGS`
+rather than intersecting with it** — it silently let `<form>`/`<input>` through a deliberately narrow
+list, caught only because the tests assert on output, not on configuration. **DOMPurify does not
+sanitise CSS**, so `url(…)` declarations are filtered separately. Remote `<img src>` is replaced with
+a labelled placeholder: Alt-ALM cannot fetch attachments, and rendering one would beacon to a host
+the memo's author chose. **The SPA now has vitest + jsdom** (`npm test`, gated in CI) — added for
+this suite, which is a payload suite.
+
+⚠️ **ALM sanitises memo HTML on write itself** (probe 27, the first write probe since P0): it
+removes `<script>`, `onerror`, `javascript:` hrefs and `url()` in styles, and keeps all ordinary
+formatting. This is **not** a reason to trust memo HTML — one instance, one version, the REST path
+only, and OTA and ALM's own older clients also write memos. It **keeps** remote `<img src>`
+verbatim. Also re-confirmed: a requirement's `parent-id` of `-1` is the root **sentinel, not a row**
+— POSTing a child against it returns `500 Entity with key '-1' does not exist in table 'REQ'`.
 
 ⚠️ **An unquoted multi-word filter value silently returns the whole collection** (probe 26): `NOT` is
 a grammar keyword, so `{status[Not Completed]}` means "status is not Completed" and answers with 233

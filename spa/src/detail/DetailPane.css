@@ -142,6 +142,192 @@
   overflow-wrap: anywhere;
 }
 
+/* ---- rich text ---- */
+
+.detail-memo-bar {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-bottom: 6px;
+}
+
+.detail-memo-notes {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.detail-memo-notes:empty {
+  display: none;
+}
+
+/* Sits at the end of the bar so it does not push the notes around when they appear and vanish. */
+.detail-memo-toggle {
+  flex: 0 0 auto;
+  margin-left: auto;
+  padding: 2px 8px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text-muted);
+  font: 500 var(--text-xs) / 1.6 var(--sans);
+  cursor: pointer;
+}
+
+.detail-memo-toggle:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.detail-memo-toggle:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 1px;
+}
+
+/* The memo renders on paper, in both themes, and that is a deliberate choice rather than a missing
+   dark mode.
+
+   A memo carries its author's own colours inline — black body text, a red warning, a highlighted
+   cell — and those colours were chosen against a white page in ALM's editor. Re-hosting them on a
+   dark surface does not translate them, it breaks them: the black paragraph disappears and the red
+   warning stops reading as a warning. Everything around this block still follows the theme, so the
+   document reads as a document: something written elsewhere, quoted here intact. */
+.detail-memo-rich {
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  background: #ffffff;
+  color: #161a20;
+  font-size: var(--text-base);
+  line-height: 1.55;
+  overflow-x: auto;
+  overflow-wrap: anywhere;
+}
+
+.detail-memo-rich + .detail-memo-rich {
+  margin-top: var(--space-2);
+}
+
+/* ALM's editor emits documents, not fragments: leading and trailing empty paragraphs are normal,
+   and left alone they open the block with a blank line. */
+.detail-memo-rich > :first-child {
+  margin-top: 0;
+}
+
+.detail-memo-rich > :last-child {
+  margin-bottom: 0;
+}
+
+.detail-memo-rich p {
+  margin: 0 0 var(--space-2);
+}
+
+.detail-memo-rich h1,
+.detail-memo-rich h2,
+.detail-memo-rich h3,
+.detail-memo-rich h4,
+.detail-memo-rich h5,
+.detail-memo-rich h6 {
+  margin: var(--space-3) 0 var(--space-2);
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+/* Capped: a memo's <h1> is a heading inside a pane, not a page title, and ALM's editor hands them
+   out freely. */
+.detail-memo-rich h1 { font-size: var(--text-lg); }
+.detail-memo-rich h2 { font-size: var(--text-md); }
+.detail-memo-rich h3,
+.detail-memo-rich h4,
+.detail-memo-rich h5,
+.detail-memo-rich h6 { font-size: var(--text-base); }
+
+.detail-memo-rich ul,
+.detail-memo-rich ol {
+  margin: 0 0 var(--space-2);
+  padding-left: var(--space-5);
+}
+
+.detail-memo-rich li {
+  margin: 2px 0;
+}
+
+.detail-memo-rich blockquote {
+  margin: 0 0 var(--space-2);
+  padding-left: var(--space-3);
+  border-left: 3px solid #dde1e7;
+  color: #4d5765;
+}
+
+.detail-memo-rich pre,
+.detail-memo-rich code {
+  font-family: var(--mono);
+  font-size: var(--text-sm);
+}
+
+.detail-memo-rich pre {
+  margin: 0 0 var(--space-2);
+  padding: var(--space-2);
+  border-radius: var(--radius-sm);
+  background: #f4f6f8;
+  overflow-x: auto;
+  white-space: pre-wrap;
+}
+
+/* A memo table is frequently pasted from a spreadsheet with widths wider than this pane; the block
+   scrolls rather than stretching the detail pane or clipping the last column. */
+.detail-memo-rich table {
+  max-width: 100%;
+  margin: 0 0 var(--space-2);
+  border-collapse: collapse;
+}
+
+.detail-memo-rich th,
+.detail-memo-rich td {
+  padding: 4px 7px;
+  border: 1px solid #c3cad4;
+  text-align: left;
+  vertical-align: top;
+}
+
+.detail-memo-rich th {
+  background: #f4f6f8;
+  font-weight: 600;
+}
+
+.detail-memo-rich a {
+  color: var(--accent);
+  text-decoration: underline;
+}
+
+/* ALM strips the href off a link it considers unsafe but keeps the anchor, so the memo arrives
+   holding something that looks exactly like a link and goes nowhere. Rendering it as ordinary text
+   is the honest version — and the ones ALM strips are precisely the ones nobody should be inviting
+   a click on. */
+.detail-memo-rich a:not([href]) {
+  color: inherit;
+  text-decoration: none;
+}
+
+.detail-memo-rich img {
+  max-width: 100%;
+  height: auto;
+}
+
+/* An image whose bytes live in ALM. The sanitiser dropped its src so nothing is fetched and
+   replaced the element outright, because a src-less <img> still draws the browser's broken-image
+   glyph — and that glyph reads as a bug in Alt-ALM, where this reads as a fact about the record. */
+.detail-memo-rich .memo-image-blocked {
+  display: inline-block;
+  padding: 3px 8px;
+  border: 1px dashed #c3cad4;
+  border-radius: var(--radius-sm);
+  background: #f4f6f8;
+  color: #616b79;
+  font-size: var(--text-xs);
+  font-style: italic;
+}
+
 .detail-note {
   margin: var(--space-3) 0 0;
   color: var(--text-muted);

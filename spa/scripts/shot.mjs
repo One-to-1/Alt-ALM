@@ -131,8 +131,8 @@ for (const theme of themes) {
       // exists to prevent, reintroduced by widening the selector.
       await page
         .waitForSelector(
-          '.related-table, .related-empty, .detail-memo-body, .detail-memo-empty, ' +
-            '.history-list, .history-empty',
+          '.related-table, .related-empty, .detail-memo-rich, .detail-memo-body, ' +
+            '.detail-memo-empty, .history-list, .history-empty',
           { timeout: 15000 },
         )
         .catch(() => console.log(`  (tab "${wantTab}" showed no content within 15s)`))

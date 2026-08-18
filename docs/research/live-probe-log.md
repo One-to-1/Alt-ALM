@@ -1661,6 +1661,57 @@ passed** — a test can pin a bug as firmly as it pins a behaviour.
 
 ---
 
+## Probe 27 — ALM sanitises memo HTML on write, and that is not a reason to trust it (2026-08-18)
+
+`scripts/probe/probe-richtext.py` — **the first write probe since P0**, against the sandbox only,
+one requirement, prefixed `ALTALM-PROBE-`, swept afterwards.
+
+**Why it was run.** P1's last open gap was rendering memo fields as the rich text they are. The
+client-side sanitiser was tested against payloads we invented, which proves it does what we asked
+and says nothing about what it will be asked. Between an attacker and our renderer sits ALM, which
+re-formats every memo it stores, and nobody had looked at what comes out.
+
+**Hypothesis:** ALM stores memo HTML largely intact and does **not** sanitise, because its own
+client renders in an environment that trusts the server.
+**Result: REFUTED, and usefully so.** Sent 1,188 chars of memo, got 994 back.
+
+| Sent | Stored |
+|---|---|
+| `<h2>`, `<b>`, `<i>`, `<ul>/<li>`, `<table border>`, `<font color size>`, `style="color:…"`, `<a href="https://…">`, `data:image/gif` `<img>` | **all kept** |
+| `<script>…</script>` | **removed by ALM** |
+| `<img src=x onerror=…>` | attribute **removed by ALM** (element kept) |
+| `<a href="javascript:…">` | href **removed by ALM**, anchor kept |
+| `style="background: url(https://…)"` | **removed by ALM** |
+| `<img src="https://…/attachment.png">` | ⚠️ **stored verbatim** |
+
+**What this does and does not license.**
+
+1. It does **not** retire the client-side sanitiser. This is one undocumented behaviour of one
+   instance at one version, observed on **the REST path only**. A memo can also be written over OTA
+   and by ALM's own older clients, and nothing in the metadata or the documentation promises any of
+   this. A sanitiser that is redundant today and load-bearing after a server upgrade must be there
+   before the upgrade.
+2. The one thing ALM does **not** strip is the thing Alt-ALM has to handle itself: a remote `<img
+   src>`. Nothing executes, but rendering it fetches from a host the memo's author chose. The
+   renderer drops the `src` and replaces the element with a labelled placeholder — chosen over
+   leaving it because a src-less `<img>` still draws the browser's broken-image glyph, which reads
+   as a bug in Alt-ALM rather than as a fact about the record.
+3. ALM keeping the **anchor** while removing a `javascript:` href produces markup that looks exactly
+   like a link and goes nowhere. Alt-ALM renders `a:not([href])` as ordinary text — the links ALM
+   strips are precisely the ones nobody should be invited to click.
+
+**Two write mechanics re-confirmed on the way** (both cost a run):
+
+- A requirement's `parent-id` of `-1` is the tree root's **sentinel, not a row**. POSTing a child
+  against it returns `500 Entity with key '-1' does not exist in table 'REQ'`. Parent under an
+  existing record's own `id`.
+- The 500 above committed nothing, consistent with — but not proof of — the general rule. The
+  prefix sweep in `finally` is what makes that survivable rather than a mystery orphan.
+
+**Sandbox state after:** swept, zero `ALTALM-PROBE-*` requirements remaining.
+
+---
+
 ## Open items for the next probe round
 
 1. ~~Map `SiteVersion 20.0 (20.00.0.143)` → marketing version~~ **DONE: ALM 26.1** (probe 3).
@@ -1669,7 +1720,7 @@ passed** — a test can pin a bug as firmly as it pins a behaviour.
    the documented flow.
 3. ~~XSRF header requirement~~ **DONE: 401 without header** (probe 4).
 4. ~~Rich-text round-trip fidelity~~ **DONE** (probes 4–5: sanitizer rules, img-src forms, token
-   encoding).
+   encoding; probe 27 adds what ALM strips on write and what it does not).
 5. Whether `Accept: application/json` works on every collection or only some (observed: yes on all
    probed so far; exception found: Core `is-authenticated` is 406/XML-only — use v2).
 6. ~~Booleans~~ **DONE: no Boolean type; Y/N = LookupList list-id 1** (probe 3 offline mining).

@@ -5,6 +5,9 @@
 
 import type { ReactNode } from 'react'
 import type { FieldType, GridColumn } from '../api/client.ts'
+// One plain-text extractor for the whole app; it lives beside the sanitiser because the two are
+// the same decision seen from opposite ends (see richText.ts).
+import { memoToPlainText } from '../detail/richText.ts'
 
 export type CellRenderer = (values: string[], column: GridColumn) => ReactNode
 
@@ -15,25 +18,6 @@ const EMPTY_MARKER = (
 )
 
 const MEMO_PREVIEW_LENGTH = 140
-
-/**
- * Extracts plain text from a Memo field's full <html><body> document via
- * DOMParser, which parses into a detached document and does not execute
- * scripts or insert anything into the live DOM. This is the sanctioned way
- * to preview rich text without dangerouslySetInnerHTML; real sanitized
- * rendering is a later phase.
- */
-export function htmlToPlainText(html: string): string {
-  try {
-    const doc = new DOMParser().parseFromString(html, 'text/html')
-    return (doc.body.textContent ?? '').trim().replace(/\s+/g, ' ')
-  } catch {
-    return html
-      .replace(/<[^>]*>/g, ' ')
-      .trim()
-      .replace(/\s+/g, ' ')
-  }
-}
 
 function truncate(text: string, max: number): { text: string; truncated: boolean } {
   if (text.length <= max) {
@@ -49,7 +33,7 @@ const stringRenderer: CellRenderer = (values) => {
 
 const memoRenderer: CellRenderer = (values) => {
   if (values.length === 0) return EMPTY_MARKER
-  const plain = values.map(htmlToPlainText).filter(Boolean).join(' / ')
+  const plain = values.map(memoToPlainText).filter(Boolean).join(' / ')
   if (!plain) return EMPTY_MARKER
   const { text, truncated } = truncate(plain, MEMO_PREVIEW_LENGTH)
   return (

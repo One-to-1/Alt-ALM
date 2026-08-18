@@ -1,3 +1,4 @@
+/// <reference types="vitest/config" />
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
@@ -14,5 +15,11 @@ export default defineConfig({
         changeOrigin: true,
       },
     },
+  },
+  test: {
+    // The sanitiser is the reason this project has a test runner at all, and it needs a real HTML
+    // parser to test against: its whole job is agreeing with the one that will render the memo.
+    environment: 'jsdom',
+    include: ['src/**/*.test.ts', 'src/**/*.test.tsx'],
   },
 })

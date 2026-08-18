@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { GridColumn, GridResponse, History, LinkTarget, RelatedTab } from '../api/client.ts'
 import { ApiError, fetchDetail, fetchHistory, fetchTabs, fetchTabsPopulated } from '../api/client.ts'
-import { htmlToPlainText, renderCell } from '../grid/renderers.tsx'
+import { renderCell } from '../grid/renderers.tsx'
+import { memoToPlainText, sanitizeMemo } from './richText.ts'
 import { RelatedRows } from './RelatedRows.tsx'
 import { HistoryPanel } from './HistoryPanel.tsx'
 import { DetailRail, type RailTab } from './DetailRail.tsx'
@@ -288,7 +289,7 @@ export function DetailPane({ project, collection, entityId, onNavigate }: Props)
     const risk = data.columns.filter((c) => c.riskGroup)
 
     const memoText = (c: GridColumn) =>
-      (row.values[c.name] ?? []).map(htmlToPlainText).filter(Boolean).join('\n\n')
+      (row.values[c.name] ?? []).map(memoToPlainText).filter(Boolean).join('\n\n')
 
     return { row, populatedFields, memos, ordered, risk, memoText }
   }, [data])
@@ -425,25 +426,15 @@ export function DetailPane({ project, collection, entityId, onNavigate }: Props)
         <div className="detail-body" role="tabpanel" aria-labelledby={`detail-tab-${tab}`}>
         {tab === DETAILS && <FieldTable columns={ordered} row={row} />}
 
-        {activeMemo &&
-          (memoText(activeMemo) === '' ? (
-            <p className="detail-memo-empty">
-              This record has no {(activeMemo.label || activeMemo.name).toLowerCase()}.
-            </p>
-          ) : (
-            // Plain text, deliberately. Memo bodies are full <html><body> documents authored by
-            // other users of the ALM instance; rendering them as HTML without our own sanitiser is
-            // stored-XSS by construction. Formatted rendering is a tracked requirement, not a
-            // permanent state — see implementation-plan "rich text must actually render as rich
-            // text". The banner exists so nobody mistakes a stripped document for an empty one.
-            <>
-              <p className="detail-memo-note">
-                Formatting removed — shown as plain text. Lists, styling and images are not rendered
-                yet.
-              </p>
-              <p className="detail-memo-body">{memoText(activeMemo)}</p>
-            </>
-          ))}
+        {activeMemo && (
+          <MemoBody
+            // Remount per field so the plain-text toggle does not carry across tabs: it is a
+            // decision about one document, not a preference about memos.
+            key={activeMemo.name}
+            label={activeMemo.label || activeMemo.name}
+            values={row.values[activeMemo.name] ?? []}
+          />
+        )}
 
         {tab === RISK_TAB && <FieldTable columns={risk} row={row} showEmpty />}
 
@@ -477,6 +468,104 @@ export function DetailPane({ project, collection, entityId, onNavigate }: Props)
         </div>
       </div>
     </Shell>
+  )
+}
+
+interface MemoBodyProps {
+  label: string
+  values: string[]
+}
+
+/**
+ * One memo field, rendered as the rich text it actually is.
+ *
+ * <h2>The two things this component owes the reader</h2>
+ *
+ * A memo is the only place in ALM where the record's content is a document rather than a value, and
+ * for most of P1 Alt-ALM showed it stripped to plain text. That was the safe answer to a real
+ * problem — see {@link sanitizeMemo}, which is where the problem is now actually solved — but it
+ * was also a lie of omission: a table of test conditions and a paragraph became the same grey block,
+ * and nothing said so.
+ *
+ * So this renders the formatting, and then owns the two ways that can still mislead:
+ *
+ * 1. **Images we cannot fetch.** Rather than a broken-image icon, the reader gets a count and a
+ *    reason. "There is a diagram here that Alt-ALM is not showing you" and "there is no diagram"
+ *    are different facts about the record.
+ * 2. **Markup we removed.** Only reported when the document looked like it was carrying something
+ *    executable, so the notice keeps meaning something.
+ *
+ * The plain-text toggle stays because sanitised is not the same as legible: ALM memos pasted out of
+ * Word arrive with fixed pixel widths and colours that fight the pane's own theme, and the escape
+ * hatch is cheaper than trying to normalise every one of them.
+ */
+function MemoBody({ label, values }: MemoBodyProps) {
+  const [plain, setPlain] = useState(false)
+
+  const docs = useMemo(
+    () =>
+      values
+        .filter((v) => v && v.trim() !== '')
+        .map((raw) => ({ ...sanitizeMemo(raw), text: memoToPlainText(raw) })),
+    [values],
+  )
+
+  // A document that sanitises to nothing but held an image is not empty — it is unshowable, which
+  // is the case the notice exists for.
+  const blocked = docs.reduce((n, d) => n + d.blockedImages, 0)
+  const hostile = docs.some((d) => d.hostile)
+  if (docs.every((d) => d.text === '') && blocked === 0) {
+    return <p className="detail-memo-empty">This record has no {label.toLowerCase()}.</p>
+  }
+
+  const notes = []
+  if (blocked > 0) {
+    notes.push(
+      blocked === 1
+        ? 'One image is stored in ALM and is not shown here — Alt-ALM cannot fetch attachments yet.'
+        : `${blocked} images are stored in ALM and are not shown here — Alt-ALM cannot fetch `
+          + 'attachments yet.',
+    )
+  }
+  if (hostile) {
+    notes.push('Some markup was removed because it could have run code.')
+  }
+
+  return (
+    <div className="detail-memo">
+      <div className="detail-memo-bar">
+        <div className="detail-memo-notes">
+          {notes.map((note) => (
+            <p className="detail-memo-note" key={note}>
+              {note}
+            </p>
+          ))}
+        </div>
+        <button
+          type="button"
+          className="detail-memo-toggle"
+          aria-pressed={plain}
+          onClick={() => setPlain((p) => !p)}
+        >
+          {plain ? 'Formatted' : 'Plain text'}
+        </button>
+      </div>
+
+      {plain ? (
+        <p className="detail-memo-body">{docs.map((d) => d.text).join('\n\n')}</p>
+      ) : (
+        docs.map((d, i) => (
+          <div
+            // The only dangerouslySetInnerHTML in the app. The string comes from sanitizeMemo
+            // three lines up and from nowhere else; if a second one of these ever appears, it is a
+            // bug until proven otherwise.
+            className="detail-memo-rich"
+            key={i}
+            dangerouslySetInnerHTML={{ __html: d.html }}
+          />
+        ))
+      )}
+    </div>
   )
 }
 
