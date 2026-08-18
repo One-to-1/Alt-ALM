@@ -3,9 +3,10 @@ import type {
   GridColumn,
   LinkTarget,
   RelatedTab,
+  RelatedTable,
   RelatedTableRows,
 } from '../api/client.ts'
-import { ApiError, fetchTabRows } from '../api/client.ts'
+import { ApiError, fetchTabRows, isScopable } from '../api/client.ts'
 import { renderCell } from '../grid/renderers.tsx'
 import './RelatedRows.css'
 
@@ -16,6 +17,13 @@ interface Props {
   tab: RelatedTab
   /** Follow a row to the record it links to, in its own module and in its place in the tree. */
   onNavigate: (target: LinkTarget) => void
+  /**
+   * Open this table's rows as the main grid, scoped to the open record.
+   *
+   * Absent when the host has nowhere to open them — the pane must not draw a button whose only
+   * outcome would be a screen that lies about what it is showing.
+   */
+  onDrillIn?: (table: RelatedTable) => void
 }
 
 type Status = 'loading' | 'ready' | 'missing' | 'error'
@@ -103,7 +111,7 @@ function chooseColumns(columns: GridColumn[], collection: string): GridColumn[] 
  * Loads on open rather than with the record — ALM's own dialog does the same, and a record with six
  * tabs would otherwise fire six queries nobody asked for.
  */
-export function RelatedRows({ project, collection, entityId, tab, onNavigate }: Props) {
+export function RelatedRows({ project, collection, entityId, tab, onNavigate, onDrillIn }: Props) {
   const [tables, setTables] = useState<RelatedTableRows[] | null>(null)
   const [status, setStatus] = useState<Status>('loading')
   const [error, setError] = useState<string | null>(null)
@@ -162,16 +170,25 @@ export function RelatedRows({ project, collection, entityId, tab, onNavigate }: 
 
   return (
     <>
-      {tables.map((table) => (
-        <LinkTable
-          key={table.tableKey}
-          table={table}
-          // A single-table tab does not need a caption repeating the tab's own name; two or more do,
-          // because "Trace From" and "Trace To" are only distinguishable by theirs.
-          showCaption={tables.length > 1}
-          onNavigate={onNavigate}
-        />
-      ))}
+      {tables.map((table) => {
+        // The rows and the scope live in different payloads: these rows came from the tab-rows
+        // endpoint, while the scope column is metadata on the strip. Matched by key rather than by
+        // position, because a table the strip drops for being unreadable would shift the order.
+        const meta = tab.tables.find((t) => t.key === table.tableKey)
+        return (
+          <LinkTable
+            key={table.tableKey}
+            table={table}
+            // A single-table tab does not need a caption repeating the tab's own name; two or more
+            // do, because "Trace From" and "Trace To" are only distinguishable by theirs.
+            showCaption={tables.length > 1}
+            onNavigate={onNavigate}
+            onDrillIn={
+              onDrillIn && meta && isScopable(meta) ? () => onDrillIn(meta) : undefined
+            }
+          />
+        )
+      })}
       <Provenance tab={tab} />
     </>
   )
@@ -181,9 +198,12 @@ interface LinkTableProps {
   table: RelatedTableRows
   showCaption: boolean
   onNavigate: (target: LinkTarget) => void
+  /** Present only when these rows can actually be opened as a grid — see {@link isScopable}. */
+  onDrillIn?: () => void
 }
 
-function LinkTable({ table, showCaption, onNavigate }: LinkTableProps) {
+function LinkTable({ table, showCaption, onNavigate, onDrillIn }: LinkTableProps) {
+  const canDrillIn = onDrillIn !== undefined
   const columns = chooseColumns(table.grid.columns, table.grid.collection)
   const targets = Object.values(table.targets)
   const hasTargets = targets.length > 0
@@ -193,7 +213,23 @@ function LinkTable({ table, showCaption, onNavigate }: LinkTableProps) {
 
   return (
     <section className="related-section">
-      {showCaption && <h3 className="related-caption">{table.label}</h3>}
+      {(showCaption || canDrillIn) && (
+        <div className="related-caption-row">
+          {showCaption && <h3 className="related-caption">{table.label}</h3>}
+          {canDrillIn && (
+            <button
+              type="button"
+              className="related-drillin"
+              onClick={onDrillIn}
+              // ALM's Test Lab is the case this was built for, but nothing here is about test sets:
+              // any related table naming a scope column can be opened the same way.
+              title={`Open ${table.label} as a full grid`}
+            >
+              Open as grid
+            </button>
+          )}
+        </div>
+      )}
 
       {table.grid.rows.length === 0 ? (
         <p className="related-empty">Nothing linked here yet.</p>

@@ -364,12 +364,35 @@ export interface RelatedTable {
   /** The module to open, or '' when this build has none for that entity. */
   targetCollection: string
   /**
+   * The column on the related collection holding the open record's id.
+   *
+   * This is what turns "all test instances" into "this test set's instances", and it comes from the
+   * relation's own storage descriptor rather than from anything this file knows — `cycle-id` is
+   * right for a test instance in the probed project and is not a promise about the next one.
+   */
+  scopeField: string
+  /** Further clauses independent of the open record, e.g. a polymorphic join's discriminator. */
+  scopeFixed: Record<string, string>
+  /**
    * Whether rows carry a far-end id at all.
    *
    * False for a plain-reference relation, which names only the column pointing back at the open
    * record. Those rows can be listed but not followed.
    */
   navigable: boolean
+}
+
+/**
+ * Whether this table can be opened as a full grid.
+ *
+ * ⚠️ Computed here rather than read off the wire. The server has the same predicate
+ * (`TabDto.Table.scopable()`), but Jackson serialises a record's *components*, and that is a method
+ * — so it never arrives. Keep the two in step: without a scope column there is no filter that
+ * selects these rows, and opening a grid anyway would draw the entire collection under a heading
+ * naming one record.
+ */
+export function isScopable(table: RelatedTable): boolean {
+  return table.scopeField !== '' && table.targetCollection !== ''
 }
 
 export interface RelatedTab {

@@ -117,6 +117,13 @@ for (const theme of themes) {
       }
     }
 
+    // Switch module via ALM's own left rail, e.g. --module "Test Lab".
+    const wantModule = opt('module')
+    if (wantModule) {
+      await page.getByRole('button', { name: wantModule, exact: true }).click().catch(() => {})
+      await page.waitForTimeout(2500)
+    }
+
     // Open a named tab in the detail pane, e.g. --tab Description.
     const wantTab = opt('tab')
     if (wantTab) {
@@ -143,6 +150,15 @@ for (const theme of themes) {
     if (args.includes('--pin-rail')) {
       await page.locator('.rail-pin').click().catch(() => {})
       await page.waitForTimeout(400)
+    }
+
+    // Follow the drill-in: open the related table as the main grid.
+    if (args.includes('--drill')) {
+      await page.getByRole('button', { name: /open as grid/i }).first().click().catch(() => {})
+      await page
+        .waitForSelector('.data-grid tbody tr, .grid-status', { timeout: 15000 })
+        .catch(() => console.log('  (drill-in showed no rows within 15s)'))
+      await page.waitForTimeout(900)
     }
 
     // Park the pointer away from the rail. Clicking a tab leaves the mouse over it, and the rail

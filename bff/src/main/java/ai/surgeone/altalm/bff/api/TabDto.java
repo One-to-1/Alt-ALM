@@ -2,6 +2,7 @@ package ai.surgeone.altalm.bff.api;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Map;
 
 /** Wire shapes for the detail pane's related-entity tab strip. */
 public final class TabDto {
@@ -34,9 +35,41 @@ public final class TabDto {
      *                       has no module for that entity
      * @param navigable      whether rows carry a far-end id at all. False for a plain reference
      *                       relation, which names only the column pointing back at the open record
+     * @param scopeField     the column on {@code targetEntity} holding the open record's id — the
+     *                       one clause that turns "all test instances" into "this set's instances".
+     *                       Empty when the relation does not name one
+     * @param scopeFixed     any further clauses that do not depend on the open record, such as a
+     *                       polymorphic join's type discriminator. Usually empty
      */
     public record Table(String key, String label, String targetEntity, String targetCollection,
-                        boolean navigable) {
+                        boolean navigable, String scopeField, Map<String, String> scopeFixed) {
+
+        /**
+         * Normalised so a caller never has to null-check, and frozen because this record is handed
+         * to Jackson and then read by request threads.
+         */
+        public Table {
+            scopeField = scopeField == null ? "" : scopeField;
+            scopeFixed = scopeFixed == null ? Map.of() : Map.copyOf(scopeFixed);
+        }
+
+        /**
+         * Whether this table can be opened as a full grid rather than a strip inside the pane.
+         *
+         * <p>The distinction is not cosmetic. Without a {@code scopeField} the only way to show
+         * these rows is the tab itself, because there is no filter that would select them — opening
+         * a grid anyway would show the <em>whole</em> collection under a heading naming one record,
+         * which is the most confidently wrong screen this app could draw.
+         *
+         * <p>⚠️ Deliberately says nothing about {@link #targetCollection}. That names the far end a
+         * row <em>links to</em> — for a test set's instances it is {@code tests} — while a drill-in
+         * opens the collection the rows themselves come from, which is the enclosing
+         * {@link Tab#collection()}. Conflating the two opens the wrong module with a filter that
+         * does not apply to it.
+         */
+        public boolean scopable() {
+            return !scopeField.isEmpty();
+        }
     }
 
     /**

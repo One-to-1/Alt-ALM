@@ -110,7 +110,31 @@ public record AlmRelation(
 
     /** Whether this relation carries enough information to be queried at all. */
     public boolean fillable() {
-        return !filterIdField.isBlank();
+        return !filterIdField.isBlank() && !pointsAtOwnContainer();
+    }
+
+    /**
+     * Whether this relation describes the record's own container rather than a list of related
+     * records — "the folder this test set is in", not "the test sets in this folder".
+     *
+     * <p>⚠️ These break {@link #filterIdField()}'s invariant, and silently. That field is documented
+     * as a column on {@link #readEntity()}, and for every other relation it is; on the mirrored
+     * direction of a plain containment reference, ALM's descriptor hands back the column from the
+     * <em>source</em> side instead. So {@code testSetFolderToTestSetContainment_mirrored} yields
+     * "filter test-set-folders by parent-id = 301", which asks for the folders whose <em>parent</em>
+     * is that test set.
+     *
+     * <p>Nothing catches it downstream. {@code test-set-folder} really does have a {@code parent-id}
+     * — folders nest — so the field-exists validation in {@code TabService} passes, ALM answers 200
+     * with zero rows, and the pane renders a tab saying the record is in no folder. A wrong answer
+     * wearing the costume of a right one, which is the failure mode this codebase keeps meeting.
+     *
+     * <p>Only mirrored plain references qualify. The forward direction (a folder's contents) is a
+     * real tab, and an association-backed relation keeps its columns on the join entity where the
+     * invariant holds.
+     */
+    public boolean pointsAtOwnContainer() {
+        return mirrored && TYPE_CONTAINMENT.equals(type) && associationEntity.isBlank();
     }
 
     /** Whether this relation needs a second clause to avoid mixing entity types. */

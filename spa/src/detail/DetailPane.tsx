@@ -1,5 +1,12 @@
 import { useEffect, useMemo, useState } from 'react'
-import type { GridColumn, GridResponse, History, LinkTarget, RelatedTab } from '../api/client.ts'
+import type {
+  GridColumn,
+  GridResponse,
+  History,
+  LinkTarget,
+  RelatedTab,
+  RelatedTable,
+} from '../api/client.ts'
 import { ApiError, fetchDetail, fetchHistory, fetchTabs, fetchTabsPopulated } from '../api/client.ts'
 import { renderCell } from '../grid/renderers.tsx'
 import { memoToPlainText, sanitizeMemo } from './richText.ts'
@@ -27,6 +34,18 @@ interface Props {
   entityId: string | null
   /** Follow a linked record to its own module, revealed in place. */
   onNavigate: (target: LinkTarget) => void
+  /**
+   * Open a related table's rows as the main grid, scoped to this record — the Test Lab drill-down.
+   *
+   * Takes the collection the ROWS come from, which is the tab's own, never the far end a row links
+   * to. Optional so a host with nowhere to put a grid simply does not offer it.
+   */
+  onDrillIn?: (
+    rowsCollection: string,
+    table: RelatedTable,
+    parentId: string,
+    parentLabel: string,
+  ) => void
 }
 
 /**
@@ -120,7 +139,7 @@ function relatedIcon(tab: RelatedTab): React.ReactNode {
 
 type Status = 'idle' | 'loading' | 'ready' | 'missing' | 'error'
 
-export function DetailPane({ project, collection, entityId, onNavigate }: Props) {
+export function DetailPane({ project, collection, entityId, onNavigate, onDrillIn }: Props) {
   const [data, setData] = useState<GridResponse | null>(null)
   const [status, setStatus] = useState<Status>('idle')
   const [error, setError] = useState<string | null>(null)
@@ -448,6 +467,20 @@ export function DetailPane({ project, collection, entityId, onNavigate }: Props)
             entityId={entityId}
             tab={activeRelated}
             onNavigate={onNavigate}
+            onDrillIn={
+              onDrillIn && row
+                ? (table) =>
+                    onDrillIn(
+                      activeRelated.collection,
+                      table,
+                      entityId,
+                      // The record's own name is what the breadcrumb has to say. Falling back to
+                      // the id keeps the crumb truthful for entities that have no name field —
+                      // a test instance is exactly that case.
+                      (row.values.name ?? [])[0] || `#${entityId}`,
+                    )
+                : undefined
+            }
           />
         )}
 

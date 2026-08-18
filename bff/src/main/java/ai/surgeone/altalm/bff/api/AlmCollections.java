@@ -73,6 +73,26 @@ public final class AlmCollections {
     }
 
     /** Whether a detail-pane tab backed by this entity can be populated at all. */
+    /**
+     * The collection to read a tab's rows from — the related list first, then the modules.
+     *
+     * <p>The fallback is what makes ALM's Test Lab possible. A test set's instances arrive as an
+     * ordinary containment relation, but {@code test-instance} is not a <em>link</em> entity, it is
+     * a module entity, so a related-only lookup answered "nothing can read this" and the tab was
+     * dropped — for a collection the BFF has served all along. The two maps answer different
+     * questions ("is this browsable?" vs "can a tab be filled from it?") and only the second one
+     * belongs here.
+     */
+    public static java.util.Optional<String> readCollectionOf(String entity) {
+        java.util.Optional<String> related = relatedCollectionOf(entity);
+        return related.isPresent() ? related : moduleOf(entity);
+    }
+
+    /** Whether a tab backed by this entity can be filled at all. */
+    public static boolean isReadable(String entity) {
+        return readCollectionOf(entity).isPresent();
+    }
+
     public static boolean isReadableRelated(String entity) {
         return RELATED_COLLECTION_OF.containsKey(entity);
     }

@@ -163,3 +163,37 @@
     animation: none;
   }
 }
+
+/* The caption row exists so a single-table tab, which needs no caption, can still carry the
+   drill-in button — the button is about the rows, not about the caption. */
+.related-caption-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+/* Quiet by default. It offers a bigger version of what the reader is already looking at, which is
+   an escalation, not the obvious next step — ALM's own Test Lab makes you go and find it too. */
+.related-drillin {
+  flex: 0 0 auto;
+  margin-left: auto;
+  padding: 2px 8px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--text-muted);
+  font: 500 var(--text-xs) / 1.6 var(--sans);
+  cursor: pointer;
+}
+
+.related-drillin:hover {
+  border-color: var(--border-strong);
+  background: var(--surface);
+  color: var(--accent);
+}
+
+.related-drillin:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 1px;
+}

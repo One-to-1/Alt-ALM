@@ -540,9 +540,33 @@ in `spa/src/detail/richText.ts`; the short version:
 - **Memo fields are HTML and only HTML** — no markdown, no wiki, and ⚠️ **newlines are collapsed to
   spaces rather than becoming `<br>`**, which is a data-loss trap waiting for P2's write path.
 
+✅ **Test Lab's drill-down landed 2026-08-18.** Selecting a test set and choosing "Open as grid" on
+its Test Instances tab makes the main grid that set's instances, with a breadcrumb back to the set.
+Nothing in it is about test sets: the scoping filter arrives on the related table (`scopeField` +
+`scopeFixed`), derived from the relation's storage descriptor, so any related tab naming a scope
+column drills the same way. Three findings on the way, all of them bugs that looked like features:
+
+- ⚠️ **The instances tab did not exist**, and the reason was ours: `canRead` consulted only the
+  *related-collection* map, so `test-instance` — a module entity the BFF has served all along —
+  answered "nothing can read this" and ALM's own containment relation was dropped. Fixing it also
+  gave Test Plan its **Runs**, **Test Instances** and **Test Configurations** tabs.
+- ⚠️ **A mirrored containment reference points at the record's own container and lies about it.**
+  `filterIdField` is documented as a column on the *read* entity; on this one direction ALM hands
+  back the column from the *source* side, so "the folder this test set is in" became "the folders
+  whose parent is test set 301" — HTTP 200, zero rows, a tab saying the set is in no folder. The
+  field-exists validation passes because folders really do have a `parent-id`.
+  `AlmRelation.pointsAtOwnContainer()` drops these.
+- ⚠️ **The drill-in switched module with the old record still selected**, so one render asked for
+  `detail/test-instances/<a test set's id>`. Same shape as gap 0e. Cleared synchronously now.
+
+⚠️ **Verified against seeded data, not borrowed data** (probe 28). The sandbox had 0 test sets, so
+two full chains were seeded — folder → test → set-folder → set → instance — and the drill-in shown
+to return 1 of the project's 2 instances. Re-seed with
+`python scripts/probe/probe-testlab-seed.py --keep` and sweep after.
+
 **Next, in order:**
 
-1. **Test Lab's drill-down** — test set → instances → runs. Runs is now a rail module (ALM lists it
+1. ~~**Test Lab's drill-down**~~ — test set → instances → runs. Runs is now a rail module (ALM lists it
    as one); instances remain a link target only, as in ALM.
 2. **The `EntityStatus` question** (open item 12 in the probe log) — `AlmEntityParser`'s failure-row
    handling is still a reasonable construction rather than a probed fact, and the UI now has places

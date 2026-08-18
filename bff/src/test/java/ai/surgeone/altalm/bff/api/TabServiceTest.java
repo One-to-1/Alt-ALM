@@ -72,6 +72,67 @@ class TabServiceTest {
     }
 
     @Test
+    @DisplayName("each table carries the filter that would scope a drill-in to the open record")
+    void tableCarriesItsScopeFilter() throws IOException {
+        when(metadata.relations(eq(PROJECT), eq("requirement"))).thenReturn(relations("requirement"));
+
+        TabDto.Strip strip = service.strip(PROJECT, "requirements");
+        List<TabDto.Table> tables = strip.tabs().stream().flatMap(t -> t.tables().stream()).toList();
+
+        // The scope is the SAME column the tab's own query uses. If these two ever diverge, a
+        // drill-in shows a different set of rows than the tab it was opened from — the kind of bug
+        // that reads as a data problem rather than as a wiring one.
+        assertThat(tables).isNotEmpty();
+        assertThat(tables).filteredOn(TabDto.Table::scopable).isNotEmpty()
+                .allSatisfy(t -> assertThat(t.scopeField()).isNotBlank());
+
+        // Keyed off the TAB's collection, not the table's targetEntity: targetEntity names the far
+        // end a row navigates to (a test), while the scope filters the join rows themselves.
+        TabDto.Table coverage = strip.tabs().stream()
+                .filter(t -> t.collection().equals("requirement-coverages"))
+                .flatMap(t -> t.tables().stream())
+                .findFirst().orElseThrow();
+        assertThat(coverage.scopeField()).isEqualTo("requirement-id");
+    }
+
+    @Test
+    @DisplayName("⚠️ a polymorphic table's scope carries the discriminator, not just the id")
+    void polymorphicTableScopeKeepsTheTypeClause() throws IOException {
+        when(metadata.relations(eq(PROJECT), eq("requirement"))).thenReturn(relations("requirement"));
+
+        TabDto.Strip strip = service.strip(PROJECT, "requirements");
+        TabDto.Table links = strip.tabs().stream()
+                .filter(t -> t.collection().equals("defect-links"))
+                .flatMap(t -> t.tables().stream())
+                .findFirst().orElseThrow();
+
+        // Same reason the tab itself filters on type (probe 23): defect-link serves seven entity
+        // types from one table, so an id-only drill-in would list other entities' links under this
+        // requirement's heading.
+        assertThat(links.scopeFixed()).isNotEmpty();
+    }
+
+    @Test
+    @DisplayName("⚠️ scopability is about the rows' own collection, not the far end they link to")
+    void scopabilityIgnoresTheFarEnd() throws IOException {
+        when(metadata.relations(eq(PROJECT), eq("requirement"))).thenReturn(relations("requirement"));
+
+        TabDto.Strip strip = service.strip(PROJECT, "requirements");
+        TabDto.Tab coverage = strip.tabs().stream()
+                .filter(t -> t.collection().equals("requirement-coverages"))
+                .findFirst().orElseThrow();
+        TabDto.Table table = coverage.tables().getFirst();
+
+        // The trap this pins: targetCollection is `tests` — what a coverage row LINKS TO — while a
+        // drill-in must open `requirement-coverages`, the rows themselves. Gating scopability on
+        // targetCollection would open the wrong module carrying a filter that does not apply to it,
+        // and `tests` filtered by `requirement-id` is a 404, not an empty grid.
+        assertThat(table.targetCollection()).isNotEqualTo(coverage.collection());
+        assertThat(table.scopable()).isTrue();
+        assertThat(table.scopeField()).isEqualTo("requirement-id");
+    }
+
+    @Test
     @DisplayName("⚠️ Business Models Linkage is dropped, with the reason, because bpm-links 404s")
     void unreadableTabIsDroppedWithAReason() throws IOException {
         when(metadata.relations(eq(PROJECT), eq("requirement"))).thenReturn(relations("requirement"));

@@ -277,4 +277,43 @@ class AlmRelationSelectorTest {
         assertThat(s.tabs()).isEmpty();
         assertThat(s.dropped()).isNotEmpty();
     }
+
+    /**
+     * Builds one relation the way ALM's storage descriptor hands it over.
+     *
+     * <p>Written out by hand rather than parsed from a fixture because the case being pinned is a
+     * <em>shape</em> — mirrored, containment, no join entity — and no captured project happens to
+     * make it interesting for an entity we already have a fixture for.
+     */
+    private static AlmRelation relation(String name, String source, String target, String type,
+                                        String association, boolean mirrored, String filterIdField) {
+        return new AlmRelation(name, "Label", source, target, type, association, mirrored,
+                filterIdField, "", "", "");
+    }
+
+    @Test
+    @DisplayName("⚠️ a mirrored containment reference is not fillable — its filter column is the source's")
+    void containerReferenceIsNotFillable() {
+        // "the folder this test set is in". ALM hands back parent-id, which is a column on the TEST
+        // SET, while the tab would query TEST-SET-FOLDERS. Filtering folders by parent-id = the set's
+        // id asks which folders are children of a test set: always none.
+        AlmRelation container = relation("testSetFolderToTestSetContainment_mirrored",
+                "test-set-folder", "test-set-folder", AlmRelation.TYPE_CONTAINMENT, "", true,
+                "parent-id");
+        assertThat(container.pointsAtOwnContainer()).isTrue();
+        assertThat(container.fillable()).isFalse();
+
+        // The forward direction — a folder's contents — is a real tab and must survive.
+        AlmRelation contents = relation("testSetFolderToTestSetContainment",
+                "test-set-folder", "test-set", AlmRelation.TYPE_CONTAINMENT, "", false, "parent-id");
+        assertThat(contents.pointsAtOwnContainer()).isFalse();
+        assertThat(contents.fillable()).isTrue();
+
+        // So is a mirrored ASSOCIATION: its columns live on the join entity, where the invariant
+        // that filterIdField belongs to the read entity actually holds.
+        AlmRelation linked = relation("defectToRequirementLink_mirrored", "defect", "requirement",
+                "dependency", "defect-link", true, "second-endpoint-id");
+        assertThat(linked.pointsAtOwnContainer()).isFalse();
+        assertThat(linked.fillable()).isTrue();
+    }
 }

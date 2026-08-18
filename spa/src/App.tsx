@@ -99,6 +99,28 @@ type View = (typeof VIEWS)[number]
 const DETAIL_MIN = 280
 const DETAIL_MAX = 900
 
+/**
+ * The main grid narrowed to the records belonging to one other record.
+ *
+ * ALM's Test Lab is the case this exists for: you pick a test set and the grid becomes *that set's*
+ * instances, not all of them. It generalises past Test Lab because the filter is not written down
+ * anywhere in this file — it arrives on the related table (see `isScopable`), so any related tab
+ * that names a scope column can be opened the same way.
+ */
+interface RecordScope {
+  collection: Collection
+  /** The column on `collection` holding `parentId`. */
+  field: string
+  parentId: string
+  /** Clauses that do not depend on the parent record, e.g. a polymorphic discriminator. */
+  fixed: Record<string, string>
+  /** What the parent record is called, for the breadcrumb. */
+  parentLabel: string
+  /** Where the drill-in came from, so leaving goes back rather than to some default. */
+  fromCollection: Collection
+  fromId: string
+}
+
 /** Everything a Back step restores. */
 interface NavPoint {
   view: View
@@ -109,6 +131,8 @@ interface NavPoint {
   /** Group drill-in. Restored too, or Back out of a bucket leaves its filter silently applied. */
   groupField: string | null
   groupValue: string | null
+  /** Restored for the same reason: Back out of a scope must not leave its filter applied. */
+  scope: RecordScope | null
 }
 
 function projectKey(project: Project): string {
@@ -164,6 +188,10 @@ function App() {
   const [groupValue, setGroupValue] = useState<string | null>(null)
   /** Columns of the current grid, lifted so the group control can offer the groupable ones. */
   const [availableColumns, setAvailableColumns] = useState<GridColumn[]>([])
+  /** The grid narrowed to one record's related rows — Test Lab's drill-down. */
+  const [scope, setScope] = useState<RecordScope | null>(null)
+  /** Parked across the module switch, exactly like {@link pendingReveal} and for the same reason. */
+  const pendingScope = useRef<RecordScope | null>(null)
 
   // Back history. A ref, not state, because pushing must never itself trigger a render — the push
   // happens inside the same handler that changes what it is recording.
@@ -172,12 +200,12 @@ function App() {
 
   const pushHistory = useCallback(() => {
     historyRef.current.push({
-      view, collection, folder, rowId: selectedRowId, search, groupField, groupValue,
+      view, collection, folder, rowId: selectedRowId, search, groupField, groupValue, scope,
     })
     // 50 steps is far more than anyone walks back through, and bounds the memory.
     if (historyRef.current.length > 50) historyRef.current.shift()
     setCanGoBack(true)
-  }, [view, collection, folder, selectedRowId, search, groupField, groupValue])
+  }, [view, collection, folder, selectedRowId, search, groupField, groupValue, scope])
 
   const goBack = useCallback(() => {
     const previous = historyRef.current.pop()
@@ -190,6 +218,10 @@ function App() {
     setSearchDraft(previous.search)
     setGroupField(previous.groupField)
     setGroupValue(previous.groupValue)
+    // Parked rather than set: the collection change above will clear it on the next tick, and the
+    // pending effect is the one place that survives that.
+    pendingScope.current = previous.scope
+    setScope(previous.scope)
     setCanGoBack(historyRef.current.length > 0)
   }, [])
 
@@ -331,6 +363,16 @@ function App() {
     setColumns(null)
     setGroupField(null)
     setGroupValue(null)
+
+    // ⚠️ The scope is restored here rather than in an effect of its own, and the ordering is the
+    // whole reason. A separate effect declared above this one applied the parked scope and then
+    // this one — running second, as effects do, in declaration order — set it straight back to
+    // null. The grid filtered correctly and the breadcrumb never appeared, so the drill-in looked
+    // like it worked and had quietly lost the only thing saying what it was showing.
+    setScope(
+      pendingScope.current?.collection === collection ? pendingScope.current : null,
+    )
+    pendingScope.current = null
   }, [collection])
 
   const activeProject = useMemo(
@@ -349,8 +391,14 @@ function App() {
     // page, so filtering locally would show only the part of a 117-row bucket that happened to be
     // loaded, beside a count that says 117.
     if (groupField && groupValue !== null) f[groupField] = groupValue
+    // A drill-in scope is not a folder and not a search: it is the defining clause of what this
+    // grid IS. Applied last so nothing above can quietly widen it.
+    if (scope) {
+      Object.assign(f, scope.fixed)
+      f[scope.field] = scope.parentId
+    }
     return f
-  }, [folder, search, groupField, groupValue])
+  }, [folder, search, groupField, groupValue, scope])
 
   const resolveColumns = useCallback(
     (available: GridColumn[]) => {
@@ -422,6 +470,41 @@ function App() {
   }, [pushHistory])
 
   /**
+   * Open one record's related rows as the main grid — ALM's Test Lab drill-down.
+   *
+   * Leaving the scope returns to the record it came from rather than to a bare collection: the rows
+   * only ever meant anything relative to that record, so dropping the user into all 227 test
+   * instances would be a different screen, not a wider one.
+   */
+  const drillIn = useCallback(
+    (next: RecordScope) => {
+      pushHistory()
+      // Cleared FIRST, in both branches. The module switch clears it too, but that happens in an
+      // effect — one render commits with the new collection and the old record still selected, and
+      // the pane spends it asking for detail/test-instances/<a test set's id>. It 404s, which is
+      // the polite version; the id could equally have existed in the new collection and quietly
+      // shown a different record. Same shape as the tree race in gap 0e.
+      setSelectedRowId(null)
+      if (next.collection === collection) {
+        setScope(next)
+        return
+      }
+      pendingScope.current = next
+      setCollection(next.collection)
+    },
+    [collection, pushHistory],
+  )
+
+  const leaveScope = useCallback(() => {
+    if (!scope) return
+    pushHistory()
+    const back = scope
+    setScope(null)
+    pendingReveal.current = { collection: back.fromCollection, id: back.fromId }
+    setCollection(back.fromCollection)
+  }, [scope, pushHistory])
+
+  /**
    * Follow a link from a related-records tab to the record it points at.
    *
    * ALM opens the linked record *where it lives* — the right module, revealed in the hierarchy —
@@ -478,7 +561,9 @@ function App() {
     )
   }
 
-  const showTree = view === 'tree' && treeCollection !== undefined
+  // A scope suppresses the tree even in tree view. The hierarchy belongs to the whole collection;
+  // showing one record's slice inside it would put rows under folders that do not contain them.
+  const showTree = view === 'tree' && treeCollection !== undefined && scope === null
 
   return (
     <div className="app" data-density={density}>
@@ -718,6 +803,19 @@ function App() {
                   <span className="grid-toolbar-label">
                     {COLLECTION_LABELS[collection]}
                     {folder && <span className="grid-toolbar-scope"> in {folder.name}</span>}
+                    {scope && (
+                      <span className="grid-toolbar-scope">
+                        {' of '}
+                        <button
+                          type="button"
+                          className="grid-toolbar-crumb"
+                          onClick={leaveScope}
+                          title={`Back to ${scope.parentLabel}`}
+                        >
+                          {scope.parentLabel}
+                        </button>
+                      </span>
+                    )}
                   </span>
                   <div className="grid-toolbar-right">
                     <ColumnPicker
@@ -752,6 +850,20 @@ function App() {
             collection={collection}
             entityId={selectedRowId}
             onNavigate={revealRecord}
+            onDrillIn={(rowsCollection, table, parentId, parentLabel) => {
+              // The rows' OWN collection, never the table's targetCollection — that names the far
+              // end a row links to, and filtering it by this scope column would 404.
+              if (!isCollection(rowsCollection)) return
+              drillIn({
+                collection: rowsCollection,
+                field: table.scopeField,
+                parentId,
+                fixed: table.scopeFixed,
+                parentLabel,
+                fromCollection: collection,
+                fromId: parentId,
+              })
+            }}
           />
         </section>
       </div>

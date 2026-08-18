@@ -75,15 +75,26 @@ public class TabService {
         for (AlmRelationSelector.Tab tab : selection.tabs()) {
             List<TabDto.Table> tables = new ArrayList<>(tab.tables().size());
             for (AlmRelationSelector.Table table : tab.tables()) {
-                if (queryRelation(table.relations()) == null) {
+                AlmRelation backing = queryRelation(table.relations());
+                if (backing == null) {
                     continue;
                 }
+                // The same clauses filtersFor() builds when the tab reads its rows, handed to the
+                // client so a drill-in queries the collection the way the tab does. Deriving it
+                // here rather than letting the SPA name a field is the whole of ADR 0005 in one
+                // line: `cycle-id` is correct for a test instance in this project and is nobody's
+                // guarantee about the next one.
+                Map<String, String> scopeFixed = backing.discriminated()
+                        ? Map.of(backing.filterTypeField(), backing.filterTypeValue())
+                        : Map.of();
                 tables.add(new TabDto.Table(
                         table.key(),
                         table.label(),
                         table.targetEntity(),
                         AlmCollections.moduleOf(table.targetEntity()).orElse(""),
-                        linkRelation(table.relations()) != null));
+                        linkRelation(table.relations()) != null,
+                        backing.filterIdField(),
+                        scopeFixed));
             }
             if (tables.isEmpty()) {
                 continue;
@@ -91,7 +102,7 @@ public class TabService {
             tabs.add(new TabDto.Tab(
                     tab.key(),
                     tab.label(),
-                    AlmCollections.relatedCollectionOf(tab.readEntity()).orElse(""),
+                    AlmCollections.readCollectionOf(tab.readEntity()).orElse(""),
                     tab.isAttachment(),
                     tables,
                     tab.relations().stream().map(AlmRelation::name).toList()));
@@ -126,7 +137,7 @@ public class TabService {
             return Optional.empty();
         }
 
-        String relatedCollection = AlmCollections.relatedCollectionOf(tab.readEntity()).orElse(null);
+        String relatedCollection = AlmCollections.readCollectionOf(tab.readEntity()).orElse(null);
         if (relatedCollection == null) {
             return Optional.empty();
         }
@@ -168,7 +179,7 @@ public class TabService {
 
         Map<String, Boolean> out = new java.util.LinkedHashMap<>();
         for (AlmRelationSelector.Tab tab : selection.tabs()) {
-            String relatedCollection = AlmCollections.relatedCollectionOf(tab.readEntity()).orElse(null);
+            String relatedCollection = AlmCollections.readCollectionOf(tab.readEntity()).orElse(null);
             if (relatedCollection == null) {
                 continue;
             }
@@ -349,6 +360,6 @@ public class TabService {
 
     /** Whether a tab backed by this entity can be filled — the injected half of the selector. */
     private static boolean canRead(String entity) {
-        return AlmCollections.isReadableRelated(entity);
+        return AlmCollections.isReadable(entity);
     }
 }

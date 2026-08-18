@@ -324,3 +324,26 @@
     width: 150px;
   }
 }
+
+/* The scoped-grid breadcrumb: "Test Instances of ALTALM-SET-1". The parent record's name is the
+   way back, so it is a button rather than a label — the scope is a place you are inside, and every
+   place you can get into needs a visible way out. */
+.grid-toolbar-crumb {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
+.grid-toolbar-crumb:hover {
+  color: var(--text-h);
+}
+
+.grid-toolbar-crumb:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
