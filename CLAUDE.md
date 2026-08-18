@@ -42,19 +42,26 @@ scripts.
   `Secrets/ALM_API_credentials.json` holds **live working credentials** (keys: `alm_adress`,
   `api_key`, `api_secret`, `domain`, `project`). Reference it by path; read at runtime only; mask
   host/domain/project/keys/usernames in every output and fixture.
-- **Other projects in the tenant are READ-ONLY** (user, 2026-08-14). Eight are reachable with the
-  same key; `PROJECT-5` (233 reqs / 129 tests / 80 defects / 227 test-instances / 178 runs) is the
-  P1 read target — real names in git-ignored `Secrets/alm-read-projects.json`. Three rules:
-  **GET only** outside the sandbox, enforced in code via the same explicit allowlist the generator
-  uses; **their data never enters the repo** — no names, text, owners or field values in fixtures,
-  docs or logs, only counts and shapes, pseudonymized (`PROJECT-5`, not the real name); and while
-  their data **may seed sandbox records** (user-authorized), a seeded record is sandbox state, not a
-  committed artifact. These are other teams' live projects.
-- **Never write to a live ALM project** unless the user has explicitly designated it a sandbox.
-  The project in `Secrets/ALM_API_credentials.json` **was designated a disposable sandbox by the
-  user on 2026-08-12** — writes allowed there, with `ALTALM-*` name prefixes and mandatory cleanup.
-  No other project. The record generator is dry-run by default and must refuse any target not on an
-  explicit allowlist.
+- ⚠️ **The GET-only rule for other projects was LIFTED by the user on 2026-08-18.** `AlmAccessPolicy`
+  now permits writes to **any project on the allowlist**, not just the sandbox; enrolling a project
+  in `alt-alm.alm.readable-projects` grants write access to it. **Only the sandbox is currently
+  reachable** (user, 2026-08-18), so nothing else is enrolled — but that setting is now load-bearing
+  in a way it was not before, and adding a project to it is a write grant, not a read grant.
+- **Other projects in the tenant** (user, 2026-08-14; write restriction since lifted, above). Eight
+  were reachable with the same key; `PROJECT-5` (233 reqs / 129 tests / 80 defects / 227
+  test-instances / 178 runs) was the P1 read target — real names in git-ignored
+  `Secrets/alm-read-projects.json`. Still binding: **their data never enters the repo** — no names,
+  text, owners or field values in fixtures, docs or logs, only counts and shapes, pseudonymized
+  (`PROJECT-5`, not the real name); and while their data **may seed sandbox records**
+  (user-authorized), a seeded record is sandbox state, not a committed artifact. These are other
+  teams' live projects.
+- **Write only where the user has said you may.** The project in
+  `Secrets/ALM_API_credentials.json` **was designated a disposable sandbox by the user on
+  2026-08-12** — writes allowed there, with `ALTALM-*` name prefixes and mandatory cleanup. Since
+  2026-08-18 the *code* no longer restricts writes to it alone (above), so this is now a judgement
+  the operator makes by enrolling projects rather than one the policy enforces for you. **Probe
+  scripts still write to the sandbox and nowhere else.** The record generator is dry-run by default
+  and must refuse any target not on an explicit allowlist.
 - **Never invent API behaviour.** Unverified claims get labelled `UNVERIFIED` with the experiment
   that would confirm them. A marked unknown is fine; a confident fabrication is not.
 

@@ -21,10 +21,17 @@ import java.util.Map;
  * Read-only grid API for the SPA.
  *
  * <p>⚠️ <strong>Every mapping here is {@code @GetMapping}, and that is load-bearing.</strong> The
- * BFF holds a key that can write to nine projects, eight of which belong to other teams. A single
+ * BFF holds a key that can write to every project it is enrolled for, and a single
  * {@code @PostMapping} added here without thought would be reachable from any page the browser
- * loads. Writes arrive in P2 behind the write-safety component and
- * {@link AlmAccessPolicy#checkWrite}; until then this controller has no non-GET surface at all.
+ * loads.
+ *
+ * <p>That got sharper on 2026-08-18, not softer: the user lifted the sandbox-only write rule, so
+ * {@link AlmAccessPolicy#checkWrite} no longer refuses everything but one disposable project. A
+ * stray write mapping used to be caught by the policy underneath it; now the policy will allow it
+ * wherever the deployment is enrolled.
+ *
+ * <p>Writes go through {@code AlmWriteClient} and nothing else — {@code ApiIsReadOnlyTest} fails the
+ * build if a write mapping appears in this package that cannot reach it.
  */
 @RestController
 @RequestMapping("/api")

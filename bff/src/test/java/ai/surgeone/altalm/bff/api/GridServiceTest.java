@@ -105,12 +105,16 @@ class GridServiceTest {
     }
 
     @Test
-    @DisplayName("writable is false for a read-only project and true for the sandbox")
+    @DisplayName("writable follows the allowlist, so an enrolled project reports true")
     void writabilityReflectsThePolicy() {
+        // Until 2026-08-18 this asserted READONLY was not writable and only the sandbox was. The
+        // user lifted the sandbox-only write rule; enrolment is now the whole test. Rewritten rather
+        // than deleted so the flag's meaning stays traceable - the SPA renders edit affordances off
+        // it, and it silently changed meaning for every enrolled project.
         when(metadata.fields(any(), any())).thenReturn(List.of(field("id", AlmFieldType.NUMBER)));
         when(entities.page(any(), any(), any())).thenReturn(page(0));
 
-        assertThat(service.grid(READONLY, "requirements", 50, 1, null, false).writable()).isFalse();
+        assertThat(service.grid(READONLY, "requirements", 50, 1, null, false).writable()).isTrue();
         assertThat(service.grid(SANDBOX, "requirements", 50, 1, null, false).writable()).isTrue();
     }
 

@@ -16,22 +16,32 @@ import java.util.Set;
  * session and the same URL shape will happily {@code PUT} to any of them. The only thing standing
  * between a bug and someone else's production data is this class.
  *
- * <p>So the rule is enforced structurally rather than by discipline:
+ * <p>⚠️ <strong>The sandbox-only write rule was lifted by the user on 2026-08-18.</strong> Writes
+ * previously succeeded against the credentialed project and nothing else, with no override
+ * parameter at all. That is no longer the rule, and this javadoc is the record of the change rather
+ * than a description of something that quietly stopped being true. What replaced it:
  *
  * <ul>
- *   <li><strong>Writes: sandbox only.</strong> Not "sandbox by default" — there is no override
- *       parameter, because an override is the thing that eventually gets passed by accident.
- *   <li><strong>Reads: allowlist only.</strong> A project must be explicitly enrolled. An empty
- *       allowlist therefore permits nothing beyond the sandbox, which is the correct posture for a
- *       fresh deployment: this mirrors {@code CLAUDE.md}'s requirement that the record generator
+ *   <li><strong>Writes follow the same allowlist as reads.</strong> A project the operator enrolled
+ *       may be written; the sandbox is no longer a special case. The read/write distinction is gone,
+ *       the enrolled/not-enrolled one is not.
+ *   <li><strong>Reads: allowlist only</strong>, unchanged. A project must be explicitly enrolled. An
+ *       empty allowlist permits nothing beyond the credentialed project, which stays the posture of
+ *       a fresh deployment and mirrors {@code CLAUDE.md}'s requirement that the record generator
  *       "refuse any target not on an explicit allowlist".
  *   <li><strong>Denials throw, never return false.</strong> A boolean invites an unchecked call
  *       site. An exception cannot be ignored.
  * </ul>
  *
- * <p>Note what is deliberately <em>not</em> here: no "force" flag, no environment variable that
- * relaxes the rule, no bypass for tests. A test that needs to write uses the sandbox like everything
- * else.
+ * <p>⚠️ <strong>What this costs, stated plainly so it is not rediscovered later.</strong> Enrolling a
+ * project for reading now also makes it writable. The tenant's other projects were granted to
+ * Alt-ALM read-only on 2026-08-14 and are other teams' live data; nothing in this class distinguishes
+ * that grant from a sandbox any more. If those projects become reachable again, the only remaining
+ * control is which projects are enrolled in {@code alt-alm.alm.readable-projects} — so that setting
+ * is now load-bearing in a way it was not before.
+ *
+ * <p>Still deliberately <em>not</em> here: a "force" flag or a bypass for tests. Enrolment is the
+ * one lever, and it is an operator's explicit act.
  */
 public final class AlmAccessPolicy {
 
@@ -91,17 +101,21 @@ public final class AlmAccessPolicy {
     }
 
     /**
-     * Asserts a write is permitted. Only ever true for the sandbox.
+     * Asserts a write is permitted — true for any enrolled project since 2026-08-18.
      *
-     * @throws AccessDeniedException for every other project, including ones that are readable —
-     *                               being allowed to read a project says nothing about writing it
+     * <p>Kept as a separate method from {@link #checkRead} even though the two now apply the same
+     * test. They are different questions that happen to share an answer, and collapsing them would
+     * mean a future decision to re-separate them has nowhere to live: every write call site would
+     * already be calling {@code checkRead}, and finding them again is the hard part.
+     *
+     * @throws AccessDeniedException if the project is not enrolled
      */
     public void checkWrite(AlmProjectRef project) {
-        if (!sandbox.equals(project)) {
+        if (project == null || !readable.contains(project)) {
             throw new AccessDeniedException(
                     "WRITE DENIED: " + (project == null ? "<null>" : project.pseudonym())
-                            + " is not the designated sandbox. Writes are permitted to exactly one "
-                            + "project; the rest of the tenant is read-only and belongs to other teams.");
+                            + " is not on the allowlist. Enrol it in alt-alm.alm.readable-projects "
+                            + "if it is genuinely a target for this deployment.");
         }
     }
 
@@ -117,6 +131,8 @@ public final class AlmAccessPolicy {
         }
         // Anything that is not a plain read counts as a write. Note HEAD and OPTIONS are absent
         // deliberately: neither is needed, and enumerating only what is used keeps the default deny.
+        // Since 2026-08-18 both branches apply the same allowlist, so this routes rather than gates —
+        // but it stays, because the day the two diverge again this is the only place to change.
         if ("GET".equalsIgnoreCase(method)) {
             checkRead(project);
             return;
@@ -135,6 +151,17 @@ public final class AlmAccessPolicy {
 
     /** True when this project may be written — for capability flags in the UI, not for gating. */
     public boolean isWritable(AlmProjectRef project) {
+        return project != null && readable.contains(project);
+    }
+
+    /**
+     * True for the one project the credentials name.
+     *
+     * <p>Retained after the write rule was lifted because two things still need it: the metadata
+     * field resolver binds to a single project's schema, and it remains the sane default target when
+     * a caller has not said which project it means.
+     */
+    public boolean isSandbox(AlmProjectRef project) {
         return sandbox.equals(project);
     }
 }

@@ -193,9 +193,13 @@ public class AlmConfiguration {
     /**
      * The single write path, and the only bean in this context that can change anything in ALM.
      *
-     * <p>Given the same {@link AlmAccessPolicy} as the read client, which is what makes "writes go
-     * to the sandbox only" a property of the wiring rather than of each call site. There is no
-     * property that relaxes it and no second bean for a different project.
+     * <p>Given the same {@link AlmAccessPolicy} as the read client, so "which projects may be
+     * written" is a property of the wiring rather than of each call site.
+     *
+     * <p>⚠️ Since the user lifted the sandbox-only rule on 2026-08-18, that means <strong>every
+     * enrolled project</strong>, not just the credentialed one. {@code alt-alm.alm.readable-projects}
+     * is therefore the only remaining control over what this bean can modify — it is no longer just
+     * a read setting, and adding a project to it now grants write access to it.
      */
     @Bean
     public AlmWriteClient almWriteClient(RestClient almRestClient, AlmCredentials creds,
