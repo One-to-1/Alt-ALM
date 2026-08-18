@@ -32,9 +32,17 @@ Load `alm-api` first for API behaviour. This skill covers *how to safely talk to
   in a list as you go; delete last-created-first so parent/child dependencies unwind cleanly.
 - **Orphan sweep after cleanup**: query `?query={name[ALTALM-PROBE*]}` across every collection touched
   in the session (requirements, test-folders, tests, design-steps, test-set-folders, test-sets,
-  test-instances, runs, milestones, releases, release-cycles, test-executions, defects, …) and delete
+  runs, milestones, releases, release-cycles, test-executions, defects, …) and delete
   anything that matches. **Verify the sweep returned zero orphans before declaring the probe done** — a
   500 that silently committed a row (see `alm-api` §1.2) is exactly the failure mode this catches.
+- ⚠️ **`test-instances` is deliberately NOT in that list, and a name sweep cannot find one** (probe
+  28). A test instance has no `name` field at all — its identity comes from the test it points at —
+  so `?query={name[ALTALM-PROBE*]}` against `test-instances` returns **HTTP 404, not an empty list**.
+  A sweep that includes it prints one 404 line and then reports "no orphans" while the instance is
+  still there. Sweep instances **through their parent test set** (`{cycle-id[<set-id>]}`) *before*
+  deleting the set, or deleting the set orphans them. `scripts/probe/probe-testlab-seed.py` does this.
+  ⚠️ Assume the same trap for any entity whose name is derived rather than stored — check that a
+  collection actually *has* the field you are sweeping on before trusting the sweep's silence.
 
 ## 2. Masking discipline
 

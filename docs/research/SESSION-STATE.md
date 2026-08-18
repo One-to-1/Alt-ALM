@@ -568,9 +568,44 @@ to return 1 of the project's 2 instances. Re-seed with
 
 1. ~~**Test Lab's drill-down**~~ — test set → instances → runs. Runs is now a rail module (ALM lists it
    as one); instances remain a link target only, as in ALM.
-2. **The `EntityStatus` question** (open item 12 in the probe log) — `AlmEntityParser`'s failure-row
-   handling is still a reasonable construction rather than a probed fact, and the UI now has places
-   that would surface it.
+2. **The `EntityStatus` question** (open item 12 in the probe log) — stated in full below, because
+   it is the next thing to do and "reasonable construction, not a probed fact" is not enough to act
+   on months later.
+
+### The `EntityStatus` question, in full
+
+ALM's collection envelope carries two per-row fields beside the data: `EntityStatus` and
+`ErrorMessage`. Every envelope this project has ever captured — all 15 entities, every probe —
+sends `EntityStatus:"Success"` explicitly. **We have never seen a row that failed.**
+
+Two decisions rest on that absence, both in `bff/.../alm/read/`:
+
+- `AlmEntityParser` line ~97 reads a **missing** `EntityStatus` as `"Success"` — "no evidence of
+  failure" rather than an error state no fixture predates.
+- `AlmEntityPage.AlmEntity.isError()` is `!"Success".equals(entityStatus)`, so **any** other string
+  counts as a failure.
+
+Both are reasonable. Neither is observed, and they fail in opposite directions:
+
+- If ALM **omits** `EntityStatus` on a failed row, we render it as a healthy record with blank or
+  partial fields — a wrong record shown confidently, which is this project's recurring failure mode.
+- If ALM uses some other success-ish token (`"OK"`, `""`, a localised string), every row becomes an
+  error and the grid fills with alerts.
+
+⚠️ **This is no longer theoretical.** The detail pane renders `row.error` as a visible alert ("ALM
+flagged this row: …"), so a code path that has never seen its real input now has a UI attached.
+
+**How to settle it — cheap, read-only, sandbox or any project:**
+
+1. Request a collection with a deliberately bad `fields=` value and capture the envelope.
+2. Read an entity the API key cannot see (a permission-restricted subtype, if one exists).
+3. Bulk-read a page spanning a record deleted between the count and the read.
+
+Any one of those that produces a non-`Success` row settles both decisions at once. Capture it as a
+fixture under `tests/fixtures/entities/` — the hand-built
+`entity-page-entity-status-error.json` currently standing in for it is **invented**, and its two
+tests (`nonSuccessEntityStatusIsSurfacedAsError`, `missingEntityStatusDefaultsToSuccess`) pin our
+guess rather than ALM's behaviour.
 3. **P2 — the write path.** Nothing in P1 is left blocking it.
 4. Then P2: the write path, against the hazards already built and unit-tested but wired to nothing.
 
