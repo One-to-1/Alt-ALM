@@ -37,6 +37,14 @@ export interface GridColumn {
   onDetailsForm: boolean
   /** ALM's built-in Risk Analysis group (`active && !visibleInWebUI`) — 25 fields in every project probed. */
   riskGroup: boolean
+  /**
+   * ALM's own Groupable flag.
+   *
+   * The Group-by control offers exactly these fields rather than guessing from the type, so a
+   * project that made a field ungroupable stops seeing it offered instead of seeing it offered and
+   * getting an error on click.
+   */
+  groupable: boolean
 }
 
 export interface GridRow {

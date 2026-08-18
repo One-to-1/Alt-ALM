@@ -16,6 +16,11 @@ package ai.surgeone.altalm.bff.alm.metadata;
  * @param supportsMultivalue only two fields in the entire model have this
  * @param active        metadata's Active flag. With {@code visibleInWebUI}, approximates the field
  *                      set ALM's own Details form renders — see {@link #onDetailsForm()}
+ * @param groupable     ALM's own Groupable flag — whether {@code groups/{field}} will aggregate on
+ *                      this field. Taken from the payload rather than inferred from the type: a
+ *                      guess like "LookupList fields are groupable" would be wrong in both
+ *                      directions on a project that customised it, which is what ADR 0005 exists to
+ *                      prevent.
  * @param visibleInWebUI metadata's VisibleInWebUI flag. ⚠️ Note this is <em>not</em> the
  *                      similarly-named {@code visible} attribute, which the parser deliberately
  *                      ignores: probe 21 found {@code visible} true for <strong>every field of
@@ -37,6 +42,7 @@ public record FieldDescriptor(
         boolean supportsMultivalue,
         boolean active,
         boolean visibleInWebUI,
+        boolean groupable,
         int listId,
         int size) {
 

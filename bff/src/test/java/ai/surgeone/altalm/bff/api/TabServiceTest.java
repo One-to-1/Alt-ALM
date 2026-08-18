@@ -56,7 +56,7 @@ class TabServiceTest {
 
     private static FieldDescriptor field(String name) {
         return new FieldDescriptor(name, "X_" + name, AlmFieldType.STRING, name, false, true, true,
-                false, false, true, true, 0, 255);
+                false, false, true, true, false, 0, 255);
     }
 
     @Test

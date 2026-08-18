@@ -3,6 +3,7 @@ import type { GridColumn, Project, TreeNode, TreeRow, LinkTarget } from './api/c
 import { ApiError, fetchProjects, fetchTreePath } from './api/client.ts'
 import { DataGrid } from './grid/DataGrid.tsx'
 import { ColumnPicker } from './grid/ColumnPicker.tsx'
+import { GroupBar } from './grid/GroupBar.tsx'
 import { TreeGrid } from './tree/TreeGrid.tsx'
 import { DetailPane } from './detail/DetailPane.tsx'
 import { Splitter } from './shell/Splitter.tsx'
@@ -95,6 +96,9 @@ interface NavPoint {
   folder: TreeNode | null
   rowId: string | null
   search: string
+  /** Group drill-in. Restored too, or Back out of a bucket leaves its filter silently applied. */
+  groupField: string | null
+  groupValue: string | null
 }
 
 function projectKey(project: Project): string {
@@ -145,6 +149,11 @@ function App() {
   const [searchDraft, setSearchDraft] = useState(initialUrl.search ?? '')
   const [search, setSearch] = useState(initialUrl.search ?? '')
   const [columns, setColumns] = useState<string[] | null>(null)
+  /** Group-by: the field, and the bucket drilled into. Grid view only — see the render. */
+  const [groupField, setGroupField] = useState<string | null>(null)
+  const [groupValue, setGroupValue] = useState<string | null>(null)
+  /** Columns of the current grid, lifted so the group control can offer the groupable ones. */
+  const [availableColumns, setAvailableColumns] = useState<GridColumn[]>([])
 
   // Back history. A ref, not state, because pushing must never itself trigger a render — the push
   // happens inside the same handler that changes what it is recording.
@@ -152,11 +161,13 @@ function App() {
   const [canGoBack, setCanGoBack] = useState(false)
 
   const pushHistory = useCallback(() => {
-    historyRef.current.push({ view, collection, folder, rowId: selectedRowId, search })
+    historyRef.current.push({
+      view, collection, folder, rowId: selectedRowId, search, groupField, groupValue,
+    })
     // 50 steps is far more than anyone walks back through, and bounds the memory.
     if (historyRef.current.length > 50) historyRef.current.shift()
     setCanGoBack(true)
-  }, [view, collection, folder, selectedRowId, search])
+  }, [view, collection, folder, selectedRowId, search, groupField, groupValue])
 
   const goBack = useCallback(() => {
     const previous = historyRef.current.pop()
@@ -167,6 +178,8 @@ function App() {
     setSelectedRowId(previous.rowId)
     setSearch(previous.search)
     setSearchDraft(previous.search)
+    setGroupField(previous.groupField)
+    setGroupValue(previous.groupValue)
     setCanGoBack(historyRef.current.length > 0)
   }, [])
 
@@ -231,6 +244,8 @@ function App() {
     setSearch('')
     setSearchDraft('')
     setColumns(null)
+    setGroupField(null)
+    setGroupValue(null)
     historyRef.current = []
     setCanGoBack(false)
   }, [selectedProjectKey])
@@ -304,6 +319,8 @@ function App() {
     setSearch('')
     setSearchDraft('')
     setColumns(null)
+    setGroupField(null)
+    setGroupValue(null)
   }, [collection])
 
   const activeProject = useMemo(
@@ -318,11 +335,16 @@ function App() {
     const f: Record<string, string> = {}
     if (folder) f['parent-id'] = folder.id
     if (search.trim() !== '') f['name'] = search.trim()
+    // Drilling into a group re-queries rather than filtering the loaded page: the grid holds one
+    // page, so filtering locally would show only the part of a 117-row bucket that happened to be
+    // loaded, beside a count that says 117.
+    if (groupField && groupValue !== null) f[groupField] = groupValue
     return f
-  }, [folder, search])
+  }, [folder, search, groupField, groupValue])
 
   const resolveColumns = useCallback(
     (available: GridColumn[]) => {
+      setAvailableColumns(available)
       if (columns !== null) return
       const stored = readStringList(columnsKey)
       const names = new Set(available.map((c) => c.name))
@@ -632,6 +654,25 @@ function App() {
           className="app-pane app-pane-main"
           aria-label={showTree ? 'Folders' : COLLECTION_LABELS[collection]}
         >
+          {/* Group-by is grid-only. In a tree the rows already have a structure — ALM's own Group By
+              applies to the flat grid too, and stacking a second grouping on a hierarchy would
+              mean one of the two orderings quietly winning. */}
+          {!showTree && (
+            <GroupBar
+              project={selectedProjectKey}
+              collection={collection}
+              columns={availableColumns}
+              field={groupField}
+              onField={setGroupField}
+              value={groupValue}
+              onValue={(v) => {
+                pushHistory()
+                setGroupValue(v)
+                setSelectedRowId(null)
+              }}
+            />
+          )}
+
           {showTree && treeCollection ? (
             <TreeGrid
               project={selectedProjectKey}

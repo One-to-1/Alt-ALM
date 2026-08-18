@@ -139,11 +139,36 @@ class AlmQueryTest {
     }
 
     @Test
-    @DisplayName("a filter value with a space is percent-encoded to %20, not left literal or '+'")
-    void encodesSpace() {
+    @DisplayName("⚠️ a multi-word filter value is QUOTED, not just percent-encoded")
+    void quotesMultiWordValues() {
         String q = AlmQuery.none().filter("name", "John Doe").toQueryString();
 
-        assertThat(q).isEqualTo("?query={name[John%20Doe]}");
+        // This test previously asserted `{name[John%20Doe]}` and passed. It was asserting a bug.
+        //
+        // Measured live: filtering `status` by each of its seven group values, the single-token ones
+        // matched their group counts exactly while `Not Completed` returned 233 rows against a group
+        // count of 8, and `Not Covered` returned 233 against 117 — 233 being the whole collection.
+        // `NOT` is a grammar keyword, so the unquoted form parsed as "status is not Completed": a
+        // valid query, a 200 response, and an answer to a different question.
+        //
+        // With quoting, all seven buckets reproduce their counts exactly.
+        assertThat(q).isEqualTo("?query={name[%22John%20Doe%22]}");
+    }
+
+    @Test
+    @DisplayName("a single-token value is left bare, matching what ALM's own groups endpoint emits")
+    void singleTokenValuesAreNotQuoted() {
+        assertThat(AlmQuery.none().filter("status", "Failed").toQueryString())
+                .isEqualTo("?query={status[Failed]}");
+    }
+
+    @Test
+    @DisplayName("an already-quoted value is not double-quoted")
+    void alreadyQuotedValuePassesThrough() {
+        // ALM's groups endpoint returns drill-in expressions pre-quoted; feeding one straight back
+        // must not produce {status[""No Run""]}.
+        assertThat(AlmQuery.none().filter("status", "\"No Run\"").toQueryString())
+                .isEqualTo("?query={status[%22No%20Run%22]}");
     }
 
     @Test

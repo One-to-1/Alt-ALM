@@ -35,7 +35,7 @@ class GridServiceTest {
 
     private static FieldDescriptor field(String name, AlmFieldType type) {
         return new FieldDescriptor(name, "RQ_" + name.toUpperCase(), type, name + " label",
-                false, true, true, false, false, true, true, 0, 255);
+                false, true, true, false, false, true, true, false, 0, 255);
     }
 
     private static AlmEntityPage page(int totalResults, AlmEntityPage.AlmEntity... rows) {

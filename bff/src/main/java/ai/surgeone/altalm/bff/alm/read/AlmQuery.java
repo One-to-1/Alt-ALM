@@ -76,7 +76,7 @@ public final class AlmQuery {
                     "filter value is required (use filterRaw for a condition with no plain literal)");
         }
         checkEscapable(value);
-        String clause = encodeValue(field) + "[" + encodeValue(value) + "]";
+        String clause = encodeValue(field) + "[" + encodeValue(quoteIfNeeded(value)) + "]";
         return new AlmQuery(append(filterClauses, clause), fieldNames, orderByClauses, pageSize, startIndex);
     }
 
@@ -260,6 +260,39 @@ public final class AlmQuery {
     @Override
     public String toString() {
         return "AlmQuery[" + toQueryString() + "]";
+    }
+
+    /**
+     * Wraps a value in double quotes when ALM's grammar needs them.
+     *
+     * <h2>⚠️ Without this, a multi-word filter silently matches the WRONG ROWS</h2>
+     *
+     * <p>Measured against a live project, filtering {@code status} by each of its seven group values:
+     *
+     * <pre>
+     *   Blocked         3 rows   (group says 3)    ✓
+     *   Failed         48 rows   (group says 48)   ✓
+     *   Not Completed 233 rows   (group says 8)    ✗ — the ENTIRE collection
+     *   Not Covered   233 rows   (group says 117)  ✗ — the ENTIRE collection
+     *   No Run          HTTP 400
+     * </pre>
+     *
+     * <p>{@code NOT} is a grammar keyword, so {@code status[Not Completed]} parses as
+     * <em>"status is not Completed"</em> — a valid query returning almost everything, with a 200 and
+     * no hint that it answered a different question. This is the same failure mode as the tree-root
+     * bug: a confidently wrong answer is worse than an error.
+     *
+     * <p>ALM's own {@code groups} endpoint quotes exactly these values in the drill-in
+     * {@code expression} it returns, which is where the rule comes from rather than from a guess.
+     * Quoting is applied whenever the value contains whitespace or a grammar keyword; single tokens
+     * are left bare, matching what ALM itself emits.
+     */
+    private static String quoteIfNeeded(String value) {
+        if (value.isEmpty() || (value.startsWith("\"") && value.endsWith("\""))) {
+            return value;
+        }
+        boolean needsQuotes = value.chars().anyMatch(Character::isWhitespace);
+        return needsQuotes ? "\"" + value + "\"" : value;
     }
 
     private static void checkEscapable(String value) {

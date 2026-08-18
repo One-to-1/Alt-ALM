@@ -31,9 +31,13 @@ public final class GridDto {
      * @param riskGroup     the field belongs to ALM's built-in Risk Analysis group
      *                      ({@code active && !visibleInWebUI}) — exactly 25 fields in every project
      *                      probed
+     * @param groupable     ALM's own Groupable flag — whether {@code groups/{field}} will aggregate
+     *                      on it. The Group-by control offers exactly these fields, so a project
+     *                      that made a field ungroupable stops seeing it offered, rather than
+     *                      seeing it offered and failing on click
      */
     public record Column(String name, String label, String type, int listId, boolean multiValue,
-                         boolean onDetailsForm, boolean riskGroup) {
+                         boolean onDetailsForm, boolean riskGroup, boolean groupable) {
 
         /**
          * The one mapping from field metadata to a column, shared by the grid and the tree-grid —
@@ -42,7 +46,8 @@ public final class GridDto {
          */
         public static Column of(ai.surgeone.altalm.bff.alm.metadata.FieldDescriptor f) {
             return new Column(f.name(), f.label(), f.type().name(), f.listId(),
-                    f.supportsMultivalue(), f.onDetailsForm(), f.inRiskAnalysisGroup());
+                    f.supportsMultivalue(), f.onDetailsForm(), f.inRiskAnalysisGroup(),
+                    f.groupable());
         }
     }
 

@@ -19,7 +19,7 @@ class AlmMetadataCacheTest {
 
     private static FieldDescriptor field(String name) {
         return new FieldDescriptor(name, "RQ_" + name.toUpperCase(), AlmFieldType.STRING,
-                name, false, true, true, false, false, true, true, 0, 40);
+                name, false, true, true, false, false, true, true, false, 0, 40);
     }
 
     private static AlmMetadataCache cache(AtomicInteger loads) {

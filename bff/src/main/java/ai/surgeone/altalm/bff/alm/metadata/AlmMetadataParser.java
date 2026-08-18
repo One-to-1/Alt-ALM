@@ -67,6 +67,7 @@ public final class AlmMetadataParser {
                     // true for every field in every project probed, so it carries no information.
                     f.path("active").asBoolean(false),
                     f.path("visibleInWebUI").asBoolean(false),
+                    f.path("groupable").asBoolean(false),
                     f.path("List-Id").asInt(f.path("listId").asInt(0)),
                     f.path("size").asInt(0)));
         }
