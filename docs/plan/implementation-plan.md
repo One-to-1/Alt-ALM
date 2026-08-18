@@ -301,9 +301,8 @@ add-to-coverage #15/#16; **Risk Assessment `rbt-*` field writes and Testing Leve
 `NO` by `live-probe-log.md` Probe 12); test/design-step create #33, #36, #39; **test-parameter
 definition and step-parameter value recording #45** (moved here 2026-08-13 — see below, this was
 previously believed REST-unreachable and deferred to OTA/P6, retracted by `live-probe-log.md` Probe 9);
-defect create/detail/delete #96, #99, #103; defect-links #122; bulk update #106 (PARTIAL — bulk
-endpoint itself unverified until its own contract test passes); basic non-embedded-image attachments
-#25, #180–185; filter-state persistence #154–156, #158.
+defect create/detail/delete #96, #99, #103; defect-links #122; **bulk update #106 — RESCOPED, see
+below**; basic non-embedded-image attachments #25, #180–185; filter-state persistence #154–156, #158.
 
 **Out of scope**: Test Lab/runs, releases/cycles/milestones (P3), generator, rich-text editor UI and
 embedded images (P5 — memo fields are writable here as plain/pre-canonicalized HTML only, no editor
@@ -313,7 +312,22 @@ UX).
 - Write-safety component, fully wired: fixed deterministic field order (`name` → relational ids →
   type/subtype last, `api-ref §3.2` — wrong order produces opaque NPE-style 500s); 5xx = "verify by
   query, never assume failure" retry discipline (`api-ref §3.3` — one 500 silently committed a row in
-  probing); bulk 409 per-item result parsing (`api-ref §4.5`); secret masking in all logs.
+  probing); secret masking in all logs.
+- ⚠️ **Bulk update #106, rescoped by probe 29: there is no bulk write endpoint on this deployment.**
+  A multi-entity JSON body is parsed as **one** entity and 500s on the missing top-level `Fields`;
+  the XML `<Entities>` wrapper is refused **400**, while the *same builder's* single `<Entity>`
+  commits **201**. The previously planned "bulk 409 per-item result parsing (`api-ref §4.5`)" has
+  **nothing to parse** — that section describes an API this server does not expose to us.
+  So #106 is a **client-side loop over single-entity writes**, and that changes its risk profile
+  rather than merely its implementation:
+  - a partial failure is now **ours to report**, not the server's — N independent outcomes, each of
+    which can be the 5xx-that-committed case (`api-ref §3.3`), so the loop must verify-by-query per
+    row and present a per-row result, never a single "bulk failed";
+  - there is **no transaction**. Half-applied is a normal outcome, not an error path, and the UI must
+    say which rows changed rather than offering an undo that cannot exist;
+  - do **not** expose a batch endpoint from the BFF that implies atomicity it cannot deliver.
+  ⚠️ Re-verify on another instance before assuming this is a product limitation rather than a
+  deployment one (open item 13).
 - BFF validation layer from runtime metadata (`Required`/`Editable`/`List` bindings) — REST writes
   bypass workflow-script validation by default (`CLIENT_TYPES_BYPASS_REST_WF`, `api-ref §6.8`), so
   the BFF independently enforces what the stock client's scripts would have (D4).
@@ -353,9 +367,25 @@ before it reaches ALM.
 **Sandbox contract-test gate**: full gate active — every contract-test write uses `ALTALM-*` prefix,
 cleanup in `finally`, orphan sweep asserts zero survivors post-suite.
 
-**Deferred probe executed at phase start**: comments-append banner convention (`live-probe-log.md`
-§Open items #10) — determine whether Alt-ALM's comment-field writes should append with a
-banner/timestamp convention matching the stock client, before the comment-write UX is built.
+**Deferred probe executed at phase start**: ✅ **DONE — probe 30, 2026-08-18**, and it changed the
+task from a formatting decision into a data-loss defence:
+
+- ⚠️ **A PUT REPLACES the memo.** There is no server-side append. The obvious comment UI — a box, a
+  button, PUT the new text — **silently deletes the record's entire comment history**, including
+  comments other people wrote in the stock client, and answers HTTP 200. Comment writes must be
+  **read-modify-write in the BFF** (one enforcement point, D7), never in the SPA.
+- That inherits the **lost-update** problem: two people commenting at once, last writer wins,
+  silently. `ver-stamp` increments on write; whether it works as an optimistic-concurrency token is
+  **UNVERIFIED** and P2 must settle it before the comment UX ships.
+- ⚠️ **The field name differs per entity and does not track the physical name**: requirement
+  `comments` (`RQ_DEV_COMMENTS`), defect `dev-comments` (`BG_DEV_COMMENTS`), test `dev-comments`
+  (`TS_DEV_COMMENTS`), run `comments` (`RN_COMMENTS`). Discover from metadata; a constant that is
+  right for a defect is wrong for a requirement.
+- **The server adds nothing** — no banner, no user, no timestamp (workflow bypass). The whole
+  convention is ours.
+- ⚠️ **The stock client's exact banner format is UNVERIFIED and cannot be probed**: it needs one
+  comment written through ALM's own UI, and the projects that had them are no longer reachable.
+  Isolate the format behind **one function** so correcting it later is a one-line change.
 
 ---
 

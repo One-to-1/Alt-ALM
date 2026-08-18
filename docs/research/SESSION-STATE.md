@@ -570,7 +570,30 @@ to return 1 of the project's 2 instances. Re-seed with
    as one); instances remain a link target only, as in ALM.
 2. ~~**The `EntityStatus` question**~~ **ANSWERED — probe 29, 2026-08-18.** Summary below; the full
    run is in the probe log.
-3. **P2 — the write path.** Nothing is left blocking it.
+3. **P2 — the write path.** Nothing is left blocking it, and its phase-start deferred probe is
+   **already done** (probe 30, below).
+
+### P2's phase-start probe is done, and it found a data-loss trap
+
+**⚠️ A memo PUT REPLACES the field.** Probe 30 wrote two comments to a sandbox requirement; the
+second destroyed the first, HTTP 200, no warning. So the obvious "add a comment" box **deletes the
+record's entire comment history**, including comments other people wrote in the stock client. It is
+one line of plausible code away and it is the most destructive thing P2 could ship.
+
+- Comment writes are **read-modify-write, in the BFF** (one enforcement point), never in the SPA.
+- That inherits **lost updates** — two commenters, last writer wins, silently. `ver-stamp` increments
+  on write; whether it works as an optimistic-concurrency token is **UNVERIFIED** and must be settled
+  before the comment UX ships.
+- ⚠️ The field name differs per entity *and does not track the physical name*: requirement `comments`
+  = `RQ_DEV_COMMENTS`; defect/test `dev-comments`; run `comments` = `RN_COMMENTS`. Discover it.
+- The server adds **nothing** — no banner, no user, no timestamp. The convention is entirely ours.
+- ⚠️ The stock client's banner format is **UNVERIFIED and unprobeable right now**: it needs one
+  comment written through ALM's own UI, and the projects that had them are gone. Keep the format in
+  **one function**.
+
+**Also rescoped by probe 29:** bulk update (#106) has no endpoint behind it — it is a client-side
+loop over single-entity writes, with no transaction and per-row outcomes that P2 must report itself.
+Do not expose a BFF batch endpoint implying atomicity it cannot deliver.
 
 ### `EntityStatus`, answered: it is unreachable
 

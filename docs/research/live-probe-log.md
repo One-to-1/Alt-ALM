@@ -1861,6 +1861,90 @@ version, or an operation not exercised here could still produce a failed row —
 
 ---
 
+## Probe 30 - a comment write destroys every earlier comment (2026-08-18)
+
+`scripts/probe/probe-comments.py`. **P2's phase-start deferred probe** (open items #10, "comments
+append banner convention"), run before any comment-write UX exists - which is the point of running it
+at phase start.
+
+The plan framed this as a formatting question: should Alt-ALM append with a banner matching the stock
+client? The formatting is the *last* of four questions and the only one that is a matter of taste.
+The first three are behaviour, and one of them is a data-loss bug.
+
+### 1. The field is not called the same thing twice
+
+| Entity | Field | Type | Physical |
+|---|---|---|---|
+| requirement | `comments` | Memo | `RQ_DEV_COMMENTS` |
+| defect | `dev-comments` | Memo | `BG_DEV_COMMENTS` |
+| test | `dev-comments` | Memo | `TS_DEV_COMMENTS` |
+| run | `comments` | Memo | `RN_COMMENTS` |
+
+All four: `required=False`, `editable=True`, `active=True`. ⚠️ **`comments` and `dev-comments` are
+the same concept under two names** - and the logical name does not track the physical one
+(a requirement's `comments` *is* `RQ_DEV_COMMENTS`). Discover it from metadata per entity; a constant
+that is right for a defect is wrong for a requirement.
+
+### 2. ⚠️ A PUT REPLACES the memo. This is the finding.
+
+```
+write #1 -> stored: <html><body>\nFIRST comment from the probe.\n</body></html>
+write #2 -> stored: <html><body>\nSECOND comment from the probe.\n</body></html>
+```
+
+Write #2 **destroyed** write #1. There is no server-side append.
+
+**So the obvious "add a comment" UI - a box, a button, PUT the new text - silently deletes the
+entire comment history of the record, including comments written by other people in the stock
+client.** It returns HTTP 200. Nothing in the response says anything was lost. This is the single
+most destructive thing P2 could ship, and it is one line of plausible code away.
+
+**Alt-ALM must read-modify-write**: GET the current value, append, PUT the whole thing. That belongs
+in the BFF, not the SPA, so there is one enforcement point (D7) - and it inherits the lost-update
+problem: two people commenting at once, last writer wins, silently. ⚠️ ALM exposes `ver-stamp`
+(observed incrementing on the created row); whether it can be used as an optimistic-concurrency
+token is **UNVERIFIED** and is P2's to settle before the comment UX ships.
+
+### 3. The server adds nothing of its own
+
+Sent `SECOND comment from the probe.`, stored the same modulo probe 27's memo wrapper. Delta was
+exactly `<html><body>\n\n</body></html>`. **No banner, no username, no timestamp** - consistent with
+workflow scripts being bypassed on REST writes (`CLIENT_TYPES_BYPASS_REST_WF`). Every part of the
+convention is ours to write and ours to get right.
+
+### 4. Read-modify-write with a banner: works
+
+```
+<html><body>
+SECOND comment from the probe. <b>____________________</b>
+<br /><b>ALTALM-PROBE-USER &lt;probe&gt;, 18/08/2026:</b>
+<br />
+THIRD comment, appended client-side.
+</body></html>
+```
+
+Both pre-existing comments survived. The `<b>` rule survives sanitisation, and the entity-encoded
+`&lt;probe&gt;` round-trips intact. Note ALM **canonicalised `<br>` to `<br />` and inserted its own
+newlines** - compare canonicalized HTML, never bytes (as already established for memo fields).
+
+### ⚠️ What this probe CANNOT answer
+
+**The stock client's exact banner format.** That can only be read off a record a human commented on
+through ALM's own UI; the sandbox has none, and the borrowed projects that did are no longer
+reachable (user, 2026-08-18). The format above is a *reconstruction* - it is what the field permits,
+not what ALM emits. **UNVERIFIED, and it stays that way until someone opens the stock client and adds
+one comment.** Isolate it behind one function so correcting it later is a one-line change; do not
+scatter separator strings through the write path.
+
+**Sandbox state after:** 2 runs, swept, zero `ALTALM-PROBE-*` rows remaining.
+
+⚠️ Run 1 died mid-probe on a `UnicodeEncodeError` printing a warning glyph to a cp1252 console -
+the **second** time this has cost a run. `finally` still cleaned up. The `alm-live-probe` skill
+already says PowerShell probe scripts must be ASCII-only; **that rule is not PowerShell-specific**,
+it is a Windows-console rule and applies to the Python probes too.
+
+---
+
 ## Open items for the next probe round
 
 1. ~~Map `SiteVersion 20.0 (20.00.0.143)` → marketing version~~ **DONE: ALM 26.1** (probe 3).
@@ -1881,7 +1965,10 @@ version, or an operation not exercised here could still produce a failed row —
 10. **Deferred to post-planning**: mail body shape (capture stock-UI traffic); step-parameters via
     OTA (needs tdconnect.exe); ~~release-folder root id~~ **DONE: id=1 `Releases`, parent `-1`**
     (probe 15); ~~`alm-web` dialect body shape~~ **DONE: flat/denormalized, and it responds on ops
-    that do not advertise it — see R14** (probe 15); comments append banner convention; audit
+    that do not advertise it — see R14** (probe 15); ~~comments append banner convention~~
+    **DONE (probe 30) — and it was not a formatting question: a PUT REPLACES the memo, so the
+    obvious comment UI deletes the record's whole comment history. The banner format itself stays
+    UNVERIFIED (needs one stock-client comment to read).**; audit
     coverage isolation (plain-field PUT vs memo PUT); versions check-in/check-out write probe;
     `IMAGE_COMPRESSION_LEVEL` round-trip.
 11. **NEW (probe 15), blocked on the record generator**: is an over-cap `page-size` silently clamped

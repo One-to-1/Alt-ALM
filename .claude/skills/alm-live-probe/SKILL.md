@@ -280,6 +280,12 @@ as ANSI, so any non-ASCII character (em dashes especially) becomes mojibake that
 literals and produces a cascade of nonsense parse errors. Write probe scripts **ASCII-only and save
 with a BOM**.
 
+⚠️ **ASCII-only is not a PowerShell rule — it is a Windows-console rule, and it applies to the Python
+probes too.** The console is cp1252, so `print()`-ing a warning glyph raises `UnicodeEncodeError`
+**mid-run**, which jumps straight to your `finally` — cleanup deletes records the run still needed and
+the probe reports nothing. This has now cost two runs (probes 27 and 30). Keep every **printed**
+string ASCII; a docstring may hold whatever it likes, because it is never written to stdout.
+
 ## 7. Currently open experiments
 
 See `docs/plan/risks-and-open-questions.md` (Q1–Q31) for the live list of open questions and their

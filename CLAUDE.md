@@ -232,6 +232,13 @@ every conflict**; probes 1–15), [alm-api-reference.md](docs/research/alm-api-r
   login, there is **no one-machine-at-a-time constraint**. `JSESSIONID`, `LWSSO_COOKIE_KEY`,
   `QCSession`, `XSRF-TOKEN` are each unique per session; only `ALM_USER` is shared. Multi-machine
   (different IP) behaviour is `UNVERIFIED` — all 50 came from one host.
+- ⚠️ **A memo PUT REPLACES the field — a comment write destroys every earlier comment** (probe 30).
+  There is no server-side append and no banner, user, or timestamp added by ALM (workflow bypass).
+  The obvious comment UI deletes the record's whole history and answers **HTTP 200**. Comment writes
+  must be **read-modify-write in the BFF**. The field name differs per entity and does not track the
+  physical name — requirement `comments` (`RQ_DEV_COMMENTS`), defect/test `dev-comments`, run
+  `comments` (`RN_COMMENTS`) — so discover it from metadata. The stock client's banner format is
+  **UNVERIFIED** (needs one comment written in ALM's own UI) — isolate it behind one function.
 - **Errors are per-REQUEST, never per-row** (probe 29). `EntityStatus` sits on every entity ALM
   returns (JSON member on reads, XML attribute on writes) and has only ever held `"Success"`. ~25
   deliberately broken reads plus failing writes all came back as a `QCRestException`
