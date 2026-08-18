@@ -21,6 +21,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class GridServiceTest {
@@ -45,6 +47,48 @@ class GridServiceTest {
     private static AlmEntityPage.AlmEntity row(String id, String name) {
         return new AlmEntityPage.AlmEntity("requirement",
                 Map.of("id", List.of(id), "name", List.of(name)), 0, "Success", "");
+    }
+
+    @Test
+    @DisplayName("a typed record's columns narrow to its SUBTYPE's field set")
+    void detailNarrowsColumnsToTheRecordSubtype() {
+        when(metadata.fields(eq(SANDBOX), eq("requirement"))).thenReturn(List.of(
+                field("id", AlmFieldType.NUMBER), field("name", AlmFieldType.STRING),
+                field("type-id", AlmFieldType.NUMBER), field("status", AlmFieldType.LOOKUP_LIST)));
+        // Type 1 is Folder, which genuinely has no `status` — probe 25 measured exactly this.
+        when(metadata.fields(eq(SANDBOX), eq("requirement"), eq("1"))).thenReturn(List.of(
+                field("id", AlmFieldType.NUMBER), field("name", AlmFieldType.STRING),
+                field("type-id", AlmFieldType.NUMBER)));
+        when(entities.page(eq(SANDBOX), eq("requirements"), any())).thenReturn(page(1,
+                new AlmEntityPage.AlmEntity("requirement",
+                        Map.of("id", List.of("7"), "name", List.of("a"), "type-id", List.of("1")),
+                        0, "Success", "")));
+
+        GridDto.Grid grid = service.detail(SANDBOX, "requirements", "7").orElseThrow();
+
+        // The entity-level set would put a Direct Cover Status on a folder, which the stock client
+        // does not. Only the column list narrows; the values are untouched.
+        assertThat(grid.columns()).extracting(GridDto.Column::name)
+                .containsExactly("id", "name", "type-id")
+                .doesNotContain("status");
+    }
+
+    @Test
+    @DisplayName("a record with no type-id is left alone, and never asks for per-type fields")
+    void detailWithoutATypeIdDoesNotAskForSubtypeFields() {
+        when(metadata.fields(eq(SANDBOX), eq("defect"))).thenReturn(List.of(
+                field("id", AlmFieldType.NUMBER), field("name", AlmFieldType.STRING)));
+        when(entities.page(eq(SANDBOX), eq("defects"), any())).thenReturn(page(1,
+                new AlmEntityPage.AlmEntity("defect",
+                        Map.of("id", List.of("7"), "name", List.of("a")), 0, "Success", "")));
+
+        GridDto.Grid grid = service.detail(SANDBOX, "defects", "7").orElseThrow();
+
+        assertThat(grid.columns()).hasSize(2);
+        // ⚠️ This gate is load-bearing: probe 25 found `defect`'s types endpoint returns HTTP 500,
+        // and a failed metadata load is deliberately not cached — so asking unconditionally would
+        // fire a failing upstream request every time anyone opened a defect, forever.
+        verify(metadata, never()).fields(any(), any(), any());
     }
 
     @Test

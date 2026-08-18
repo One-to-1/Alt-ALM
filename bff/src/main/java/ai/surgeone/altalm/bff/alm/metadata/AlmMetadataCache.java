@@ -35,9 +35,19 @@ import java.util.stream.Collectors;
  */
 public final class AlmMetadataCache {
 
-    /** Cache key. Records give equals/hashCode, which is the whole requirement. */
-    private record Key(String domain, String project, String entity) {
+    /**
+     * Cache key. Records give equals/hashCode, which is the whole requirement.
+     *
+     * <p>{@code typeId} is {@code ""} for an entity-level entry and a subtype id for a per-type one,
+     * so both live in one map and one {@link #invalidateAll} still drops everything. A second map
+     * would have been a second lever, and an operator who pulled one would get a form built from
+     * fresh entity fields and a stale per-type override of them.
+     */
+    private record Key(String domain, String project, String entity, String typeId) {
     }
+
+    /** The typeId of an entity-level entry: not a type at all. */
+    private static final String NO_TYPE = "";
 
     private final Map<Key, CompletableFuture<List<FieldDescriptor>>> entries =
             new ConcurrentHashMap<>();
@@ -50,6 +60,7 @@ public final class AlmMetadataCache {
     private final Map<Key, CompletableFuture<List<AlmRelation>>> relationEntries =
             new ConcurrentHashMap<>();
     private final Function<String, List<FieldDescriptor>> loader;
+    private final java.util.function.BiFunction<String, String, List<FieldDescriptor>> typeLoader;
     private final Function<String, List<AlmRelation>> relationLoader;
     private final String domain;
     private final String project;
@@ -65,10 +76,26 @@ public final class AlmMetadataCache {
     public AlmMetadataCache(String domain, String project,
                             Function<String, List<FieldDescriptor>> loader,
                             Function<String, List<AlmRelation>> relationLoader) {
+        this(domain, project, loader, relationLoader, (entity, typeId) -> {
+            throw new UnsupportedOperationException(
+                    "this AlmMetadataCache was built without a per-type field loader, so it cannot "
+                            + "answer fields for '" + entity + "' type " + typeId);
+        });
+    }
+
+    /**
+     * @param typeLoader fetches the field set for one <em>subtype</em> of an entity; normally
+     *                   {@code metadataClient::fetchTypeFields}
+     */
+    public AlmMetadataCache(String domain, String project,
+                            Function<String, List<FieldDescriptor>> loader,
+                            Function<String, List<AlmRelation>> relationLoader,
+                            java.util.function.BiFunction<String, String, List<FieldDescriptor>> typeLoader) {
         this.domain = domain;
         this.project = project;
         this.loader = loader;
         this.relationLoader = relationLoader;
+        this.typeLoader = typeLoader;
     }
 
     /**
@@ -95,7 +122,29 @@ public final class AlmMetadataCache {
      *                          which would read as "this entity has no fields"
      */
     public List<FieldDescriptor> fields(String entity) {
-        return load(entries, new Key(domain, project, entity), () -> loader.apply(entity));
+        return load(entries, new Key(domain, project, entity, NO_TYPE), () -> loader.apply(entity));
+    }
+
+    /**
+     * The field set for one <em>subtype</em> of an entity.
+     *
+     * <p>⚠️ The gain here is smaller than this project's notes claimed, and the measurement is worth
+     * keeping. Probe 25 compared all eight requirement subtypes against the entity-level set on a
+     * live project: <strong>70–72 fields against 74</strong>, not the "13–20 by type" recorded in
+     * SESSION-STATE, and <strong>zero</strong> flag differences — no field is re-described as
+     * active, visible or required differently per type. A subtype only <em>omits</em> fields.
+     *
+     * <p>What it omits still matters: a Folder or Group requirement has no {@code status} and no
+     * {@code req-type}, so the entity-level set puts a Direct Cover Status on a folder, which ALM
+     * would not. One field on the Details form — small, real, and the kind of wrongness that reads
+     * as correct.
+     */
+    public List<FieldDescriptor> fields(String entity, String typeId) {
+        if (typeId == null || typeId.isBlank()) {
+            return fields(entity);
+        }
+        return load(entries, new Key(domain, project, entity, typeId),
+                () -> typeLoader.apply(entity, typeId));
     }
 
     /**
@@ -105,15 +154,21 @@ public final class AlmMetadataCache {
      *                          has no related records", which is never true of an ALM entity
      */
     public List<AlmRelation> relations(String entity) {
-        return load(relationEntries, new Key(domain, project, entity),
+        return load(relationEntries, new Key(domain, project, entity, NO_TYPE),
                 () -> relationLoader.apply(entity));
     }
 
-    /** Drops one entity's entries — both halves, since they describe the same customization. */
+    /**
+     * Drops one entity's entries — every half, since they describe the same customization.
+     *
+     * <p>Removes by entity rather than by key, so an entity's per-type entries go with it. Removing
+     * only the exact entity-level key would leave subtype field sets behind, and a refresh that
+     * updates a form's fields but not its per-type overrides is a refresh that produced a state
+     * neither version ever had.
+     */
     public void invalidate(String entity) {
-        Key key = new Key(domain, project, entity);
-        entries.remove(key);
-        relationEntries.remove(key);
+        entries.keySet().removeIf(k -> k.entity().equals(entity));
+        relationEntries.keySet().removeIf(k -> k.entity().equals(entity));
     }
 
     /** The "refresh metadata" action: drops everything for this project. */

@@ -70,6 +70,22 @@ public final class AlmMetadataClient {
      * <p>⚠️ The <strong>trailing slash matters</strong>: the path is {@code …/relations/}, not
      * {@code …/relations}, unlike its {@code fields} sibling.
      */
+    /**
+     * The field set for one subtype: {@code customization/entities/{e}/types/{id}/fields}.
+     *
+     * <p>Same envelope and same parser as the entity-level read — probe 25 confirmed the payloads
+     * are identical in shape, differing only in which fields are present.
+     *
+     * <p>⚠️ Not every entity answers this. On the probed project only {@code requirement} has
+     * subtypes at all: {@code test}, {@code test-set} and {@code run} return an empty type list, and
+     * {@code defect} returns <strong>HTTP 500</strong>. Callers must therefore treat a failure here
+     * as "fall back to the entity-level set", never as an error worth surfacing.
+     */
+    public List<FieldDescriptor> fetchTypeFields(AlmProjectRef project, String entity, String typeId) {
+        return AlmMetadataParser.parseFields(
+                getCustomization(project, entity, "types/" + typeId + "/fields"));
+    }
+
     public List<AlmRelation> fetchRelations(AlmProjectRef project, String entity) {
         return AlmRelationParser.parseRelations(getCustomization(project, entity, "relations/"));
     }

@@ -24,6 +24,9 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 public final class AlmMetadataCatalog {
 
+    private static final org.slf4j.Logger log =
+            org.slf4j.LoggerFactory.getLogger(AlmMetadataCatalog.class);
+
     private final Map<AlmProjectRef, AlmMetadataCache> caches = new ConcurrentHashMap<>();
     private final AlmMetadataClient client;
     private final AlmAccessPolicy policy;
@@ -36,6 +39,28 @@ public final class AlmMetadataCatalog {
     /** Field descriptors for one entity in one project, fetched once per project. */
     public List<FieldDescriptor> fields(AlmProjectRef project, String entity) {
         return cacheFor(project).fields(entity);
+    }
+
+    /**
+     * Field descriptors for one <em>subtype</em>, falling back to the entity-level set.
+     *
+     * <p>The fallback is not defensive padding — it is the normal path for most entities. Only
+     * {@code requirement} has subtypes on the probed project; {@code defect}'s types endpoint
+     * returns HTTP 500. A caller asking for a type that does not exist should get the best answer
+     * available, which is the entity's own field set, not an exception.
+     */
+    public List<FieldDescriptor> fields(AlmProjectRef project, String entity, String typeId) {
+        AlmMetadataCache cache = cacheFor(project);
+        if (typeId == null || typeId.isBlank()) {
+            return cache.fields(entity);
+        }
+        try {
+            return cache.fields(entity, typeId);
+        } catch (RuntimeException e) {
+            log.debug("no per-type fields for {} type {} — using the entity-level set",
+                    entity, typeId, e);
+            return cache.fields(entity);
+        }
     }
 
     /**
@@ -59,7 +84,8 @@ public final class AlmMetadataCatalog {
         return caches.computeIfAbsent(project, p ->
                 new AlmMetadataCache(p.domain(), p.project(),
                         entity -> client.fetchFields(p, entity),
-                        entity -> client.fetchRelations(p, entity)));
+                        entity -> client.fetchRelations(p, entity),
+                        (entity, typeId) -> client.fetchTypeFields(p, entity, typeId)));
     }
 
     /** Drops one project's cached metadata — the operator's "refresh metadata" lever (ADR 0005). */

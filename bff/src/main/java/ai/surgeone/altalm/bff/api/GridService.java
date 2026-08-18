@@ -145,7 +145,7 @@ public class GridService {
                     "filtering " + collection + " by id returned " + grid.rows().size()
                             + " rows — the id filter is not behaving as a unique lookup");
         }
-        return java.util.Optional.of(grid);
+        return java.util.Optional.of(narrowToType(project, collection, grid));
     }
 
     /**
@@ -171,6 +171,43 @@ public class GridService {
                         "size", g.size(),
                         "expression", g.expression() == null ? "" : g.expression()))
                 .toList();
+    }
+
+    /**
+     * Re-describes a record's columns using its own <em>subtype</em>'s field set, when it has one.
+     *
+     * <p>A subtype omits fields that do not apply to it — a Folder or Group requirement has no
+     * {@code status} and no {@code req-type} — so the entity-level set puts a Direct Cover Status on
+     * a folder, which the stock client would not. The values are untouched; only the column list
+     * narrows, which is exactly the claim being corrected: the field does not exist for this kind of
+     * record.
+     *
+     * <p>⚠️ Gated on the record actually carrying a {@code type-id}, and that gate is doing real
+     * work. Probe 25 found only {@code requirement} has subtypes at all — and {@code defect}'s types
+     * endpoint returns <strong>HTTP 500</strong>, so asking unconditionally would fire a failing
+     * upstream request on every defect opened, forever, since a failed metadata load is deliberately
+     * not cached.
+     */
+    private GridDto.Grid narrowToType(AlmProjectRef project, String collection, GridDto.Grid grid) {
+        List<String> typeIds = grid.rows().getFirst().values().get("type-id");
+        if (typeIds == null || typeIds.isEmpty() || typeIds.getFirst() == null
+                || typeIds.getFirst().isBlank()) {
+            return grid;
+        }
+        List<FieldDescriptor> typeFields =
+                metadata.fields(project, entityOf(collection), typeIds.getFirst());
+        java.util.Set<String> keep = typeFields.stream()
+                .map(FieldDescriptor::name)
+                .collect(java.util.stream.Collectors.toSet());
+        List<GridDto.Column> narrowed = grid.columns().stream()
+                .filter(c -> keep.contains(c.name()))
+                .toList();
+        // If the per-type read fell back to the entity-level set, this is a no-op rather than a
+        // second, redundant object.
+        return narrowed.size() == grid.columns().size()
+                ? grid
+                : new GridDto.Grid(grid.collection(), grid.writable(), narrowed, grid.rows(),
+                        grid.page());
     }
 
     private static String entityOf(String collection) {
