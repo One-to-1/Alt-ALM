@@ -5,6 +5,9 @@ import ai.surgeone.altalm.bff.alm.metadata.AlmMetadataCatalog;
 import ai.surgeone.altalm.bff.alm.metadata.AlmMetadataClient;
 import ai.surgeone.altalm.bff.alm.read.AlmAccessPolicy;
 import ai.surgeone.altalm.bff.alm.read.AlmEntityClient;
+import ai.surgeone.altalm.bff.alm.write.AlmFieldResolver;
+import ai.surgeone.altalm.bff.alm.write.AlmMetadataFieldResolver;
+import ai.surgeone.altalm.bff.alm.write.AlmWriteClient;
 import ai.surgeone.altalm.bff.alm.read.AlmProjectRef;
 import ai.surgeone.altalm.bff.alm.read.AlmReadRetry;
 import ai.surgeone.altalm.bff.alm.session.AlmAuthClient;
@@ -185,6 +188,34 @@ public class AlmConfiguration {
                                            AlmReadRetry retry, AlmProperties props) {
         return new AlmEntityClient(almRestClient, creds, pool, policy, retry,
                 props.getPool().getBorrowTimeout());
+    }
+
+    /**
+     * The single write path, and the only bean in this context that can change anything in ALM.
+     *
+     * <p>Given the same {@link AlmAccessPolicy} as the read client, which is what makes "writes go
+     * to the sandbox only" a property of the wiring rather than of each call site. There is no
+     * property that relaxes it and no second bean for a different project.
+     */
+    @Bean
+    public AlmWriteClient almWriteClient(RestClient almRestClient, AlmCredentials creds,
+                                         AlmSessionPool pool, AlmAccessPolicy policy,
+                                         AlmFieldResolver resolver, AlmProperties props) {
+        return new AlmWriteClient(almRestClient, creds, pool, policy, resolver,
+                props.getPool().getBorrowTimeout());
+    }
+
+    /**
+     * Resolves the physical column names ALM names in its errors back to logical fields (probe 9).
+     *
+     * <p>Bound to the sandbox because that is the only project writes can reach; see
+     * {@link AlmMetadataFieldResolver}. If metadata is unavailable this degrades to
+     * {@link AlmFieldResolver#none()} behaviour at call time — the retry switches off rather than
+     * guessing, which is the safe direction.
+     */
+    @Bean
+    public AlmFieldResolver almFieldResolver(AlmMetadataCatalog catalog, AlmAccessPolicy policy) {
+        return new AlmMetadataFieldResolver(catalog, policy.sandbox());
     }
 
     /**
