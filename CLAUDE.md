@@ -145,9 +145,20 @@ finding in the project surfaced by product code under test rather than a hand-wr
   Cause UNVERIFIED, possibly the same load-balancer intermittency as Q40. P1's grid needs a
   **bounded retry on 5xx reads** — separate from the 5xx-on-*write* verify-by-query rule (**Q46**).
 
-🟢 **P1 is largely built (2026-08-14) — the Requirements module runs end to end.** 147 tests green.
-Grid (metadata-driven columns, sort, filter, paging), folder tree, detail pane, column picker,
-Tree|Grid toggle, resizable detail pane. Group-by has a working endpoint but **no UI**.
+🟢 **P1 is feature-complete except rich text (2026-08-18). 221 tests green.** Grid (metadata-driven
+columns, sort, filter, paging, **group-by with real counts**), folder tree, detail pane with a
+**collapsing icon rail** (blue when a tab holds rows), **History/Audit Log**, related-record tabs
+with cross-module navigation, **ALM's module rail** rendering three distinct kinds of "unavailable",
+per-subtype field sets, column picker, Tree|Grid toggle, resizable detail pane.
+
+⚠️ **Rich-text rendering (gap 0d) is the one P1 gap still open** — user-deferred, and gated on a
+client-side sanitiser decision rather than on effort. Memo bodies are other teams' `<html><body>`
+documents.
+
+⚠️ **An unquoted multi-word filter value silently returns the whole collection** (probe 26): `NOT` is
+a grammar keyword, so `{status[Not Completed]}` means "status is not Completed" and answers with 233
+rows against a group count of 8. `AlmQuery` quotes values containing whitespace. Never hand ALM a
+bare multi-word literal.
 
 ⚠️ **THERE IS NO WRITE PATH. Records cannot be created or edited** — that is P2. Enforced in four
 places: `AlmEntityClient` has no write method; the `api` package has no non-GET mapping and

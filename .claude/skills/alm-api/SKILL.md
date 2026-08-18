@@ -85,8 +85,19 @@ Target: OpenText ALM/Quality Center classic (`/qcbin`), NOT Octane. Sandbox grou
 
 `GET .../{collection}?query={field[cond]; field[cond]; …}` — curly braces = filter, square brackets =
 per-field condition, `;` delimits fields. **Only AND between fields** (implicit, no OR-between-fields).
-Inside one field's brackets: `AND`/`OR`/`NOT` keywords. Quotes for literals with spaces; `*` wildcard;
-parens nest.
+Inside one field's brackets: `AND`/`OR`/`NOT` keywords. `*` wildcard; parens nest.
+
+⚠️ **QUOTE EVERY LITERAL CONTAINING WHITESPACE — this is not stylistic, and getting it wrong is
+silent.** `AND`/`OR`/`NOT` are keywords, so a bare multi-word value is parsed as grammar:
+`{status[Not Completed]}` means *"status is not Completed"* and returned **233 rows against a group
+count of 8** — HTTP 200, no error, an answer to a different question (probe 26). `{status[No Run]}`
+returned HTTP 400. Quoted, all seven buckets of a real project reproduced their counts exactly.
+ALM's own `groups/{field}` endpoint quotes exactly the multi-word values in the drill-in
+`expression` it returns and leaves single tokens bare, so that is the rule to copy.
+
+This line previously read "Quotes for literals with spaces" and the BFF still shipped unquoted ones
+for months — a documented rule nothing enforced. `AlmQuery.filter` now applies it; do not add a
+second filter path that bypasses it.
 
 - Operators: `GT`/`>`, `LT`/`<`, `EQ`/`=`, `GE`/`>=`, `LE`/`<=`. Before ALM 24.1 P1, symbol-only forms
   required; from 24.1 P1 either form works.

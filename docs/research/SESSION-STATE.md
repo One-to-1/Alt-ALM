@@ -452,31 +452,62 @@ The proof-of-concept phase is closed. The Requirements module runs end to end ag
 a tree-grid, metadata-driven columns, working detail tabs, a theme toggle and a screenshot harness.
 **Both servers were shut down at the user's request** — nothing is running; see "Running it" below.
 
-### Where P1 stands after 2026-08-17 (read this first)
+### Where P1 stands after 2026-08-18 (read this first)
 
-Done today, in order: the tab strip's read path (probes 22–23), the `/api/tabs` endpoint, SPA
-rendering, the URL/refresh fix, ALM module terminology, and cross-record navigation.
+**Every gap on the 2026-08-17 list is now closed except rich-text rendering (0d), which the user
+deferred.** 221 tests green; SPA builds and lints clean; all 35 referenced CSS tokens resolve.
+
+Closed today, in order:
+
+1. ✅ **Gap 0e — the project-switch tree race.** The old project's prefetch resolved *after* the
+   reset and marked the new project's ids as already-fetched, so every real request was skipped as
+   redundant and the tree stayed empty. Fixed with a request epoch. ⚠️ A `cancelled` flag could not
+   have fixed this: the damage was a stale write to a **ref**, not a stale `setState`.
+2. ✅ **The collapsing tab rail** (user request). Icons at 40px, hover overlays at 190px, double-click
+   pins, pin persists in `localStorage` across records/projects/reloads. Tabs are blued when they
+   hold rows, from one `GET /api/tabs/{c}/{id}`. ⚠️ A tab whose probe **fails** is absent from that
+   map rather than reported empty — unknown and empty look identical to a reader.
+3. ✅ **History (Audit Log)** — probe 24. **Baselines deliberately absent** (OTA-only, probe 12);
+   the panel says so rather than showing a permanently empty sub-tab.
+4. ✅ **ALM's per-tab column sets**, pinned by field NAME, plus the far-end record's Name.
+5. ✅ **Group By** (gap 1) — field selector over ALM's own `groupable` flag, bucket chips with real
+   counts, drill-in re-queries.
+6. ✅ **The module left rail** (gap 0) — with three distinct verdicts, not one greyed-out state.
+7. ✅ **Per-subtype field sets** (gap 0a) — and the measurement that shrank the claim; see below.
+
+**Corrections to things previously written down here — read these before trusting the old text:**
+
+- ⚠️ **Gap 0a overstated the per-type difference by an order of magnitude.** It said the sets
+  "genuinely differ (13–20 non-memo by type)". Probe 25 measured **70–72 fields against 74**, with
+  **zero** flag differences, moving the Details form by **exactly one field**. A subtype only ever
+  omits. Worth doing, done, but not the correctness hole it was described as.
+- ⚠️ **`test`, `test-set` and `run` have no subtypes at all**, and `defect`'s types endpoint returns
+  **HTTP 500**. The per-type read is therefore gated on the record carrying a `type-id`.
+- ⚠️ **The tab-strip "trade-off" recorded on 2026-08-17 was not the last word either.** Test Coverage
+  was still rendering the same 29 rows twice; a discriminated query beside its own superset is a
+  refinement and folds. But **one** narrow group beside a broad one is a refinement while **nine**
+  are a fan-out — the first version of that rule collapsed a defect's nine `defect-link` tables into
+  one and the existing regression test caught it.
+- ⚠️ **`Set.copyOf` randomises iteration order per JVM run.** The project dropdown reshuffled itself
+  on every restart. Anything selecting a project by index across restarts was selecting at random.
+
+**The one genuinely new API finding — and it was silent (probe 26).** An unquoted multi-word filter
+value does not fail, it **answers a different question**: `{status[Not Completed]}` parses `NOT` as a
+grammar keyword and returned **233 rows against a group count of 8**. `AlmQuery` now quotes values
+containing whitespace, which is what ALM's own group `expression` does. This affected the grid's name
+search too, so any two-word search had been silently matching everything.
 
 **Next, in order:**
 
-1. 🔴 **Fix gap 0e** — the project-switch tree race. Small, and it blocks confident UI verification.
-2. **The collapsing icon rail** (user request 2026-08-17) — the detail pane's tabs as a vertical
-   icon rail: collapsed to icons, **blue when the tab holds rows** (ALM does exactly this — its own
-   dialog blues Attachments and Requirement Traceability and leaves empty ones plain), click to
-   expand, double-click to pin, pin persisted in `localStorage` and surviving record changes.
-   Populated-state costs one `pageSize=1` probe per tab per record; that is affordable and is the
-   only honest way to colour them. Icons key off the relation's **target entity** (attachment, defect,
-   test, requirement, run) with a generic fallback, since a project can define a tab we have no icon
-   for. **NOT STARTED.**
-3. **History** — `Baselines | Audit Log` sub-tabs. ⚠️ Only Audit Log is fillable (`/audits`,
-   coverage known-partial per api-ref §9). **Baselines is OTA-only (probe 12) and cannot be filled
-   over REST**, so it must render its reason, not an empty grid. **NOT STARTED.**
-4. **Match ALM's per-tab column sets** from the user's stock-client screenshots: Test Coverage =
-   Coverage Type · Entity Name · Coverage Status · Coverage Mode; Linked Defects = Defect ID ·
-   Defect: Summary · Linked Entity Type · Linked By Status · Link Comment; Traceability = Req: Name ·
-   Trace Comment; Attachments = Name · Size · Modified. Partially done — `RelatedRows.PREFERRED`
-   leans that way but is not pinned to these sets.
-5. Then gaps 0a, 0, 1, 0d as before.
+1. **Rich-text rendering (0d)** — the only P1 gap left open, deferred by the user. Gated on a
+   client-side sanitiser decision, not on effort. Memo bodies are other teams' `<html><body>`
+   documents, so `dangerouslySetInnerHTML` without our own sanitiser is stored-XSS by construction.
+2. **Test Lab's drill-down** — test set → instances → runs. Runs is now a rail module (ALM lists it
+   as one); instances remain a link target only, as in ALM.
+3. **The `EntityStatus` question** (open item 12 in the probe log) — `AlmEntityParser`'s failure-row
+   handling is still a reasonable construction rather than a probed fact, and the UI now has places
+   that would surface it.
+4. Then P2: the write path, against the hazards already built and unit-tested but wired to nothing.
 
 **The next session's job is finishing P1, not more POC.** Start from the numbered gap list in
 "Known gaps / next steps" — items 0, 0a–0d are the newest and came from the user's own ALM
@@ -520,7 +551,7 @@ not wired to anything.
 - **Grid** — metadata-driven columns (76 for a requirement), sort, name filter, folder scope, paging.
 - **Tree** — root discovery via the corrected rule, lazy expansion, drill-down.
 - **Detail pane** — one record, showing only **populated** fields (23 of 76 on a real record).
-- **Group-by** — endpoint returns real counts with drill-in `expression`. **No UI yet.**
+- **Group-by** — endpoint returns real counts with drill-in `expression`. ✅ **UI landed 2026-08-18.**
 - **Column picker, view toggle (Tree|Grid), resizable detail pane** — all persisted to
   `localStorage`, per project+collection for columns.
 
@@ -572,13 +603,15 @@ not wired to anything.
 
 ### Known gaps / next steps
 
-0. **The module left rail** — added to P1 scope 2026-08-17 (user request); see
+0. ✅ **DONE 2026-08-18. The module left rail** — added to P1 scope 2026-08-17 (user request); see
    `implementation-plan.md` "Added to P1 scope — the module left rail". Reproduces ALM's grouped
    nav (My Homepage / Dashboard / Management / Requirements / Testing / Defects). ⚠️ **Most of it is
    not backed**: Libraries and the Dashboard views are **not reachable over REST at all** (OTA-only,
    probe 12), so the rail must render capability state rather than dead links — an item that is
    unbuilt and an item that needs the P6 sidecar are different things and must look different.
-0a. **What ALM renders IS partly discoverable — probe 21 (2026-08-17).** Three results worth not
+0a. ✅ **DONE 2026-08-18** (the `types/{subtypeId}/fields` half — ⚠️ and probe 25 found the claim
+   below overstated: 70–72 fields against 74, not 13–20, with zero flag differences).
+   **What ALM renders IS partly discoverable — probe 21 (2026-08-17).** Three results worth not
    re-deriving:
    - **`visible` is worthless** — true for every field of every entity in all 9 projects. The real
      discriminators are **`active`** and **`visibleInWebUI`**, which `FieldDescriptor` now carries.
@@ -597,8 +630,13 @@ not wired to anything.
      (`PageNo`/`ViewOrder`), which REST does not serve and which OTA's `ICustomizationField4` has no
      property for either. Also: **per-user-group data hiding is invisible to REST**, so any form we
      build over-shows fields for restricted groups. Sources in probe 21.8.
-   - **Use `types/{subtypeId}/fields`, not the entity-level `fields`**, for a typed record — the
-     per-type sets genuinely differ (13–20 non-memo by type). Not yet implemented.
+   - ~~**Use `types/{subtypeId}/fields`, not the entity-level `fields`**, for a typed record — the
+     per-type sets genuinely differ (13–20 non-memo by type). Not yet implemented.~~
+     ⚠️ **CORRECTED and IMPLEMENTED 2026-08-18 (probe 25).** The endpoint is right and is now used,
+     but "13–20 non-memo by type" was wrong: the real difference is **2–4 fields out of 74**, with
+     **zero** flag differences, moving the Details form by **exactly one field** (`status`, on
+     Folder/Group/Business). A subtype only omits. Also: `test`/`test-set`/`run` have **no subtypes**
+     and `defect`'s types endpoint **500s**, so the read is gated on the record having a `type-id`.
 0b. **One tab per Memo field in the detail pane** — added to P1 scope 2026-08-17 (user request).
    ALM's `Description` / `Comments` / `Rich Text` / `Draft-Rejection Reason` / `RTM Addl Info` tabs
    are not a fixed list; they are that project's **memo fields, one per tab**. Alt-ALM currently
@@ -677,7 +715,10 @@ not wired to anything.
    derived from the formatting we intend to support. Embedded images need proxying through the BFF:
    the probe-verified `<img src>` form is an absolute REST URL, which the browser will fetch
    unauthenticated and get a 401 on, while working fine in curl.
-1. **Group-by UI** — endpoint is done, nothing renders it.
+1. ✅ **DONE 2026-08-18. Group-by UI** — a field selector over ALM's own `groupable` flag (21 of a
+   requirement's 76 fields), bucket chips carrying real server-side counts, drill-in that re-queries.
+   ⚠️ Building it surfaced probe 26: an unquoted multi-word filter value silently returned the whole
+   collection.
 2. **Cross-filter grammar** (`api-ref §4.2`) — `AlmQuery` has no cross-entity filter support.
 3. **Filter UX is one name box** — no per-column filters, no operators (`>`, `NOT`, wildcards).
    `AlmQuery.filterRaw` exists for that but is unused by the API.

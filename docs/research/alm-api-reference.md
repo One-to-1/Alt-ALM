@@ -322,6 +322,13 @@ curly-brace grammar) and **Deprecated** (`/qcbin/api/...`, symbol-only grammar, 
   not a ceiling. Chunk the term list; a 2,000-id query would be ~14 KB, past the usual ~8 KB URL cap.
   ⚠️ Because these are bare keywords with **no documented escaping rule** (next-but-one bullet), a
   user-supplied value containing `OR` reaches ALM as an *operator*, not as text (Q47).
+- ⚠️ **A multi-word literal MUST be double-quoted, or it is parsed as grammar** — `VERIFIED`, probe
+  26 (2026-08-18). `{status[Not Completed]}` reads `NOT` as an operator and returns **233 rows
+  against a group count of 8**: HTTP 200, no error, an answer to a different question.
+  `{status[No Run]}` returns HTTP 400. Quoted — `{status["Not Completed"]}` — all seven buckets of a
+  real project reproduce their group counts exactly. The rule is ALM's own: the `groups/{field}`
+  endpoint returns a drill-in `expression` per bucket and quotes exactly the multi-word ones,
+  leaving single tokens bare. **Never hand ALM a bare literal containing whitespace.**
 - **No documented null-test syntax for Core** (Deprecated has `= null`) — genuine gap, `UNVERIFIED`
   (probe: `{detected-in-rel[null]}`, `{field[]}`).
 - **No documented escaping rule for delimiter characters** (`'`, `"`, `;`, `[`, `]`, `(`, `)`, `,`) in
@@ -1053,7 +1060,7 @@ but not airtight negative (the inventory has known false negatives elsewhere, §
 | **Follow-up flags** | No dedicated source located; may be UI decoration on alert state only | Same UI-traffic capture as alerts |
 | **Purge-runs** | Confirmed absent as a REST endpoint; only per-id `DELETE runs/{id}` exists | Re-check resource-list/Swagger; UI-only `PurgeRunsTask` background job has no documented trigger endpoint |
 | **`step-parameters` create** | ~~FAILED live, twice (rounds 1–2) — every shape returns 500 `"Test parameter does not exist"`, even after entity-encoded tokens registered `has-params=Y`; no REST path to define the parameter object exists `[probe]` (Probes 4–5)~~ **RESOLVED, Probe 9 (2026-08-13):** the "Test parameter does not exist" error was literally true — a `test-parameter` had to exist first, via the missed `test-parameters` collection, before `step-parameters.parent-id` (which needed the *parameter's* id, not the owner's) would resolve. Both entities now VERIFIED working over REST → §6.4 | **Done — no further experiment needed.** OTA fallback is not required for parameter definition or values. |
-| **Audit/history partial coverage** | **VERIFIED partial**: `GET requirements/{id}/audits` returned only 2 entries (both `status` field changes) for a requirement that had a create + 2 rich-text PUTs + a coverage link — creates and memo PUTs produced **no** audit entry `[probe]` (probe4-write-round-1.md §10) | Isolate per-field: PUT a plain (non-memo) editable field and check for an audit entry, to determine if the gap is memo-specific or coverage extends only to derived/computed fields like `status` |
+| **Audit/history partial coverage** | ✅ **SETTLED, probe 24 (2026-08-18)** — and the pessimistic reading was right. Across **678 entries in 119 records** of a live project, **every entry is `Action: UPDATE`**: no `CREATE`, no `DELETE`, and only **12 distinct fields** ever recorded, **none of them a memo**. Confirms probe 4's single-record observation at scale. ⚠️ Also: `Audits.Audit` and `Properties.Property` **collapse to bare objects** when singular — `Property` did so 464 times against 129 arrays, so the collapsed form is the common case, and `Properties` was absent entirely 85 times | **Done.** Remaining nuance, low value: whether any ALM configuration turns creation auditing on |
 | **`alm-web` dialect body shape** | Media type identified on 42 ops (§3.5), never requested | `GET` one `groups/{groupsFields}` endpoint with `Accept: application/json;schema=alm-web` and diff against the plain-JSON response |
 | **`/mail` POST (19 entity types)** | **Probed, FAILED** — 3 JSON shapes → identical opaque NPE; 1 XML shape → different 400. Body format genuinely undocumented `[probe]` (Probe 5) | Capture the stock UI's send-by-email request body, or accept Alt-ALM sending its own mail (already the plan per wave2-05) |
 | **`test-config`/`test-criterion`-coverages full CRUD** | GET/POST-config-coverage side effect confirmed (§6.2); PUT/DELETE and criterion-level never probed | Direct CRUD probe |

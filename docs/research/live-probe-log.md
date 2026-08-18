@@ -1511,6 +1511,156 @@ So **ALM's Business Models Linkage tab has no known REST read**. The obvious plu
 and guessing another name would ship a tab that fails on click, so the selector drops it and returns
 the reason to the client. Settling the real name (or confirming there is none) is an open item.
 
+## Probe 24 — the audits payload, and how partial the audit trail really is (2026-08-18)
+
+GET only. `PROJECT-5` (borrowed, read-only), shapes and counts only — audit rows carry other teams'
+edits and none of their values, users or labels entered this repo.
+
+### 24.1 The envelope
+
+```
+{"Audits":{"TotalResults":3,"Audit":[
+   {"Id":1,"ParentId":42,"ParentType":"REQ","Action":"UPDATE",
+    "Time":"2026-01-02 09:15:00","User":"…",
+    "Properties":{"Property":[{"Name":"status","Label":"Status",
+                               "OldValue":"…","NewValue":"…"}]}}]}}
+```
+
+**PascalCase**, like `customization/relations` and unlike the lowerCamel `fields` sibling. `Time` is
+`yyyy-MM-dd HH:mm:ss` in **all 678 entries** — no timezone offset, so any conversion to local time
+would be inventing the server's zone.
+
+### 24.2 ⚠️ Single elements collapse to bare objects, and the collapsed form is the COMMON one
+
+Counted across 119 records:
+
+| Node | as an array | as a bare object | absent |
+|---|---|---|---|
+| `Audits.Audit` | 115 | **4** | 1 |
+| `Properties.Property` | 129 | **464** | 85 |
+
+`Property` arrives as an object nearly four times as often as it arrives as an array. A parser
+written from one pretty sample would read as correct, pass review, and then return no changes for
+the majority of real records — while still rendering a History tab that looked like it worked. The
+`Properties`-absent case is a third shape again: an audit entry recording that something changed
+without recording what.
+
+### 24.3 The audit trail is thinner than "partial" suggests
+
+**678 entries across 119 records, and every single one is `Action: UPDATE`.** No `CREATE`, no
+`DELETE`. Only **12 distinct fields** ever appear: `detected-in-rcyc`, `detected-in-rel`,
+`environment`, `exec-status`, `owner`, `req-priority`, `req-reviewed`, `severity`, `status`,
+`type-id`, `user-01`, `user-02` — **not one memo field**.
+
+This reproduces at scale what probe 4 round 1 saw once on a single probe record, and settles the
+open "audit coverage isolation" question in the direction of the pessimistic reading: a record can be
+created, have its description rewritten twice and gain a coverage link while producing an audit trail
+of exactly nothing.
+
+**Consequence for the UI**: an empty History tab must never render as "nothing happened to this
+record". It means "ALM recorded no field changes", which is a much weaker claim.
+
+### 24.4 Coverage by entity
+
+`requirements`, `tests` and `defects` all return history (39–40 of 40 sampled records had some).
+`test-sets` and `runs` returned an `Audits` envelope with **no `Audit` node at all** on the records
+sampled — consistent with "no recorded changes" rather than with the endpoint being absent.
+
+---
+
+## Probe 25 — do per-type field sets differ? Much less than we wrote down (2026-08-18)
+
+Metadata only, sandbox, GET only.
+
+### 25.1 The claim being checked
+
+SESSION-STATE gap 0a said: *"Use `types/{subtypeId}/fields`, not the entity-level `fields`, for a
+typed record — the per-type sets genuinely differ (13–20 non-memo by type)."*
+
+### 25.2 What is actually there
+
+`requirement`, 8 subtypes, against an entity-level set of **74** fields:
+
+| Type | Fields | Missing vs entity | On the Details form |
+|---|---|---|---|
+| Undefined | 72 | the two `*-varchar` mirrors | 17 |
+| Folder | 70 | + `req-type`, `status` | 16 |
+| Group | 70 | + `req-type`, `status` | 16 |
+| Functional | 71 | + `req-type` | 17 |
+| Business | 70 | + `req-type`, `status` | 16 |
+| Testing / Performance / Business Model | 71 | + `req-type` | 17 |
+
+- **A difference of 2–4 fields, not 13–20.** The claim was wrong.
+- **Zero flag differences.** Across all eight types, not one field is re-described as active,
+  visible or required differently from the entity level. A subtype only ever **omits**.
+- The Details form moves by **exactly one field** — `status`, on Folder/Group/Business.
+
+### 25.3 Which entities have subtypes at all
+
+| Entity | `customization/entities/{e}/types` |
+|---|---|
+| `requirement` | 8 types |
+| `test` | **0 types** |
+| `test-set` | **0 types** |
+| `run` | **0 types** |
+| `defect` | ⚠️ **HTTP 500** (reproducible) |
+
+Only requirements carry a `type-id` field at all, which is what makes the 500 harmless: gating the
+per-type read on the record actually having a `type-id` means the defect endpoint is never called.
+Without that gate — and because ADR 0005 deliberately does **not** cache a failed metadata load —
+every defect opened would fire a fresh failing upstream request, forever.
+
+### 25.4 ⚠️ Casing, again
+
+`customization/.../fields` uses **lowerCamel** (`name`, `label`, `groupable`); `relations/` uses
+**PascalCase** (`Name`, `Label`). Reading `Name` off a field yields `null` for every field and a
+successful parse of an entirely empty set — which is exactly what happened on the first run of this
+probe, reporting "1 field" for every entity.
+
+---
+
+## Probe 26 — an unquoted multi-word filter answers a different question (2026-08-18)
+
+Read-only, via the BFF, against `PROJECT-5`. Found while building the Group By UI rather than by
+looking for it.
+
+### 26.1 The measurement
+
+`groups/status` reports seven buckets with server-side counts. Filtering the collection by each
+bucket's plain value and comparing:
+
+| Value | group `size` | rows returned | |
+|---|---|---|---|
+| `Blocked` | 3 | 3 | ✓ |
+| `Failed` | 48 | 48 | ✓ |
+| `N/A` | 15 | 15 | ✓ |
+| `Passed` | 16 | 16 | ✓ |
+| `Not Completed` | 8 | **233** | ⚠️ the entire collection |
+| `Not Covered` | 117 | **233** | ⚠️ the entire collection |
+| `No Run` | 26 | **HTTP 400** | |
+
+### 26.2 Why
+
+**`NOT` is a grammar keyword.** `{status[Not Completed]}` parses as *"status is not Completed"* — a
+perfectly valid query that returns almost everything, with HTTP 200 and nothing in the response to
+suggest it answered a different question. This is the same failure mode as the tree-root bug (probe
+15): a confidently wrong answer, not an error.
+
+### 26.3 The fix, and where the rule comes from
+
+ALM's own `groups` endpoint returns a drill-in `expression` per bucket, and it quotes exactly the
+values that need it — `"No Run"`, `"Not Completed"` — leaving single tokens bare. So the rule is the
+server's, not a guess: **quote a filter value containing whitespace**. With quoting, all seven
+buckets reproduce their counts exactly.
+
+### 26.4 Scope
+
+This was never only a grouping bug. The grid's name search sent unquoted values too, so any two-word
+search silently matched everything. `AlmQueryTest.encodesSpace` asserted the broken form **and
+passed** — a test can pin a bug as firmly as it pins a behaviour.
+
+---
+
 ## Open items for the next probe round
 
 1. ~~Map `SiteVersion 20.0 (20.00.0.143)` → marketing version~~ **DONE: ALM 26.1** (probe 3).
