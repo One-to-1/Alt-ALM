@@ -1,0 +1,68 @@
+{
+  "_comment": [
+    "HAND-BUILT, not captured. The shape is probe 24's, measured against a live project; every",
+    "VALUE here is invented. Real audit rows carry another team's edits - who changed what, from",
+    "what, to what - and those never enter this repository (CLAUDE.md hard constraint). A shape is",
+    "schema and is safe to record; the rows are not.",
+    "",
+    "It exercises all four forms probe 24 found in the wild, because a parser that handles only the",
+    "first is wrong for the majority of real records:",
+    "  entry 1 - Property is an ARRAY   (129 of 678 entries)",
+    "  entry 2 - Property is an OBJECT  (464 of 678 - the COMMON case)",
+    "  entry 3 - Properties absent      (85 of 678 - a change with nothing recorded about it)",
+    "and audits-shape-single.json covers Audit itself collapsing to an object (4 of 119 records)."
+  ],
+  "Audits": {
+    "TotalResults": 3,
+    "Audit": [
+      {
+        "Id": 9001,
+        "ParentId": 4242,
+        "ParentType": "REQ",
+        "Action": "UPDATE",
+        "Time": "2026-01-02 09:15:00",
+        "User": "fixture.user",
+        "Properties": {
+          "Property": [
+            {
+              "Name": "status",
+              "Label": "Direct Cover Status",
+              "OldValue": "Not Covered",
+              "NewValue": "Passed"
+            },
+            {
+              "Name": "owner",
+              "Label": "Initiator",
+              "OldValue": "",
+              "NewValue": "fixture.user"
+            }
+          ]
+        }
+      },
+      {
+        "Id": 9002,
+        "ParentId": 4242,
+        "ParentType": "REQ",
+        "Action": "UPDATE",
+        "Time": "2026-01-03 14:40:11",
+        "User": "fixture.other",
+        "Properties": {
+          "Property": {
+            "Name": "req-priority",
+            "Label": "Priority",
+            "OldValue": "3-High",
+            "NewValue": "4-Very High"
+          }
+        }
+      },
+      {
+        "Id": 9003,
+        "ParentId": 4242,
+        "ParentType": "REQ",
+        "Action": "UPDATE",
+        "Time": "2026-01-04 08:00:00",
+        "User": "fixture.user"
+      }
+    ]
+  }
+}

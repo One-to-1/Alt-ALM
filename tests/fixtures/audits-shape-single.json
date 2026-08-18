@@ -1,0 +1,29 @@
+{
+  "_comment": [
+    "HAND-BUILT from probe 24's measured shape; all values invented. See audits-shape.json.",
+    "",
+    "This is the record edited exactly ONCE: `Audit` is a bare object rather than a one-element",
+    "array. Probe 24 counted it 4 times in 119 records - rare enough that a parser written from a",
+    "busy record would pass every test anyone thought to write, and then throw the first time a",
+    "user opened History on a record with one change."
+  ],
+  "Audits": {
+    "TotalResults": 1,
+    "Audit": {
+      "Id": 9100,
+      "ParentId": 77,
+      "ParentType": "BUG",
+      "Action": "UPDATE",
+      "Time": "2026-02-11 17:05:42",
+      "User": "fixture.user",
+      "Properties": {
+        "Property": {
+          "Name": "status",
+          "Label": "Status",
+          "OldValue": "New",
+          "NewValue": "Fixed"
+        }
+      }
+    }
+  }
+}

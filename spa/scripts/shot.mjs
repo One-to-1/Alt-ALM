@@ -66,6 +66,11 @@ for (const theme of themes) {
       const value = await select.locator('option').nth(projectIndex).getAttribute('value')
       if (value) {
         await select.selectOption(value)
+        // ⚠️ Wait for the switch to actually land. The root row appears almost immediately and the
+        // content wait below is satisfied by it, so without this the capture happens while the
+        // first level is still in flight — a screenshot of an empty tree that looks exactly like
+        // the project-switch bug this harness was used to diagnose. It cost one wrong diagnosis.
+        await page.waitForTimeout(4000)
       }
     }
 
@@ -115,16 +120,37 @@ for (const theme of themes) {
     // Open a named tab in the detail pane, e.g. --tab Description.
     const wantTab = opt('tab')
     if (wantTab) {
-      await page.getByRole('tab', { name: new RegExp(wantTab, 'i') }).first().click().catch(() => {})
+      const tabButton = page.getByRole('tab', { name: new RegExp(wantTab, 'i') }).first()
+      await tabButton.click().catch(() => {})
       // Wait for the panel's CONTENT, not a fixed delay. A related-entity tab fetches its rows on
       // open, so 500ms captured the loading skeleton — which looks exactly like a broken render.
-      // This is the same mistake this script was written to stop making; it just moved one level in.
+      //
+      // ⚠️ `.detail-fields` is deliberately NOT in this list, though the Details panel uses it.
+      // It is on screen before the click, so including it satisfied the wait instantly and the
+      // capture happened while the requested tab was still loading — the same failure this wait
+      // exists to prevent, reintroduced by widening the selector.
       await page
         .waitForSelector(
-          '.related-table, .related-empty, .detail-memo-body, .detail-memo-empty, .detail-fields',
+          '.related-table, .related-empty, .detail-memo-body, .detail-memo-empty, ' +
+            '.history-list, .history-empty',
           { timeout: 15000 },
         )
         .catch(() => console.log(`  (tab "${wantTab}" showed no content within 15s)`))
+    }
+
+    // Pin the tab rail open so a screenshot shows its labels. Without this the rail is a 40px
+    // column of icons in every capture, which is correct behaviour and useless for review.
+    if (args.includes('--pin-rail')) {
+      await page.locator('.rail-pin').click().catch(() => {})
+      await page.waitForTimeout(400)
+    }
+
+    // Park the pointer away from the rail. Clicking a tab leaves the mouse over it, and the rail
+    // expands on hover — so every capture otherwise showed it half-open, which is a real state but
+    // never the one being reviewed.
+    if (!args.includes('--pin-rail')) {
+      await page.mouse.move(10, 500)
+      await page.waitForTimeout(400)
     }
 
     // Blank the project selector before capturing. A screenshot of the running app otherwise

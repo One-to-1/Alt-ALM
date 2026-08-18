@@ -192,3 +192,140 @@ export function GridView(props: IconProps) {
     </Svg>
   )
 }
+
+/* ------------------------------------------------------------------------------------------------
+ * Detail-pane rail icons.
+ *
+ * Keyed off the entity a tab reaches, with {@link Link} as the fallback — a project can define a
+ * relation to something this build has never heard of, and the rail must still draw it.
+ * ---------------------------------------------------------------------------------------------- */
+
+/** The Details form: a record's own fields. */
+export function Info(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <circle cx="8" cy="8" r="5.75" />
+      <path d="M8 7.25v3.75M8 5.1v.9" />
+    </Svg>
+  )
+}
+
+/** A memo field — prose rather than a value. */
+export function Text(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M3.25 4h9.5M3.25 7.25h9.5M3.25 10.5h6" />
+    </Svg>
+  )
+}
+
+/** Attachments: a paperclip, the one icon everyone reads without a label. */
+export function Paperclip(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M11.4 7.3 7.1 11.6a2.4 2.4 0 0 1-3.4-3.4l4.8-4.8a1.6 1.6 0 0 1 2.3 2.3l-4.8 4.8a.8.8 0 0 1-1.1-1.1l4.3-4.3" />
+    </Svg>
+  )
+}
+
+/** A defect. */
+export function Bug(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <rect x="5.25" y="5.5" width="5.5" height="7.25" rx="2.75" />
+      <path d="M6.2 4.4a1.8 1.8 0 0 1 3.6 0M2.5 7.5h2.75M10.75 7.5h2.75M2.9 11h2.35M10.75 11h2.35" />
+    </Svg>
+  )
+}
+
+/** Traceability: two records pointing at each other. */
+export function Link(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M6.6 9.4 9.4 6.6" />
+      <path d="M7.6 4.6 9 3.2a2.55 2.55 0 0 1 3.6 3.6l-1.4 1.4" />
+      <path d="M8.4 11.4 7 12.8a2.55 2.55 0 0 1-3.6-3.6l1.4-1.4" />
+    </Svg>
+  )
+}
+
+/** Coverage: a check against a requirement. */
+export function Coverage(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M4 2.5h4.5L12 6v7.5H4Z" />
+      <path d="m6 8.5 1.6 1.6L10.2 7" />
+    </Svg>
+  )
+}
+
+/** A test. */
+export function Beaker(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M6.5 2.5v4L3.4 11.8a1 1 0 0 0 .86 1.5h7.48a1 1 0 0 0 .86-1.5L9.5 6.5v-4" />
+      <path d="M5.75 2.5h4.5M5.1 9.5h5.8" />
+    </Svg>
+  )
+}
+
+/** A run. */
+export function Play(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <circle cx="8" cy="8" r="5.75" />
+      <path d="M6.75 5.75 10.5 8l-3.75 2.25Z" />
+    </Svg>
+  )
+}
+
+/** Risk analysis. */
+export function Warning(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M8 2.75 14 13H2Z" />
+      <path d="M8 6.75v3M8 11.1v.4" />
+    </Svg>
+  )
+}
+
+/** History: a clock winding back. */
+export function Clock(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <circle cx="8" cy="8" r="5.75" />
+      <path d="M8 4.75V8l2.25 1.5" />
+    </Svg>
+  )
+}
+
+/** Every field, including the ones the Details form leaves out. */
+export function ListAll(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M6 4h7M6 8h7M6 12h7M3.25 4h.01M3.25 8h.01M3.25 12h.01" />
+    </Svg>
+  )
+}
+
+/** Pin the rail open. */
+export function Pin({ filled = false, ...props }: IconProps & { filled?: boolean }) {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      width={`${props.size ?? 1}em`}
+      height={`${props.size ?? 1}em`}
+      fill={filled ? 'currentColor' : 'none'}
+      stroke="currentColor"
+      strokeWidth={1.5}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={props.className}
+      aria-hidden="true"
+      focusable="false"
+    >
+      <path d="M9.5 2.2 13.8 6.5l-1.6 1.6-.9-.2-3 3 .3 1.6-1.3 1.3-5.1-5.1L3.5 7.4l1.6.3 3-3-.2-.9Z" />
+      <path d="m5.4 10.6-2.9 2.9" />
+    </svg>
+  )
+}

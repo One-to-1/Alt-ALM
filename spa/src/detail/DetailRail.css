@@ -1,0 +1,177 @@
+/* The detail pane's vertical tab rail.
+
+   Collapsed it is a 40px spine of icons; open it is 190px of icons and labels. The two states are
+   deliberately implemented differently:
+
+   - open-but-not-pinned OVERLAYS the record body (absolute, with a shadow), so hovering the rail
+     never reflows the text someone is reading;
+   - pinned takes its own column in the flex row, pushing the body aside, because a permanent
+     overlay would sit on top of the field values forever.
+
+   That is the VS Code activity-bar pattern, and it is the only arrangement where hover-to-peek and
+   pin-to-keep can coexist without one of them being jarring. */
+
+.rail {
+  position: relative;
+  z-index: 2;
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  width: 40px;
+  height: 100%;
+  border-right: 1px solid var(--border);
+  background: var(--surface);
+  transition: width 130ms ease;
+}
+
+.rail.is-open {
+  width: 190px;
+}
+
+/* Open but unpinned: lift out of the flow and float over the body. `width` still animates, so the
+   labels slide in rather than appearing. */
+.rail.is-open:not(.is-pinned) {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  height: auto;
+  /* The existing pop token, not a literal — it is redefined per theme, and a hardcoded black
+     shadow would disappear against the dark palette's own dark surface. */
+  box-shadow: var(--shadow-pop);
+}
+
+.rail-tabs {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: var(--space-2) 4px;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.rail-tab,
+.rail-pin {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  flex: 0 0 auto;
+  width: 100%;
+  padding: 7px 7px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--text-muted);
+  font: 500 var(--text-sm) / 1 var(--sans);
+  text-align: left;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background 120ms ease, color 120ms ease;
+}
+
+.rail-icon {
+  flex: 0 0 auto;
+  display: inline-flex;
+  font-size: 15px;
+}
+
+/* Clipped, never removed: a collapsed rail must still give every button an accessible name, and
+   `display:none` would take it away. Opacity carries the fade; width stops it forcing the button
+   wider than the 40px spine. */
+.rail-label {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  opacity: 0;
+  transition: opacity 100ms ease;
+}
+
+.rail:not(.is-open) .rail-label {
+  width: 0;
+}
+
+.rail.is-open .rail-label {
+  opacity: 1;
+}
+
+.rail-tab:hover,
+.rail-pin:hover {
+  background: var(--surface-alt);
+  color: var(--text-h);
+}
+
+/* ⚠️ The populated mark. ALM's own dialog blues the tabs that hold something and leaves the rest
+   plain, which is what keeps a fifteen-tab strip scannable.
+
+   Colour is NOT the only carrier — the left bar is a second channel for anyone who cannot separate
+   the accent from the muted text. */
+.rail-tab.is-filled {
+  color: var(--accent);
+}
+
+.rail-tab.is-filled .rail-icon {
+  position: relative;
+}
+
+.rail-tab.is-filled .rail-icon::after {
+  content: '';
+  position: absolute;
+  top: -1px;
+  right: -3px;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+
+.rail-tab.is-active {
+  background: var(--accent-bg);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+/* The active marker runs the full height of the button on its leading edge, which reads at 40px
+   wide where an underline would not. */
+.rail-tab.is-active::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  width: 3px;
+  height: 22px;
+  border-radius: 0 2px 2px 0;
+  background: var(--accent);
+}
+
+.rail-tab {
+  position: relative;
+}
+
+.rail-tab:focus-visible,
+.rail-pin:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: -2px;
+}
+
+.rail-pin {
+  flex: 0 0 auto;
+  margin: 0 4px var(--space-2);
+  width: auto;
+  border-top: 1px solid var(--border);
+  border-radius: 0;
+  padding-top: 9px;
+  color: var(--text-muted);
+}
+
+.rail-pin.is-pinned {
+  color: var(--accent);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rail,
+  .rail-label {
+    transition: none;
+  }
+}

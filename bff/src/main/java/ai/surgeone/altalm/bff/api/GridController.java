@@ -33,14 +33,17 @@ public class GridController {
     private final GridService grids;
     private final TreeService trees;
     private final TabService tabs;
+    private final HistoryService history;
     private final AlmAccessPolicy policy;
     private final AlmCredentials credentials;
 
     public GridController(GridService grids, TreeService trees, TabService tabs,
-                          AlmAccessPolicy policy, AlmCredentials credentials) {
+                          HistoryService history, AlmAccessPolicy policy,
+                          AlmCredentials credentials) {
         this.grids = grids;
         this.trees = trees;
         this.tabs = tabs;
+        this.history = history;
         this.policy = policy;
         this.credentials = credentials;
     }
@@ -134,6 +137,23 @@ public class GridController {
     }
 
     /**
+     * Which of this record's tabs hold rows — what the tab rail colours.
+     *
+     * <p>Sits at {@code /tabs/{collection}/{id}} with no tab key rather than at
+     * {@code …/{id}/populated}, which would be indistinguishable from a project that happens to
+     * define a tab keyed "populated".
+     *
+     * <p>A tab missing from the map is <strong>unknown, not empty</strong> — see
+     * {@link TabService#populated}.
+     */
+    @GetMapping("/tabs/{collection}/{id}")
+    public Map<String, Boolean> tabsPopulated(@PathVariable String collection,
+                                              @PathVariable String id,
+                                              @RequestParam(required = false) String project) {
+        return tabs.populated(resolve(project), collection, id);
+    }
+
+    /**
      * The rows behind one tab, shaped exactly like a grid so the SPA reuses its table.
      *
      * <p>404 when the tab key is not one this entity has in this project — which is a real answer,
@@ -147,6 +167,19 @@ public class GridController {
         return tabs.rows(resolve(project), collection, id, tabKey)
                 .map(ResponseEntity::ok)
                 .orElseGet(() -> ResponseEntity.notFound().build());
+    }
+
+    /**
+     * One record's change history — the History tab's Audit Log.
+     *
+     * <p>⚠️ There is no Baselines half, and there cannot be: baselines are OTA-only (probe 12), with
+     * no documented REST surface to call. See {@link HistoryService}.
+     */
+    @GetMapping("/history/{collection}/{id}")
+    public HistoryDto.History history(@PathVariable String collection,
+                                      @PathVariable String id,
+                                      @RequestParam(required = false) String project) {
+        return history.history(resolve(project), collection, id);
     }
 
     /**
@@ -206,8 +239,13 @@ public class GridController {
                         // enforces this regardless; the flag exists so the UI does not present
                         // buttons that would only ever produce a 403.
                         "writable", policy.isWritable(p)))
-                .sorted((a, b) -> Boolean.compare(
-                        (Boolean) b.get("writable"), (Boolean) a.get("writable")))
+                // Writable first, then by name. The name tiebreak is not cosmetic: without it the
+                // order depends on however the policy's set iterates, and a list that reorders
+                // itself between restarts makes "the third project" mean two different things.
+                .sorted(java.util.Comparator
+                        .comparing((Map<String, Object> p) -> !((Boolean) p.get("writable")))
+                        .thenComparing(p -> (String) p.get("domain"))
+                        .thenComparing(p -> (String) p.get("project")))
                 .toList();
     }
 

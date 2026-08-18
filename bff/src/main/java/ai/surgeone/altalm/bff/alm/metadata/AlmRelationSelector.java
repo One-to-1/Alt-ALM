@@ -182,9 +182,10 @@ public final class AlmRelationSelector {
         List<Tab> tabs = new ArrayList<>(groups.size());
         for (Map.Entry<String, Map<String, List<AlmRelation>>> group : groups.entrySet()) {
             String readEntity = group.getKey();
-            List<Table> tables = new ArrayList<>(group.getValue().size());
-            for (Map.Entry<String, List<AlmRelation>> byQuery : group.getValue().entrySet()) {
-                List<AlmRelation> members = byQuery.getValue();
+            Map<String, List<AlmRelation>> byQuery = foldRefinements(group.getValue());
+            List<Table> tables = new ArrayList<>(byQuery.size());
+            for (Map.Entry<String, List<AlmRelation>> byQueryEntry : byQuery.entrySet()) {
+                List<AlmRelation> members = byQueryEntry.getValue();
                 // The far end is whichever member knows one: a reference relation cannot say, so a
                 // group holding both takes the association's answer.
                 String target = members.stream()
@@ -192,15 +193,9 @@ public final class AlmRelationSelector {
                         .map(AlmRelation::targetEntity)
                         .findFirst()
                         .orElseGet(() -> members.getFirst().targetEntity());
-                tables.add(new Table(byQuery.getKey(), tableLabel(members), target, members));
+                tables.add(new Table(byQueryEntry.getKey(), tableLabel(members), target, members));
             }
-            // The tab takes the shortest of its tables' labels: for req-trace that is "Trace" over
-            // "Traced To Requirements", and the per-direction detail stays on each table's caption.
-            String label = tables.stream()
-                    .map(Table::label)
-                    .min(Comparator.comparingInt(String::length).thenComparing(l -> l))
-                    .orElseThrow();
-            tabs.add(new Tab(readEntity, label, readEntity, tables));
+            tabs.add(new Tab(readEntity, tabLabel(readEntity, tables), readEntity, tables));
         }
 
         // Rule 5: fold tabs that share a label, concatenating their tables.
@@ -235,6 +230,114 @@ public final class AlmRelationSelector {
      */
     private static String queryKey(AlmRelation r) {
         return r.filterIdField() + "|" + r.filterTypeField() + "|" + r.filterTypeValue();
+    }
+
+    /**
+     * Folds a group whose query is another group's query <em>plus a discriminator</em> into that
+     * broader group.
+     *
+     * <h2>What this fixes, found by looking at real rows</h2>
+     *
+     * <p>A requirement reaches its coverage two ways: a plain reference filtering
+     * {@code requirement-id}, and an association filtering {@code requirement-id} <em>and</em>
+     * {@code entity-type[test]}. Different queries, so {@link #queryKey} kept them apart and the tab
+     * rendered <strong>two tables</strong> — and against a live project both returned the
+     * <strong>same 29 rows</strong>, the second under the caption "Requirement to Tests that cover
+     * Requirement". That is ALM's relation name, and it reads as machinery.
+     *
+     * <p>The queries were never independent: adding a discriminator can only ever <em>narrow</em>.
+     * The narrow table is a subset of the broad one, so it shows nothing new — it contributes only
+     * <em>navigability</em>, since the association form is the one that names the far end. Merging
+     * keeps both properties: the broad relation supplies the rows, the navigable one supplies the
+     * link column.
+     *
+     * <p>⚠️ This must <strong>not</strong> collapse a fan-out, and the first version of it did.
+     * A defect's {@code first-endpoint-id} column carries <em>nine</em> discriminated relations —
+     * Linked Requirements, Linked Runs, Linked Tests and six more — <em>and</em> an undiscriminated
+     * one, {@code defectToDefectLinkLink}. The rule as first written ("fold when an undiscriminated
+     * sibling exists") folded all nine into one table listing every link of every kind, which is
+     * precisely the regression a previous session added a test to prevent. It caught it.
+     *
+     * <p>So the rule counts: <strong>one</strong> discriminated sibling beside an undiscriminated
+     * one is a refinement of it, and folds. <strong>Several</strong> are a fan-out — nine disjoint
+     * slices next to their union — and each keeps its own table, exactly as ALM shows them.
+     */
+    private static Map<String, List<AlmRelation>> foldRefinements(
+            Map<String, List<AlmRelation>> byQuery) {
+
+        // The undiscriminated query per id column, if any: "select everything linked to this record
+        // through this column".
+        Map<String, String> broadKeyByIdField = new LinkedHashMap<>();
+        Map<String, Integer> narrowCountByIdField = new LinkedHashMap<>();
+        for (Map.Entry<String, List<AlmRelation>> e : byQuery.entrySet()) {
+            AlmRelation first = e.getValue().getFirst();
+            if (first.discriminated()) {
+                narrowCountByIdField.merge(first.filterIdField(), 1, Integer::sum);
+            } else {
+                broadKeyByIdField.putIfAbsent(first.filterIdField(), e.getKey());
+            }
+        }
+        // A column with more than one narrow group is a fan-out, not a refinement.
+        broadKeyByIdField.keySet()
+                .removeIf(idField -> narrowCountByIdField.getOrDefault(idField, 0) != 1);
+        if (broadKeyByIdField.isEmpty()) {
+            return byQuery;
+        }
+
+        Map<String, List<AlmRelation>> folded = new LinkedHashMap<>();
+        for (Map.Entry<String, List<AlmRelation>> e : byQuery.entrySet()) {
+            AlmRelation first = e.getValue().getFirst();
+            String broadKey = first.discriminated()
+                    ? broadKeyByIdField.get(first.filterIdField())
+                    : null;
+            String key = broadKey != null ? broadKey : e.getKey();
+            folded.computeIfAbsent(key, k -> new ArrayList<>()).addAll(e.getValue());
+        }
+        return folded;
+    }
+
+    /**
+     * The heading over a whole tab.
+     *
+     * <p>A single-table tab simply takes its table's caption. A multi-table tab is the interesting
+     * case, and the obvious rule — "take the shortest caption" — produced a genuinely misleading
+     * result against live data: a defect's ten tables were headed <strong>"Linked Runs"</strong>,
+     * because that happened to be the shortest, over a tab also containing linked requirements,
+     * tests, test sets and test instances. A heading that names one of its ten contents is worse
+     * than a generic one.
+     *
+     * <p>So the shortest caption is used only when it is a genuine <em>generalisation</em> of the
+     * others — a prefix of every one of them, as "Trace" is of "Traced To Requirements". Otherwise
+     * the tab is a fan-out with no shared name, and it takes a neutral heading derived from the
+     * entity its rows come from: {@code defect-link} → "Defect Links". Machinery, but accurate,
+     * where the alternative was fluent and wrong.
+     */
+    private static String tabLabel(String readEntity, List<Table> tables) {
+        String shortest = tables.stream()
+                .map(Table::label)
+                .min(Comparator.comparingInt(String::length).thenComparing(l -> l))
+                .orElseThrow();
+
+        boolean generalises = tables.stream()
+                .map(Table::label)
+                .allMatch(l -> l.regionMatches(true, 0, shortest, 0, shortest.length()));
+
+        return generalises ? shortest : humanise(readEntity);
+    }
+
+    /** {@code defect-link} → "Defect Links". Only used when no relation label fits the whole tab. */
+    private static String humanise(String entity) {
+        StringBuilder out = new StringBuilder(entity.length() + 1);
+        for (String word : entity.split("-")) {
+            if (word.isEmpty()) {
+                continue;
+            }
+            if (!out.isEmpty()) {
+                out.append(' ');
+            }
+            out.append(Character.toUpperCase(word.charAt(0))).append(word, 1, word.length());
+        }
+        return out.append('s').toString();
     }
 
     /**

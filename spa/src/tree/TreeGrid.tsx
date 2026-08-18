@@ -75,13 +75,30 @@ export function TreeGrid({
   // itself when it lands — that would be an endless fetch loop, one level spawning the next.
   const fetchedRef = useRef<Set<string>>(new Set())
 
+  /**
+   * Which tree the in-flight reads belong to. Bumped whenever the project or module changes.
+   *
+   * ⚠️ Without this, switching project from the dropdown left the tree permanently empty, and the
+   * `cancelled` flag the other effects use could not have fixed it — the damage was not a stale
+   * `setState`, it was a stale write to {@link fetchedRef}. The old project's prefetch resolves
+   * *after* the reset, marks the new project's ids as already-fetched, and every real request for
+   * them is then skipped as redundant. The tree renders its root and nothing under it, forever.
+   *
+   * Latent until 2026-08-17: the screenshot harness always switched project before the first level
+   * had loaded, so the race never had anything in flight to lose.
+   */
+  const epochRef = useRef(0)
+
   useEffect(() => {
     let cancelled = false
+    epochRef.current += 1
     setStatus('loading')
     setRoot(null)
     setColumns([])
     setChildren({})
     setExpanded(new Set())
+    // Spinners belong to requests the epoch bump has just orphaned; their `finally` will not run.
+    setLoadingIds(new Set())
     setError(null)
     fetchedRef.current = new Set()
 
@@ -117,6 +134,7 @@ export function TreeGrid({
 
   const loadLevel = useCallback(
     (parentIds: string[], visible: boolean) => {
+      const epoch = epochRef.current
       const wanted = parentIds.filter((id) => !fetchedRef.current.has(id))
       if (wanted.length === 0) return
       for (const id of wanted) fetchedRef.current.add(id)
@@ -131,6 +149,10 @@ export function TreeGrid({
 
       fetchTreeRows(project, collection, wanted)
         .then((result) => {
+          // Superseded: these rows belong to a project nobody is looking at. Returning here is not
+          // just tidiness — the recursive prefetch below would otherwise poison the NEW tree's
+          // fetched-set with ids it never actually loaded.
+          if (epochRef.current !== epoch) return
           setColumns((prev) => (prev.length > 0 ? prev : result.columns))
           // Seed every requested parent with [] so "fetched and childless" is distinguishable
           // from "never fetched" — otherwise an empty folder retries forever.
@@ -146,6 +168,7 @@ export function TreeGrid({
           if (next.length > 0) loadLevel(next, false)
         })
         .catch(() => {
+          if (epochRef.current !== epoch) return
           // Clearing the marks lets a later expand retry rather than failing permanently.
           for (const id of wanted) fetchedRef.current.delete(id)
           setChildren((prev) => {
@@ -155,7 +178,7 @@ export function TreeGrid({
           })
         })
         .finally(() => {
-          if (!visible) return
+          if (!visible || epochRef.current !== epoch) return
           setLoadingIds((prev) => {
             const next = new Set(prev)
             for (const id of wanted) next.delete(id)

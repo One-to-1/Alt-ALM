@@ -1,8 +1,23 @@
 import { useEffect, useMemo, useState } from 'react'
-import type { GridColumn, GridResponse, LinkTarget, RelatedTab } from '../api/client.ts'
-import { ApiError, fetchDetail, fetchTabs } from '../api/client.ts'
+import type { GridColumn, GridResponse, History, LinkTarget, RelatedTab } from '../api/client.ts'
+import { ApiError, fetchDetail, fetchHistory, fetchTabs, fetchTabsPopulated } from '../api/client.ts'
 import { htmlToPlainText, renderCell } from '../grid/renderers.tsx'
 import { RelatedRows } from './RelatedRows.tsx'
+import { HistoryPanel } from './HistoryPanel.tsx'
+import { DetailRail, type RailTab } from './DetailRail.tsx'
+import {
+  Beaker,
+  Bug,
+  Clock,
+  Coverage,
+  Info,
+  Link,
+  ListAll,
+  Paperclip,
+  Play,
+  Text,
+  Warning,
+} from '../shell/icons.tsx'
 import './DetailPane.css'
 
 interface Props {
@@ -49,6 +64,7 @@ type Tab = string
 
 const DETAILS = 'details'
 const ALL = 'all'
+const HISTORY = 'history'
 
 /** ALM leads with Description; the rest follow in metadata order. */
 const LEAD_MEMO = 'description'
@@ -70,6 +86,37 @@ function tabKeyOf(tab: RelatedTab): string {
   return `rel:${tab.key}`
 }
 
+/**
+ * The rail icon for a related-entity tab.
+ *
+ * Keyed off the collection the rows come from first, then off what a row reaches, and finally a
+ * generic link. Three levels because the tab set is per-project: a project can define a relation to
+ * something this build has never seen, and the rail must still draw it rather than leaving a gap
+ * where an icon should be.
+ */
+function relatedIcon(tab: RelatedTab): React.ReactNode {
+  switch (tab.collection) {
+    case 'attachments':
+      return <Paperclip />
+    case 'defect-links':
+      return <Bug />
+    case 'req-traces':
+      return <Link />
+    case 'requirement-coverages':
+      return <Coverage />
+  }
+  switch (tab.tables[0]?.targetEntity) {
+    case 'test':
+      return <Beaker />
+    case 'run':
+      return <Play />
+    case 'defect':
+      return <Bug />
+    default:
+      return <Link />
+  }
+}
+
 type Status = 'idle' | 'loading' | 'ready' | 'missing' | 'error'
 
 export function DetailPane({ project, collection, entityId, onNavigate }: Props) {
@@ -78,6 +125,16 @@ export function DetailPane({ project, collection, entityId, onNavigate }: Props)
   const [error, setError] = useState<string | null>(null)
   const [tab, setTab] = useState<Tab>(DETAILS)
   const [related, setRelated] = useState<RelatedTab[]>([])
+  /**
+   * Tab key → whether it holds rows on THIS record.
+   *
+   * A key that is absent means "not known", which is why this is a partial record rather than a
+   * `Record<string, boolean>` with defaults — see {@link fetchTabsPopulated}.
+   */
+  const [populated, setPopulated] = useState<Record<string, boolean>>({})
+  const [history, setHistory] = useState<History | null>(null)
+  const [historyStatus, setHistoryStatus] = useState<'loading' | 'ready' | 'error'>('loading')
+  const [historyError, setHistoryError] = useState<string | null>(null)
 
   // The related-entity tab set is metadata, not record data: it depends on project + collection and
   // not on which record is open. Fetching it here rather than with the record means arrowing through
@@ -132,6 +189,60 @@ export function DetailPane({ project, collection, entityId, onNavigate }: Props)
     }
   }, [project, collection, entityId])
 
+  // Which related tabs hold rows on this record — the rail's blue marks. One request covering every
+  // tab, because the server can issue the per-tab probes far more cheaply than six round trips can.
+  //
+  // A failure here is deliberately silent: the marks are an aid to scanning, and losing them should
+  // leave a plain rail rather than an error where the record should be.
+  useEffect(() => {
+    if (!entityId) {
+      setPopulated({})
+      return
+    }
+    let cancelled = false
+    setPopulated({})
+    fetchTabsPopulated(project, collection, entityId)
+      .then((marks) => {
+        if (!cancelled) setPopulated(marks)
+      })
+      .catch(() => {
+        if (!cancelled) setPopulated({})
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [project, collection, entityId])
+
+  // History loads WITH the record rather than when its tab is opened.
+  //
+  // That is the opposite of the choice made for related rows, and for a measured reason: probe 24
+  // found a record's audit trail averages under six entries, so the payload is small and fetching it
+  // eagerly both marks the rail honestly and makes the tab open with no spinner. Related tabs can
+  // return hundreds of rows, which is why those stay lazy.
+  useEffect(() => {
+    if (!entityId) {
+      setHistory(null)
+      return
+    }
+    let cancelled = false
+    setHistoryStatus('loading')
+    setHistoryError(null)
+    fetchHistory(project, collection, entityId)
+      .then((result) => {
+        if (cancelled) return
+        setHistory(result)
+        setHistoryStatus('ready')
+      })
+      .catch((err: unknown) => {
+        if (cancelled) return
+        setHistoryError(err instanceof ApiError ? err.message : 'Could not load the history.')
+        setHistoryStatus('error')
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [project, collection, entityId])
+
   const parts = useMemo(() => {
     if (!data || data.rows.length === 0) return null
     const row = data.rows[0]
@@ -141,7 +252,9 @@ export function DetailPane({ project, collection, entityId, onNavigate }: Props)
       return values !== undefined && values.some((v) => v !== '' && v !== null)
     }
 
-    const populated = data.columns.filter(isPopulated)
+    // Named for fields specifically: the pane also tracks which TABS are populated, and one
+    // `populated` covering both is how the two get confused.
+    const populatedFields = data.columns.filter(isPopulated)
 
     // Memo fields the stock client actually tabs — probe 21: `active && visibleInWebUI`, which the
     // server sends as onDetailsForm. On the probed projects this is exactly Description, Comments
@@ -164,7 +277,7 @@ export function DetailPane({ project, collection, entityId, onNavigate }: Props)
     const formCandidates = data.columns.filter(
       (c) => c.type !== 'MEMO' && c.onDetailsForm && !HEADER_FIELDS.includes(c.name),
     )
-    const scalars = (formCandidates.length > 0 ? formCandidates : populated).filter(
+    const scalars = (formCandidates.length > 0 ? formCandidates : populatedFields).filter(
       (c) => c.type !== 'MEMO' && c.name !== 'name',
     )
     const rank = (c: GridColumn) => {
@@ -177,7 +290,7 @@ export function DetailPane({ project, collection, entityId, onNavigate }: Props)
     const memoText = (c: GridColumn) =>
       (row.values[c.name] ?? []).map(htmlToPlainText).filter(Boolean).join('\n\n')
 
-    return { row, populated, memos, ordered, risk, memoText }
+    return { row, populatedFields, memos, ordered, risk, memoText }
   }, [data])
 
   // Reset to Details when the record changes — but only if the open tab does not exist on the new
@@ -185,6 +298,7 @@ export function DetailPane({ project, collection, entityId, onNavigate }: Props)
   const tabExists =
     tab === DETAILS ||
     tab === ALL ||
+    tab === HISTORY ||
     (tab === RISK_TAB && (parts?.risk.length ?? 0) > 0) ||
     (parts?.memos.some((c) => c.name === tab) ?? false) ||
     related.some((t) => tabKeyOf(t) === tab)
@@ -242,10 +356,43 @@ export function DetailPane({ project, collection, entityId, onNavigate }: Props)
     )
   }
 
-  const { row, populated, memos, ordered, risk, memoText } = parts
+  const { row, populatedFields, memos, ordered, risk, memoText } = parts
   const title = row.values['name']?.[0] ?? `Record ${row.id}`
   const activeMemo = memos.find((c) => c.name === tab)
   const activeRelated = related.find((t) => tabKeyOf(t) === tab)
+
+  const hasValue = (c: GridColumn) =>
+    (row.values[c.name] ?? []).some((v) => v !== '' && v !== null)
+
+  // The rail's contents, in ALM's own reading order: the record, then its prose, then the analysis
+  // and related records, then the escape hatches.
+  const railTabs: RailTab[] = [
+    { id: DETAILS, label: 'Details', icon: <Info /> },
+    ...memos.map((col) => ({
+      id: col.name,
+      label: col.label || col.name,
+      icon: <Text />,
+      filled: memoText(col) !== '',
+    })),
+    ...(risk.length > 0
+      ? [{ id: RISK_TAB, label: 'Risk Analysis', icon: <Warning />, filled: risk.some(hasValue) }]
+      : []),
+    ...related.map((rel) => ({
+      id: tabKeyOf(rel),
+      label: rel.label,
+      icon: relatedIcon(rel),
+      // Keyed on the tab's own key, not the namespaced rail id — the server knows nothing about
+      // the `rel:` prefix, which exists only to stop a memo field called "attachment" colliding.
+      filled: populated[rel.key],
+    })),
+    {
+      id: HISTORY,
+      label: 'History',
+      icon: <Clock />,
+      filled: historyStatus === 'ready' ? (history?.entries.length ?? 0) > 0 : undefined,
+    },
+    { id: ALL, label: `All fields (${data.columns.length})`, icon: <ListAll /> },
+  ]
 
   return (
     <Shell>
@@ -270,41 +417,12 @@ export function DetailPane({ project, collection, entityId, onNavigate }: Props)
         </div>
       )}
 
-      <div className="detail-tabs" role="tablist" aria-label="Record sections">
-        <Tab id={DETAILS} active={tab} onSelect={setTab} label="Details" />
-        {/* One tab per memo field. The dot marks which hold content on THIS record, so an
-            eleven-tab strip is still scannable without opening each one. */}
-        {memos.map((col) => (
-          <Tab
-            key={col.name}
-            id={col.name}
-            active={tab}
-            onSelect={setTab}
-            label={col.label || col.name}
-            hasContent={memoText(col) !== ''}
-          />
-        ))}
-        {/* ALM's Risk Analysis tab: the fields that are active but hidden from the main form.
-            Probe 21 measured this group at exactly 25 fields in all nine projects probed. */}
-        {risk.length > 0 && (
-          <Tab id={RISK_TAB} active={tab} onSelect={setTab} label="Risk Analysis" />
-        )}
-        {/* Related-entity tabs, enumerated from ALM's own relations for THIS project. No dot: a
-            dot would have to claim whether the tab holds anything, and knowing that would cost one
-            query per tab per record — which is exactly what ALM's own client declines to spend. */}
-        {related.map((rel) => (
-          <Tab
-            key={rel.key}
-            id={tabKeyOf(rel)}
-            active={tab}
-            onSelect={setTab}
-            label={rel.label}
-          />
-        ))}
-        <Tab id={ALL} active={tab} onSelect={setTab} label={`All fields (${data.columns.length})`} />
-      </div>
+      {/* The rail overlays this container when it is open-but-unpinned, which is what `relative`
+          is for — see DetailRail.css. */}
+      <div className="detail-main">
+        <DetailRail tabs={railTabs} active={tab} onSelect={setTab} />
 
-      <div className="detail-body" role="tabpanel" aria-labelledby={`detail-tab-${tab}`}>
+        <div className="detail-body" role="tabpanel" aria-labelledby={`detail-tab-${tab}`}>
         {tab === DETAILS && <FieldTable columns={ordered} row={row} />}
 
         {activeMemo &&
@@ -342,16 +460,21 @@ export function DetailPane({ project, collection, entityId, onNavigate }: Props)
           />
         )}
 
+        {tab === HISTORY && (
+          <HistoryPanel history={history} status={historyStatus} error={historyError} />
+        )}
+
         {tab === ALL && (
           <>
             <FieldTable columns={data.columns.filter((c) => c.type !== 'MEMO')} row={row} showEmpty />
             <p className="detail-note">
-              {populated.length} of {data.columns.length} fields hold a value on this record.
+              {populatedFields.length} of {data.columns.length} fields hold a value on this record.
               {' '}The Details tab shows the {ordered.length} ALM would probably render — an
               approximation, since ALM keeps its form layout in workflow scripts that no API serves.
             </p>
           </>
         )}
+        </div>
       </div>
     </Shell>
   )
@@ -362,41 +485,6 @@ function Shell({ children }: { children: React.ReactNode }) {
     <aside className="detail" aria-label="Record detail">
       {children}
     </aside>
-  )
-}
-
-interface TabProps {
-  id: Tab
-  active: Tab
-  label: string
-  onSelect: (t: Tab) => void
-  /** Undefined for the fixed tabs; true/false marks a memo field as holding content or not. */
-  hasContent?: boolean
-}
-
-function Tab({ id, active, label, onSelect, hasContent }: TabProps) {
-  const isActive = active === id
-  return (
-    <button
-      type="button"
-      id={`detail-tab-${id}`}
-      role="tab"
-      aria-selected={isActive}
-      className={`detail-tab${isActive ? ' is-active' : ''}${
-        hasContent === false ? ' is-empty' : ''
-      }`}
-      onClick={() => onSelect(id)}
-    >
-      {hasContent !== undefined && (
-        <span
-          className={`detail-tab-dot${hasContent ? ' is-filled' : ''}`}
-          aria-hidden="true"
-        />
-      )}
-      {label}
-      {/* The dot is decorative; screen readers get the state as words. */}
-      {hasContent === false && <span className="sr-only"> (empty)</span>}
-    </button>
   )
 }
 

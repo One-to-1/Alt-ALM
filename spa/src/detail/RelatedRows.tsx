@@ -21,23 +21,46 @@ interface Props {
 type Status = 'loading' | 'ready' | 'missing' | 'error'
 
 /**
- * Columns worth showing in a link table, most useful first, taken from the stock client.
+ * ALM's own column set per link table, pinned by FIELD NAME.
  *
- * ALM's own grids are the reference: Test Coverage shows Coverage Type / Entity Name / Coverage
- * Status / Coverage Mode; Linked Defects shows Defect ID / Defect: Summary / Linked Entity Type /
- * Linked By Status / Link Comment; Requirement Traceability shows Req: Name / Trace Comment.
+ * Read off the stock client's grids and then checked against live field metadata, because the two
+ * do not line up the way the captions suggest:
  *
- * Matched by field NAME, never by label: labels are per-project customization, so a project that
- * renamed "Entity Name" would silently lose its most useful column.
+ * | ALM's caption            | actual field            |
+ * |--------------------------|-------------------------|
+ * | Coverage Type            | `entity-type`           |
+ * | Coverage Status          | `status`                |
+ * | Linked By Status         | `second-endpoint-status`|
+ * | Linked Entity Type       | `second-endpoint-type`  |
+ * | Trace Comment            | `comment`               |
+ * | Size                     | `file-size`             |
+ *
+ * Matched by name and never by label, for the reason ADR 0005 exists: labels are per-project
+ * customization, so pinning "Entity Name" would silently drop the column on the first project that
+ * renamed it, while pinning `entity-name` shows each project's own wording as its header.
+ *
+ * ⚠️ Two of ALM's columns are deliberately absent here — "Defect: Summary" and "Req: Name". They
+ * are not columns of the join table at all; they come from the far-end record, and the server
+ * resolves them separately into {@link LinkTarget.name}, which this component renders as its own
+ * Name column. Taking the join's `second-endpoint-name` instead would have been the obvious move and
+ * would have shown, on a requirement's Linked Defects tab, the requirement's own name in every row.
  */
+const COLUMNS_BY_COLLECTION: Record<string, string[]> = {
+  'requirement-coverages': ['entity-type', 'entity-name', 'status', 'coverage-mode'],
+  'defect-links': ['second-endpoint-type', 'second-endpoint-status', 'link-type', 'comment'],
+  'req-traces': ['comment', 'owner', 'last-modified'],
+  attachments: ['name', 'file-size', 'last-modified'],
+}
+
+/** Fallback ordering for a link table this build has no pinned set for — a project may define one. */
 const PREFERRED = [
   'entity-name',
-  'second-endpoint-name',
   'name',
   'entity-type',
   'coverage-mode',
   'status',
   'second-endpoint-status',
+  'second-endpoint-type',
   'link-type',
   'comment',
   'owner',
@@ -46,10 +69,18 @@ const PREFERRED = [
 
 const MAX_COLUMNS = 5
 
-function chooseColumns(columns: GridColumn[]): GridColumn[] {
+function chooseColumns(columns: GridColumn[], collection: string): GridColumn[] {
   const byName = new Map(columns.map((c) => [c.name, c]))
-  const chosen: GridColumn[] = []
 
+  const pinned = COLUMNS_BY_COLLECTION[collection]
+  if (pinned) {
+    // Only the ones this project actually has: a project that deactivated a field must lose the
+    // column, not render an empty one.
+    const chosen = pinned.map((n) => byName.get(n)).filter((c): c is GridColumn => c !== undefined)
+    if (chosen.length > 0) return chosen
+  }
+
+  const chosen: GridColumn[] = []
   for (const name of PREFERRED) {
     const col = byName.get(name)
     if (col && !chosen.includes(col)) chosen.push(col)
@@ -153,8 +184,12 @@ interface LinkTableProps {
 }
 
 function LinkTable({ table, showCaption, onNavigate }: LinkTableProps) {
-  const columns = chooseColumns(table.grid.columns)
-  const hasTargets = Object.keys(table.targets).length > 0
+  const columns = chooseColumns(table.grid.columns, table.grid.collection)
+  const targets = Object.values(table.targets)
+  const hasTargets = targets.length > 0
+  // Only give the far-end name a column when something is actually in it: attachments have no far
+  // end at all, and an always-present column of dashes is worse than no column.
+  const hasNames = targets.some((t) => t.name !== '')
 
   return (
     <section className="related-section">
@@ -171,6 +206,9 @@ function LinkTable({ table, showCaption, onNavigate }: LinkTableProps) {
                   {/* The linked record's OWN id, not the link row's. This is the column ALM leads
                       with ("Defect ID") and the one that makes a row followable. */}
                   {hasTargets && <th scope="col">ID</th>}
+                  {/* ALM's "Defect: Summary" / "Req: Name" — the far record's own name, not the
+                      join row's. See COLUMNS_BY_COLLECTION. */}
+                  {hasNames && <th scope="col">Name</th>}
                   {columns.map((col) => (
                     <th key={col.name} scope="col" title={`${col.name} · ${col.type}`}>
                       {col.label || col.name}
@@ -199,6 +237,11 @@ function LinkTable({ table, showCaption, onNavigate }: LinkTableProps) {
                             // than a link that goes nowhere.
                             <span className="related-idmissing">—</span>
                           )}
+                        </td>
+                      )}
+                      {hasNames && (
+                        <td className="related-namecell" title={target?.name}>
+                          {target?.name || <span className="related-idmissing">—</span>}
                         </td>
                       )}
                       {columns.map((col) => (

@@ -19,6 +19,18 @@
   white-space: nowrap;
 }
 
+/* The far-end record's own name — ALM leads its Linked Defects grid with this after the ID. Given
+   the most room of any column, since it is the one people actually read. */
+.related-namecell {
+  min-width: 8rem;
+  max-width: 18rem;
+  color: var(--text-h);
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 /* The linked record's id, as a control rather than an anchor: following it changes app state
    (module, tree expansion, selection) rather than fetching a document. */
 .related-link {

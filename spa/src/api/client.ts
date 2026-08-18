@@ -382,6 +382,15 @@ export interface LinkTarget {
   entity: string
   collection: string
   id: string
+  /**
+   * The far record's own name — ALM's "Defect: Summary" / "Req: Name" column.
+   *
+   * ⚠️ Resolved by the server with a second read, because it is NOT in the link row. From a
+   * requirement's Linked Defects tab, `second-endpoint-name` on the join row names *the requirement
+   * you are already looking at*, so rendering the join's own name column would show the wrong
+   * record's name and look entirely plausible. Empty when the lookup failed.
+   */
+  name: string
 }
 
 export interface RelatedTableRows {
@@ -456,6 +465,68 @@ export function fetchTabRows(
   return apiGet<RelatedTableRows[]>(
     `/api/tabs/${encodeURIComponent(collection)}/${encodeURIComponent(id)}/` +
       `${encodeURIComponent(tabKey)}?${params.toString()}`,
+  )
+}
+
+/**
+ * Which of a record's related tabs hold rows — what colours the tab rail.
+ *
+ * ⚠️ A tab **missing from the map is unknown, not empty**: the server leaves out any tab whose probe
+ * failed, because "empty" and "we could not tell" look identical to a reader and only one is true.
+ * Render a missing key as unmarked, never as a hollow dot.
+ */
+export function fetchTabsPopulated(
+  project: string,
+  collection: string,
+  id: string,
+): Promise<Record<string, boolean>> {
+  const params = new URLSearchParams({ project })
+  return apiGet<Record<string, boolean>>(
+    `/api/tabs/${encodeURIComponent(collection)}/${encodeURIComponent(id)}?${params.toString()}`,
+  )
+}
+
+/** One recorded change to a record: which field, and what it went from and to. */
+export interface HistoryChange {
+  field: string
+  label: string
+  oldValue: string
+  newValue: string
+}
+
+/** One change event. `changes` may be empty — ALM records some events without recording what altered. */
+export interface HistoryEntry {
+  id: string
+  action: string
+  /** `yyyy-MM-dd HH:mm:ss` as ALM sent it. No timezone offset, so it is NOT parsed into a Date. */
+  time: string
+  user: string
+  changes: HistoryChange[]
+}
+
+export interface History {
+  collection: string
+  id: string
+  /** Newest first. */
+  entries: HistoryEntry[]
+  /**
+   * Always true so far, and the reason an empty list must never render as "nothing happened".
+   *
+   * Probe 24 read 678 audit entries across 119 records of a live project: every one an `UPDATE`,
+   * spanning 12 fields, none of them a memo. Creates and rich-text edits leave no trace at all.
+   */
+  partial: boolean
+}
+
+/** A record's change history — the History tab's Audit Log. */
+export function fetchHistory(
+  project: string,
+  collection: string,
+  id: string,
+): Promise<History> {
+  const params = new URLSearchParams({ project })
+  return apiGet<History>(
+    `/api/history/${encodeURIComponent(collection)}/${encodeURIComponent(id)}?${params.toString()}`,
   )
 }
 

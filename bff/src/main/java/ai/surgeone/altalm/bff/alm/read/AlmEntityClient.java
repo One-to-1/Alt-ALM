@@ -107,6 +107,28 @@ public final class AlmEntityClient {
         return retry.call(() -> AlmGroupParser.parseGroups(getBody(url)));
     }
 
+    /**
+     * One record's change history: {@code GET {collection}/{id}/audits}.
+     *
+     * <p>A sub-resource of the record rather than a collection of its own, so it does not go through
+     * {@link #page} — there is no query grammar here, no paging parameter, and the envelope is a
+     * different shape entirely ({@link AlmAuditParser}).
+     *
+     * <p>⚠️ What comes back is <strong>partial by design of the server, not of this method</strong>:
+     * probe 24 found creates and memo edits produce no entry at all. Callers must present it as
+     * "recorded field changes", never as "everything that happened".
+     */
+    public List<AlmAudit> audits(AlmProjectRef project, String collection, String id) {
+        policy.checkMethod("GET", project);
+
+        String url = project.restBase(credentials.baseUrl())
+                + "/" + URLEncoder.encode(collection, StandardCharsets.UTF_8)
+                + "/" + URLEncoder.encode(id, StandardCharsets.UTF_8)
+                + "/audits";
+
+        return retry.call(() -> AlmAuditParser.parseAudits(getBody(url)));
+    }
+
     /** A {@link AlmTreeRoots} bound to one project. */
     public AlmTreeRoots treeRoots(AlmProjectRef project) {
         return new AlmTreeRoots((collection, parentId) -> childrenOf(project, collection, parentId));

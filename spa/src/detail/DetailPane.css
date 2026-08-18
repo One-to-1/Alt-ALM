@@ -53,73 +53,20 @@
   overflow-wrap: anywhere;
 }
 
-/* ---- tabs ---- */
+/* ---- tabs ----
 
-/* Wraps rather than scrolls. A project can define nine memo fields, which is eleven tabs in a
-   resizable pane — a horizontal scroller with no affordance would simply hide the later ones, and
-   "the tab is not there" is indistinguishable from "the field does not exist". */
-.detail-tabs {
+   The tab strip is a VERTICAL rail (DetailRail.css), not a horizontal strip. It was a strip, and it
+   wrapped to three rows on a real record: nine memo fields in this project, plus Details, Risk
+   Analysis, History, All fields and one tab per relation the project defines. The count is
+   per-project customization, so there is no width at which a horizontal strip stops wrapping.
+
+   This row is what lets the rail overlay the body when it is open but unpinned — `position:
+   relative` here is the containing block for the rail's absolute positioning. */
+.detail-main {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
   display: flex;
-  flex-wrap: wrap;
-  gap: 0 2px;
-  flex: 0 0 auto;
-  padding: 2px var(--space-3) 0;
-  border-bottom: 1px solid var(--border);
-  background: var(--surface);
-}
-
-.detail-tab {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  padding: 7px 10px 6px;
-  border: 0;
-  border-bottom: 2px solid transparent;
-  background: none;
-  color: var(--text-muted);
-  font: 500 var(--text-sm) / 1 var(--sans);
-  white-space: nowrap;
-  cursor: pointer;
-  transition: color 120ms ease, border-color 120ms ease;
-}
-
-/* A memo tab with no content on this record. Dimmed, never hidden: hiding it would say the field
-   does not exist in this project, which is a different and wrong claim. */
-.detail-tab.is-empty {
-  color: var(--text-muted);
-  opacity: 0.6;
-}
-
-.detail-tab.is-empty.is-active {
-  opacity: 1;
-}
-
-.detail-tab-dot {
-  flex: 0 0 auto;
-  width: 5px;
-  height: 5px;
-  border: 1px solid var(--border-strong);
-  border-radius: 50%;
-  background: none;
-}
-
-.detail-tab-dot.is-filled {
-  border-color: var(--accent);
-  background: var(--accent);
-}
-
-.detail-tab:hover {
-  color: var(--text-h);
-}
-
-.detail-tab.is-active {
-  border-bottom-color: var(--accent);
-  color: var(--accent);
-}
-
-.detail-tab:focus-visible {
-  outline: 2px solid var(--focus-ring);
-  outline-offset: -2px;
 }
 
 .detail-body {

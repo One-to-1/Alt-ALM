@@ -158,6 +158,77 @@ class AlmRelationSelectorTest {
     }
 
     @Test
+    @DisplayName("a discriminated query beside its own superset is ONE table, not two")
+    void aLoneRefinementFoldsIntoItsSuperset() throws IOException {
+        AlmRelationSelector.Selection s = AlmRelationSelector.select(relations("requirement"), READABLE);
+
+        AlmRelationSelector.Tab coverage = s.tabs().stream()
+                .filter(t -> "requirement-coverage".equals(t.readEntity()))
+                .findFirst().orElseThrow();
+
+        // A requirement reaches its coverage twice: `requirement-id` alone, and `requirement-id`
+        // plus `entity-type[test]`. Those were two tables, and against a live project both returned
+        // the SAME 29 rows — the second captioned "Requirement to Tests that cover Requirement",
+        // which is the relation's formal name and reads as machinery.
+        //
+        // Adding a discriminator can only narrow, so the narrow one is a subset that contributes
+        // nothing but navigability. One table: the broad query for the rows, the navigable relation
+        // for the link column.
+        assertThat(coverage.tables()).hasSize(1);
+        assertThat(coverage.tables().getFirst().label()).isEqualTo("Test Coverage");
+        assertThat(coverage.tables().getFirst().relations())
+                .anyMatch(AlmRelation::navigable)
+                .anyMatch(r -> !r.discriminated());
+    }
+
+    @Test
+    @DisplayName("⚠️ but NINE discriminated queries beside a superset stay nine tables")
+    void aFanOutIsNotFoldedIntoItsUnion() throws IOException {
+        AlmRelationSelector.Selection s = AlmRelationSelector.select(relations("defect"), READABLE);
+
+        // This is the regression the fold rule caused on its first attempt and this suite caught.
+        // A defect's `first-endpoint-id` carries nine discriminated relations AND an undiscriminated
+        // one (`defectToDefectLinkLink`), so "fold anything that has an undiscriminated sibling"
+        // merged Linked Requirements, Linked Runs and Linked Tests into a single list of every link
+        // the defect has.
+        //
+        // The distinguishing fact is the COUNT: one narrow group beside a broad one is a
+        // refinement of it; nine are disjoint slices next to their union.
+        assertThat(s.tabs()).flatExtracting(AlmRelationSelector.Tab::tables)
+                .extracting(AlmRelationSelector.Table::label)
+                .contains("Linked Requirements", "Linked Runs", "Linked Tests");
+    }
+
+    @Test
+    @DisplayName("⚠️ a fan-out tab is not headed with the name of one of its ten contents")
+    void aFanOutTabTakesANeutralHeading() throws IOException {
+        AlmRelationSelector.Selection s = AlmRelationSelector.select(relations("defect"), READABLE);
+
+        AlmRelationSelector.Tab links = s.tabs().stream()
+                .filter(t -> "defect-link".equals(t.readEntity()))
+                .findFirst().orElseThrow();
+
+        // "Take the shortest caption" headed this tab "Linked Runs" — over a tab that also holds
+        // linked requirements, tests, test sets and test instances. Fluent and wrong.
+        assertThat(links.tables()).hasSizeGreaterThan(1);
+        assertThat(links.label()).isEqualTo("Defect Links");
+    }
+
+    @Test
+    @DisplayName("but a shortest caption that GENERALISES the others is still used")
+    void aGeneralisingCaptionHeadsItsTab() throws IOException {
+        AlmRelationSelector.Selection s = AlmRelationSelector.select(relations("requirement"), READABLE);
+
+        AlmRelationSelector.Tab traces = s.tabs().stream()
+                .filter(t -> "req-trace".equals(t.readEntity()))
+                .findFirst().orElseThrow();
+
+        // "Trace" is a prefix of "Traced To Requirements", so it genuinely covers both directions
+        // rather than naming one of them. The per-direction detail stays on each table's caption.
+        assertThat(traces.label()).isEqualTo("Trace");
+    }
+
+    @Test
     @DisplayName("a table takes ALM's readable caption, not the relation's formal name")
     void tableLabelPrefersTheReadableForm() throws IOException {
         AlmRelationSelector.Selection s = AlmRelationSelector.select(relations("requirement"), READABLE);

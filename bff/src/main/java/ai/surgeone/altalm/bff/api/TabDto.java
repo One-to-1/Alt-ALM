@@ -45,8 +45,16 @@ public final class TabDto {
      * @param entity     wire entity name, e.g. {@code defect}
      * @param collection the module to open, e.g. {@code defects}
      * @param id         the far record's id
+     * @param name       the far record's own name, or empty when it could not be resolved.
+     *                   <p>⚠️ This is <strong>not</strong> in the link row — it is a second read.
+     *                   ALM's own Linked Defects grid leads with "Defect: Summary" and its
+     *                   Traceability grid with "Req: Name", and neither is a column of the join
+     *                   table: {@code defect-link} carries {@code second-endpoint-name}, which from
+     *                   a requirement's tab names <em>the requirement you are already looking at</em>,
+     *                   not the defect. Without resolving the far end the most useful column in the
+     *                   grid is either absent or, worse, quietly the wrong record's name
      */
-    public record LinkTarget(String entity, String collection, String id) {
+    public record LinkTarget(String entity, String collection, String id, String name) {
     }
 
     /**

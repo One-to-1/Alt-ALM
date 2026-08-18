@@ -60,7 +60,12 @@ public final class AlmAccessPolicy {
         if (readOnlyExtra != null) {
             all.addAll(readOnlyExtra);
         }
-        this.readable = Set.copyOf(all);
+        // ⚠️ NOT Set.copyOf. Its iteration order is randomised per JVM run (ImmutableCollections
+        // salts its hash order deliberately), so the project list came back in a different order
+        // after every restart — the dropdown reshuffled itself, and a screenshot harness selecting
+        // by index silently pointed at a different project between two runs. Insertion order is the
+        // operator's configured order, which is the one worth keeping.
+        this.readable = java.util.Collections.unmodifiableSet(all);
     }
 
     /** The conservative default: the credentialed project, and nothing else, readable or writable. */

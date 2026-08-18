@@ -46,7 +46,7 @@ class TabServiceTest {
     private final AlmMetadataCatalog metadata = mock(AlmMetadataCatalog.class);
     private final AlmAccessPolicy policy = new AlmAccessPolicy(PROJECT, Set.of());
     private final GridService grids = new GridService(entities, metadata, policy);
-    private final TabService service = new TabService(grids, metadata, policy);
+    private final TabService service = new TabService(grids, entities, metadata, policy);
 
     private static List<AlmRelation> relations(String entity) throws IOException {
         Path path = FIXTURES.resolve("customization-relations-" + entity + ".json");
@@ -159,6 +159,105 @@ class TabServiceTest {
             return new AlmEntityPage(List.of(), 0);
         });
         return sent;
+    }
+
+    @Test
+    @DisplayName("⚠️ a row's Name comes from the FAR record, not from the join row's own name column")
+    void farEndNameIsResolvedSeparately() throws IOException {
+        when(metadata.relations(eq(PROJECT), eq("requirement"))).thenReturn(relations("requirement"));
+        when(metadata.fields(eq(PROJECT), eq("req-trace")))
+                .thenReturn(List.of(field("id"), field("from-req-id"), field("to-req-id")));
+
+        when(entities.page(any(), any(), any())).thenAnswer(inv -> {
+            String collection = inv.getArgument(1);
+            if ("requirements".equals(collection)) {
+                // The far-end lookup.
+                return new AlmEntityPage(List.of(new AlmEntityPage.AlmEntity("requirement",
+                        Map.of("id", List.of("900"), "name", List.of("Far requirement")),
+                        0, "Success", "")), 1);
+            }
+            return new AlmEntityPage(List.of(new AlmEntityPage.AlmEntity("req-trace",
+                    Map.of("id", List.of("7"), "from-req-id", List.of("605"),
+                            "to-req-id", List.of("900")),
+                    0, "Success", "")), 1);
+        });
+
+        List<TabDto.TableRows> tables =
+                service.rows(PROJECT, "requirements", "605", "req-trace").orElseThrow();
+
+        // ALM's Traceability grid leads with "Req: Name", and that name is NOT on the trace row —
+        // `req-trace` has no name column at all. Resolving it is the only way the column exists;
+        // taking a name off the join row is what would have shown the wrong record.
+        TabDto.LinkTarget target = tables.stream()
+                .flatMap(t -> t.targets().values().stream())
+                .filter(t -> "900".equals(t.id()))
+                .findFirst().orElseThrow();
+        assertThat(target.name()).isEqualTo("Far requirement");
+    }
+
+    @Test
+    @DisplayName("a far-end lookup that fails leaves the name blank, not the tab broken")
+    void nameLookupFailureIsNotFatal() throws IOException {
+        when(metadata.relations(eq(PROJECT), eq("requirement"))).thenReturn(relations("requirement"));
+        when(metadata.fields(eq(PROJECT), eq("req-trace")))
+                .thenReturn(List.of(field("id"), field("from-req-id"), field("to-req-id")));
+        when(entities.page(any(), any(), any())).thenAnswer(inv -> {
+            if ("requirements".equals(inv.<String>getArgument(1))) {
+                throw new IllegalStateException("far-end lookup exploded");
+            }
+            return new AlmEntityPage(List.of(new AlmEntityPage.AlmEntity("req-trace",
+                    Map.of("id", List.of("7"), "to-req-id", List.of("900")), 0, "Success", "")), 1);
+        });
+
+        List<TabDto.TableRows> tables =
+                service.rows(PROJECT, "requirements", "605", "req-trace").orElseThrow();
+
+        // The rows and their links survive; only the cosmetic column is lost.
+        assertThat(tables).isNotEmpty();
+        assertThat(tables.stream().flatMap(t -> t.targets().values().stream()))
+                .allSatisfy(t -> assertThat(t.name()).isEmpty());
+    }
+
+    @Test
+    @DisplayName("the populated map marks a tab that holds rows, and one that does not")
+    void populatedMarksTabsWithRows() throws IOException {
+        when(metadata.relations(eq(PROJECT), eq("requirement"))).thenReturn(relations("requirement"));
+        when(metadata.fields(eq(PROJECT), any())).thenReturn(List.of(
+                field("id"), field("from-req-id"), field("to-req-id"), field("parent-id"),
+                field("parent-type"), field("second-endpoint-id"), field("second-endpoint-type"),
+                field("requirement-id"), field("entity-type")));
+        // req-traces has rows; nothing else does.
+        when(entities.page(any(), any(), any())).thenAnswer(inv -> {
+            String collection = inv.getArgument(1);
+            return "req-traces".equals(collection)
+                    ? new AlmEntityPage(List.of(new AlmEntityPage.AlmEntity("req-trace",
+                            Map.of("id", List.of("7")), 0, "Success", "")), 1)
+                    : new AlmEntityPage(List.of(), 0);
+        });
+
+        Map<String, Boolean> populated = service.populated(PROJECT, "requirements", "605");
+
+        assertThat(populated).containsEntry("req-trace", true);
+        assertThat(populated).containsEntry("attachment", false);
+    }
+
+    @Test
+    @DisplayName("⚠️ a tab whose probe fails is ABSENT from the map, never reported empty")
+    void aFailedProbeIsUnknownNotEmpty() throws IOException {
+        when(metadata.relations(eq(PROJECT), eq("requirement"))).thenReturn(relations("requirement"));
+        // No fields stubbed for req-trace, so filtersFor throws for that tab only.
+        when(metadata.fields(eq(PROJECT), any())).thenReturn(List.of(
+                field("id"), field("parent-id"), field("parent-type"),
+                field("second-endpoint-id"), field("second-endpoint-type"),
+                field("requirement-id"), field("entity-type")));
+        when(entities.page(any(), any(), any())).thenReturn(new AlmEntityPage(List.of(), 0));
+
+        Map<String, Boolean> populated = service.populated(PROJECT, "requirements", "605");
+
+        // "Empty" and "we could not tell" look identical to a user, and only one of them is a claim
+        // we can make. The tab simply goes unmarked.
+        assertThat(populated).doesNotContainKey("req-trace");
+        assertThat(populated).containsEntry("attachment", false);
     }
 
     @Test
