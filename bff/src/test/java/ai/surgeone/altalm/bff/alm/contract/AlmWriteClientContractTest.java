@@ -11,6 +11,7 @@ import ai.surgeone.altalm.bff.alm.read.AlmReadRetry;
 import ai.surgeone.altalm.bff.alm.session.AlmAuthClient;
 import ai.surgeone.altalm.bff.alm.session.AlmCredentials;
 import ai.surgeone.altalm.bff.alm.session.AlmSessionPool;
+import ai.surgeone.altalm.bff.alm.write.AlmCommentWriter;
 import ai.surgeone.altalm.bff.alm.write.AlmEntityBody;
 import ai.surgeone.altalm.bff.alm.write.AlmMetadataFieldResolver;
 import ai.surgeone.altalm.bff.alm.write.AlmWriteClient;
@@ -67,6 +68,7 @@ class AlmWriteClientContractTest {
     private static AlmProjectRef sandbox;
     private static AlmEntityClient entities;
     private static AlmWriteClient writes;
+    private static AlmCommentWriter comments;
 
     /** Everything created, in creation order. Unwound backwards so children go before parents. */
     private static final List<String> created = new ArrayList<>();
@@ -90,6 +92,7 @@ class AlmWriteClientContractTest {
                 new AlmMetadataClient(http, credentials, pool, Duration.ofSeconds(30)), policy);
         writes = new AlmWriteClient(http, credentials, pool, policy,
                 new AlmMetadataFieldResolver(catalog, sandbox), Duration.ofSeconds(30));
+        comments = new AlmCommentWriter(entities, writes, catalog);
 
         AlmEntityPage page = entities.page(sandbox, "requirements",
                 AlmQuery.none().fields("id", "type-id").pageSize(1));
@@ -319,5 +322,91 @@ class AlmWriteClientContractTest {
                 .isPresent();
 
         assertThat(resolver.byPhysicalName("requirement", "NO_SUCH_COLUMN")).isEmpty();
+    }
+
+    // ======================================================================================
+    // The comment path. These are the cases the class was written for, so they are the ones
+    // worth running against the real server: ALM re-serialises the memo on the way in, and a
+    // merge that survives a mock does not automatically survive that.
+
+    @Test
+    @DisplayName("adding a second comment PRESERVES the first - the data loss this path prevents")
+    void commentAppendPreservesHistory() {
+        String id = createRequirement("comment-history");
+
+        comments.addComment(sandbox, "requirements", "requirement", id,
+                "Contract Test", "FIRST comment.", Optional.empty());
+        comments.addComment(sandbox, "requirements", "requirement", id,
+                "Contract Test", "SECOND comment.", Optional.empty());
+
+        String stored = entities.page(sandbox, "requirements",
+                        AlmQuery.none().filter("id", id).fields("id", "comments").pageSize(1))
+                .entities().get(0).first("comments").orElse("");
+
+        // Both, in order. The paired test above (memoUpdateReplacesRatherThanAppends) proves the
+        // RAW field replaces - so this passing is evidence of the merge working, not of ALM
+        // having quietly started appending on its own.
+        assertThat(stored).contains("FIRST comment.");
+        assertThat(stored).contains("SECOND comment.");
+        assertThat(stored.indexOf("FIRST")).isLessThan(stored.indexOf("SECOND"));
+    }
+
+    @Test
+    @DisplayName("a real concurrent write is detected by ver-stamp, and the comment is refused")
+    void concurrentEditIsDetected() {
+        String id = createRequirement("comment-conflict");
+
+        String stampBefore = entities.page(sandbox, "requirements",
+                        AlmQuery.none().filter("id", id).fields("id", "ver-stamp").pageSize(1))
+                .entities().get(0).first("ver-stamp").orElseThrow();
+
+        comments.addComment(sandbox, "requirements", "requirement", id,
+                "Someone Else", "landed first", Optional.empty());
+
+        // Now write as if we had only seen the record at stampBefore - which is exactly what a
+        // second user with the page already open would be doing.
+        assertThatThrownBy(() -> comments.addComment(sandbox, "requirements", "requirement", id,
+                "Contract Test", "would have clobbered", Optional.of(stampBefore)))
+                .isInstanceOf(AlmCommentWriter.ConflictException.class);
+
+        String stored = entities.page(sandbox, "requirements",
+                        AlmQuery.none().filter("id", id).fields("id", "comments").pageSize(1))
+                .entities().get(0).first("comments").orElse("");
+        assertThat(stored).contains("landed first");
+        assertThat(stored).doesNotContain("would have clobbered");
+    }
+
+    @Test
+    @DisplayName("the comment field is discovered from live metadata as `comments` for a requirement")
+    void commentFieldIsDiscoveredLive() {
+        // Probe 30: a requirement's comment field is `comments` (physically RQ_DEV_COMMENTS) while a
+        // defect's is `dev-comments`. If discovery broke, every comment would silently go to the
+        // wrong field or none at all.
+        assertThat(comments.commentFieldOf(sandbox, "requirement")).contains("comments");
+        assertThat(comments.commentFieldOf(sandbox, "defect")).contains("dev-comments");
+    }
+
+    @Test
+    @DisplayName("newlines survive as <br> rather than collapsing to spaces (probe 27's trap)")
+    void newlinesSurviveTheRoundTrip() {
+        String id = createRequirement("comment-newlines");
+
+        comments.addComment(sandbox, "requirements", "requirement", id,
+                "Contract Test", "para one" + "\n" + "para two", Optional.empty());
+
+        String stored = entities.page(sandbox, "requirements",
+                        AlmQuery.none().filter("id", id).fields("id", "comments").pageSize(1))
+                .entities().get(0).first("comments").orElse("");
+
+        // ALM collapses raw newlines to spaces and canonicalises <br> to <br />, so this asserts
+        // the separation survived at all rather than asserting an exact byte sequence.
+        //
+        // The first version of this test sent a LITERAL backslash-n rather than a newline, so the
+        // escaper had nothing to convert and ALM stored the two characters verbatim. It failed, and
+        // it was right to - but the bug was in the test. Worth the note: a newline test that builds
+        // its own input wrongly looks exactly like a product that does not handle newlines.
+        assertThat(stored).contains("para one");
+        assertThat(stored).contains("para two");
+        assertThat(stored).matches("(?s).*para one\\s*<br\\s*/?>\\s*para two.*");
     }
 }
