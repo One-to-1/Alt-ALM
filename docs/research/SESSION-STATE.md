@@ -1,9 +1,22 @@
-# Research Session State — updated 2026-08-13 (**P0 COMPLETE**; P1 is next)
+# Session State — updated 2026-08-18 (**P1 COMPLETE except rich text**; P2 is the write path)
 
-Working state of the Fable 5 research-and-planning session (kickoff:
-[docs/prompts/fable-5-research-and-plan.md](../prompts/fable-5-research-and-plan.md)). Written
-immediately before a context compact so the continuation loses nothing. **Read this first when
-resuming.**
+Working state, written immediately before a context compact so the continuation loses nothing.
+Original kickoff: [docs/prompts/fable-5-research-and-plan.md](../prompts/fable-5-research-and-plan.md).
+
+## ⚠️ How to read this file
+
+It is **append-mostly and chronological**, so the early sections describe a world that no longer
+exists. Jump straight to **"Where P1 stands after 2026-08-18 (read this first)"**, then the
+**"Known residual issues"** and **"What P1 does NOT have"** lists directly under it. Everything above
+those is history, kept for the reasoning it records rather than as a plan — where a stale block could
+be mistaken for one, it is marked.
+
+**Current state in one paragraph:** P0 and P1 are done bar rich-text rendering, which the user
+deferred. 221 tests green (`./mvnw test` in `bff/`), SPA builds and lints clean, nothing running,
+5 commits unpushed on `main`. The app reads Requirements / Test Plan / Test Lab / Test Runs /
+Defects against live ALM with a tree-grid, group-by, a detail pane with a collapsing tab rail,
+History, related-record tabs with cross-module navigation, and ALM's module rail. **There is still
+no write path**, enforced in four independent places.
 
 ## Phase 0 decisions (user-confirmed)
 
@@ -376,7 +389,10 @@ folder**: it locks `bff/target` and breaks `mvnw clean`. Run without `clean`.
 2. ~~P1's phase-start deferred probe~~ ✅ **DONE 2026-08-14 (probe 15)** — see §15.1–15.4 in the
    probe log. It settled the `alm-web` dialect, **corrected a wrong tree-root rule that was written
    into the plan, the data model and three skills**, and surfaced a sequencing problem (Q45).
-3. **START HERE — P1 implementation** (read-only Alt-ALM) per
+3. ~~**START HERE — P1 implementation**~~ ✅ **DONE 2026-08-18, except rich text (0d).** ⚠️ This
+   block is history; the current state is "Where P1 stands after 2026-08-18" further down, which is
+   the section to read first. The text below is kept for the reasoning it records, not as a plan.
+   **P1 implementation** (read-only Alt-ALM) per
    [../plan/implementation-plan.md](../plan/implementation-plan.md). This is the first phase with
    **visible output**: metadata-driven grids for requirements/tests/defects, the Core query builder,
    tree navigation with runtime root discovery.
@@ -509,22 +525,42 @@ search too, so any two-word search had been silently matching everything.
    that would surface it.
 4. Then P2: the write path, against the hazards already built and unit-tested but wired to nothing.
 
-**The next session's job is finishing P1, not more POC.** Start from the numbered gap list in
-"Known gaps / next steps" — items 0, 0a–0d are the newest and came from the user's own ALM
-screenshots. In rough dependency order:
+**⚠️ The dependency-ordered list that used to sit here is gone because every item on it is done**
+(tab strip 0c, per-type fields 0a, the module rail 0, group-by 1). It also repeated gap 0a's wrong
+"per-type field sets genuinely differ" claim, which probe 25 has since measured. The list below is
+what is actually left.
 
-1. **Enumerate the detail tab strip from `relations`** (gap 0c) — the API work is proven by probe
-   21.6; this is wiring, and it unblocks Attachments / Linked Defects / Traceability / Test Coverage.
-2. **Switch to `types/{subtypeId}/fields`** (gap 0a) — per-type field sets genuinely differ and we
-   currently over-show on typed records.
-3. **The module left rail** (gap 0) — presentation over existing reads, but needs the three-state
-   capability model so it does not advertise modules REST cannot reach.
-4. **Group-by UI** (gap 1) — endpoint done, nothing renders it.
-5. **Rich-text rendering** (gap 0d) — gated on a client-side sanitiser decision, not on effort.
+### Known residual issues (2026-08-18) — small, real, and none of them blocking
 
-⚠️ **Do not treat the POC's shortcuts as finished work.** The Details field set is a probe-verified
-*approximation* (16/17), memo bodies are flattened to plain text, and only the Requirements module
-has actually been exercised.
+1. **A defect's "Defect Links" tab shows a table captioned "Defect to Defect_link".** That is ALM's
+   own relation name and it reads as machinery. It is the *undiscriminated superset* relation sitting
+   beside the nine typed slices. **Deliberately kept**: the nine cover eight entity types, so the
+   superset can legitimately hold link rows of a type no slice covers, and dropping it to tidy the
+   caption would silently hide those. Fixing the caption is cosmetic; dropping the table is not.
+2. **Attachments render as an ordinary grid — there is no download.** `TabDto.Tab.attachment` is set
+   and shipped, and nothing consumes it. The columns are right (Name / Size / Modified) but the rows
+   are inert. Attachment *content* is a separate REST read this build has never made.
+3. **The pinned rail squeezes the detail pane.** At the default 460px width, pinning leaves ~270px
+   for the field table. The splitter already fixes it per-user; the rail could instead widen the pane
+   by its own width when pinned.
+4. **`defect`'s `customization/entities/defect/types` returns HTTP 500**, reproducibly. Harmless
+   today only because defects carry no `type-id`, so nothing asks. If a future ALM adds one, the
+   per-type read starts firing a failing request per defect opened — a failed metadata load is
+   deliberately not cached (ADR 0005).
+5. **`test-sets` and `runs` returned an `Audits` envelope with no `Audit` node** on every record
+   sampled. Read as "no recorded changes" rather than "endpoint absent", but not distinguished from
+   it — the History tab shows the same empty state for both.
+
+### What P1 does NOT have, and is not pretending to
+
+- **No write path.** Unchanged and still enforced in four places — see the section below, which is
+  current.
+- **No rich-text rendering** (gap 0d). Memo tabs exist and show plain text with a banner saying so.
+- **No Test Lab drill-down.** A test set does not open its instances; instances and runs are
+  reachable only by following a link or the Test Runs rail entry.
+- **Only Requirements has been exercised end to end.** Test Plan, Test Lab, Test Runs and Defects
+  render from the same metadata-driven code and are believed to work; they have not been walked
+  through the way Requirements has.
 
 ## P1 status — 2026-08-14 (read this before touching the UI or claiming a feature works)
 
@@ -725,6 +761,12 @@ not wired to anything.
 4. **`AlmQuery.filter` refuses values containing `; [ ] }`** — ALM documents no escaping rule
    (api-ref §4.1), so it fails loudly rather than mangling. A user searching for `foo;bar` gets a
    400. Correct, but the UI should explain it.
+   ⚠️ **Related, and now fixed — but read probe 26 before touching this code.** Whitespace was a
+   *different* and far worse case: it did not fail, it silently returned the whole collection,
+   because `NOT`/`AND`/`OR` are grammar keywords. `AlmQuery.filter` now quotes any value containing
+   whitespace. **Do not add a second filter path that bypasses it**, and note that `filterRaw` (item
+   3 above) deliberately does bypass it — anything wired to `filterRaw` from user input inherits the
+   original bug.
 5. **Tests/Defects/Test Sets/Runs modules** share the grid and detail but are untested beyond
    requirements.
 6. **Design pass: first round done 2026-08-14, not finished.** One token system, an authored icon
@@ -771,6 +813,17 @@ project enrolments. Regenerate it with `scripts/probe/probe-projects-2.ps1` if l
 ⚠️ **`spring-boot:run` forks a child JVM.** Killing the Maven process leaves the child holding
 :8080, so the next start fails while `/actuator/health` still answers **from the old build**. Kill
 the **port holder**, not the parent. This cost a debugging cycle.
+
+**Screenshots**: `node scripts/shot.mjs` in `spa/` — see its header for flags. Useful additions
+2026-08-18: `--pin-rail` (the tab rail is 40px of icons in every capture otherwise), and the harness
+now waits after a project switch and parks the pointer off the rail before capturing.
+
+⚠️ **`--project-index` is only meaningful because the project list is now deterministically
+ordered.** It was not: `AlmAccessPolicy` used `Set.copyOf`, whose iteration order is randomised per
+JVM run, so the dropdown reshuffled on every restart and the same index meant a different project
+between two runs. That produced one wrong diagnosis — an empty tree read as a bug when the harness
+had simply selected a project with an empty Requirements root. Resolve the index at runtime from
+`/api/projects` rather than hardcoding it, and **never put a project name in a script**.
 
 ---
 
