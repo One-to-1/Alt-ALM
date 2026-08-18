@@ -152,7 +152,11 @@ finding in the project surfaced by product code under test rather than a hand-wr
   Cause UNVERIFIED, possibly the same load-balancer intermittency as Q40. P1's grid needs a
   **bounded retry on 5xx reads** — separate from the 5xx-on-*write* verify-by-query rule (**Q46**).
 
-🟢 **P1 IS FEATURE-COMPLETE (2026-08-18). 221 BFF tests + 27 SPA tests green.** Grid (metadata-driven
+🟡 **P2 STARTED (2026-08-18) — the write core is in and verified live. 248 BFF tests (277 with
+`-Pcontract`) + 27 SPA tests green.** `AlmWriteClient` is the single write path; `ApiIsReadOnlyTest`
+now asserts writes *route through it* rather than that none exist. See `SESSION-STATE.md`.
+
+🟢 **P1 IS FEATURE-COMPLETE (2026-08-18).** Grid (metadata-driven
 columns, sort, filter, paging, **group-by with real counts**), folder tree, detail pane with a
 **collapsing icon rail** (blue when a tab holds rows), **History/Audit Log**, related-record tabs
 with cross-module navigation, **ALM's module rail** rendering three distinct kinds of "unavailable",

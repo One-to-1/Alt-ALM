@@ -570,8 +570,51 @@ to return 1 of the project's 2 instances. Re-seed with
    as one); instances remain a link target only, as in ALM.
 2. ~~**The `EntityStatus` question**~~ **ANSWERED — probe 29, 2026-08-18.** Summary below; the full
    run is in the probe log.
-3. **P2 — the write path.** Nothing is left blocking it, and its phase-start deferred probe is
-   **already done** (probe 30, below).
+3. 🟡 **P2 — the write path. STARTED 2026-08-18.** Its phase-start deferred probe is done
+   (probe 30, below) and the write core has landed — see the P2 section immediately below.
+
+## P2 status (started 2026-08-18)
+
+**248 BFF tests default, 277 with `-Pcontract`.**
+
+✅ **The write core is in and verified live.** `bff/.../alm/write/`:
+
+- **`AlmWriteClient`** — the one place Alt-ALM writes. Enforces, in one place, every hazard probing
+  found: the allowlist check **before any I/O**, `AlmEntityBody`'s canonical field order (probe 4),
+  5xx → `UNKNOWN` never `REJECTED` and never retried blind (probe 4), the single missing-field retry
+  (probe 9), `X-XSRF-TOKEN` on every write (probe 13), and `id -1` refused as the tree root sentinel
+  (probe 27).
+- **`AlmWriteResult`** — deliberately has **no `isSuccess()`**. `UNKNOWN` is neither, and a
+  convenience boolean is how it would get bucketed with one of them. `verify()` resolves it against a
+  caller-supplied query and **still leaves the outcome `UNKNOWN`**: "the row exists" is not "the
+  write succeeded", and only the first has evidence.
+- **`AlmFieldResolver` / `AlmMetadataFieldResolver`** — maps the physical column in an ALM error back
+  to a logical field *and chooses its value*, since metadata calls that column neither required nor
+  editable so there is no user intent to consult. With no metadata it resolves nothing and the retry
+  **switches off rather than guessing**.
+- ⚠️ **Single-entity only** — the server's limit, not a simplification (probe 29).
+
+✅ **`ApiIsReadOnlyTest` was REWRITTEN, not deleted**, exactly as CLAUDE.md instructed for the moment
+writes arrived. It now asserts every write mapping's controller can reach `AlmWriteClient`
+(transitively), and that no `api` class holds an HTTP client of its own. Verified in **both**
+directions with a temporary violating controller before being trusted.
+
+✅ **`AlmWriteClientContractTest`** — 10 cases against the live sandbox, passed first run. Full gate:
+`ALTALM-CONTRACT-*` names, reverse-order unwind, and the sweep **asserts** zero survivors (a tracked
+delete is not the same claim as nothing surviving). It pins the memo-replace behaviour live, with a
+note that a failure there would mean ALM started appending — at which point the comment path would be
+*doubling* every comment rather than merely needing read-modify-write.
+
+⚠️ **The sandbox-only write rule was LIFTED by the user on 2026-08-18.** `AlmAccessPolicy` now
+permits writes to **any enrolled project**; enrolling a project in `alt-alm.alm.readable-projects` is
+now a **write** grant. Only the sandbox is currently reachable, so nothing else is enrolled — but
+that setting is load-bearing in a way it was not before. Every test that pinned the old rule was
+rewritten rather than deleted; the suite caught one that had not been anticipated (`GridServiceTest`
+pinned `writable=false` for a read-only project, and that flag drives the SPA's edit affordances).
+
+**Next in P2:** CRUD endpoints on top of the client (`requirements`, `tests`, `design-steps`,
+`defects`), the BFF validation layer that substitutes for bypassed workflow scripts, and the
+comment path's read-modify-write with the `ver-stamp` concurrency question settled first.
 
 ### P2's phase-start probe is done, and it found a data-loss trap
 
