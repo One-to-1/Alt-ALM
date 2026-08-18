@@ -91,10 +91,22 @@ public record AlmEntityPage(List<AlmEntity> entities, int totalResults) {
         /**
          * True when the server flagged this row as something other than a clean read.
          *
-         * <p>Per the task's rule (and CLAUDE.md's "never invent API behaviour"): a present-and-not-
-         * {@code "Success"} {@code EntityStatus} must be surfaced as an error, never silently
-         * returned as if the row were fine. Callers should check this before trusting
-         * {@link #fields()} for a row pulled from a bulk read where partial failures are possible.
+         * <p>⚠️ <strong>Probe 29 established that this is currently unreachable</strong>, and the
+         * method is kept anyway. Every failure ALM was provoked into — bad field, missing id,
+         * forbidden collection, broken parent reference, missing required field, malformed bulk body
+         * — is reported at the <em>request</em> level as a {@code QCRestException}, never as a row
+         * inside an {@code entities} envelope. {@code EntityStatus} appears on every entity the
+         * server returns (a JSON member on reads, an XML attribute on writes) and has only ever held
+         * {@code "Success"}.
+         *
+         * <p>It is kept because the cost of being wrong is asymmetric. If a version, an on-prem
+         * deployment, or an operation not yet exercised does produce a failed row, treating any
+         * non-{@code "Success"} token as an error shows the user something is wrong; the alternative
+         * — matching {@code "Failure"} specifically, or dropping the check — would render a broken
+         * record as a healthy one with blank fields, which is this project's recurring failure mode
+         * (see the two overturned verdicts in CLAUDE.md). Note this defaults the <em>opposite</em>
+         * way to {@link AlmEntityParser}'s handling of an absent key, on purpose: an unknown value
+         * is evidence of something, an absent key is evidence of nothing.
          */
         public boolean isError() {
             return !"Success".equals(entityStatus);

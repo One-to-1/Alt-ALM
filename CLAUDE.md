@@ -232,6 +232,13 @@ every conflict**; probes 1–15), [alm-api-reference.md](docs/research/alm-api-r
   login, there is **no one-machine-at-a-time constraint**. `JSESSIONID`, `LWSSO_COOKIE_KEY`,
   `QCSession`, `XSRF-TOKEN` are each unique per session; only `ALM_USER` is shared. Multi-machine
   (different IP) behaviour is `UNVERIFIED` — all 50 came from one host.
+- **Errors are per-REQUEST, never per-row** (probe 29). `EntityStatus` sits on every entity ALM
+  returns (JSON member on reads, XML attribute on writes) and has only ever held `"Success"`. ~25
+  deliberately broken reads plus failing writes all came back as a `QCRestException`
+  (`Id`/`Title`/`ExceptionProperties`) with **no entities envelope at all**. ⚠️ **Writes are
+  single-entity only**: a multi-entity JSON body is parsed as one entity and 500s, the XML
+  `<Entities>` wrapper is refused 400, while the same builder's single `<Entity>` commits 201. Do
+  not design a batch write API on the assumption an endpoint exists to back it.
 - **Write hazards (cause real bugs)**: entity-write JSON **field order is load-bearing** — wrong
   order yields opaque NPE-style 500s, so serialize deterministically. **An HTTP 5xx may still have
   committed the row** — treat every 5xx write as "unknown outcome, verify by query", never "failed".

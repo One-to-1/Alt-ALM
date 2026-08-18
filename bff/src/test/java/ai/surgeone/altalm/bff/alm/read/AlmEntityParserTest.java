@@ -103,13 +103,27 @@ class AlmEntityParserTest {
         assertThat(entity.first("target-rel")).contains("9001");
     }
 
+    /*
+     * The three tests below pin OUR contract, not ALM's.
+     *
+     * Probe 29 established that a non-"Success" EntityStatus is UNREACHABLE on this deployment:
+     * ~25 deliberately broken reads plus single and bulk writes in both media types all failed at
+     * the REQUEST level, as a QCRestException with no entities envelope, and there is no bulk write
+     * to produce a mixed page. So none of these assertions is evidence about the server; they are
+     * regression guards on two defaults that deliberately point in OPPOSITE directions, which is
+     * exactly the kind of asymmetry that gets "tidied up" into consistency during a refactor.
+     */
+
     @Test
-    @DisplayName("an entity with a non-Success EntityStatus is surfaced as an error, not returned as if healthy")
+    @DisplayName("contract, not observation: any non-Success EntityStatus is an error (probe 29: unreachable)")
     void nonSuccessEntityStatusIsSurfacedAsError() throws IOException {
         AlmEntityPage page = AlmEntityParser.parsePage(fixture("entity-page-entity-status-error.json"));
         AlmEntityPage.AlmEntity entity = page.entities().get(0);
 
         assertThat(entity.isError()).isTrue();
+        // Asserted as an arbitrary non-"Success" token, NOT as the value ALM uses - the fixture is
+        // invented and the server has never emitted anything but "Success" (probe 29). isError()
+        // must not start matching "Failure" specifically on the strength of this line.
         assertThat(entity.entityStatus()).isEqualTo("Failure");
         assertThat(entity.errorMessage()).isEqualTo("insufficient permissions to read field 'severity'");
         // The row still parses its fields - isError() is a signal for the caller to check, not a
@@ -118,13 +132,39 @@ class AlmEntityParserTest {
     }
 
     @Test
-    @DisplayName("a healthy row's EntityStatus defaults to Success and isError() is false")
-    void missingEntityStatusDefaultsToSuccess() throws IOException {
+    @DisplayName("a real captured row carries EntityStatus explicitly, and isError() is false")
+    void capturedRowCarriesSuccessExplicitly() throws IOException {
         AlmEntityPage page = AlmEntityParser.parsePage(fixture("entity-page-multi-row.json"));
         AlmEntityPage.AlmEntity entity = page.entities().get(0);
 
         assertThat(entity.entityStatus()).isEqualTo("Success");
         assertThat(entity.isError()).isFalse();
+    }
+
+    @Test
+    @DisplayName("an ABSENT EntityStatus defaults to Success - the opposite default, and the one nothing else covered")
+    void absentEntityStatusDefaultsToSuccess() {
+        // Built inline rather than as a fixture on purpose: this shape has never come off the wire
+        // (every entity ALM returns carries the key), so writing it into tests/fixtures/entities/
+        // would put a third invented file next to a directory whose README is about how few of them
+        // there should be.
+        //
+        // ⚠️ This case was previously "covered" by a test named missingEntityStatusDefaultsToSuccess
+        // that read entity-page-multi-row.json - a fixture which CARRIES EntityStatus. The default
+        // it claimed to pin was never executed. Found while closing probe 29.
+        String json = """
+                {"entities":[{"Fields":[{"Name":"id","values":[{"value":"7001"}]}],
+                              "Type":"requirement"}],
+                 "TotalResults":1}
+                """;
+
+        AlmEntityPage.AlmEntity entity = AlmEntityParser.parsePage(json).entities().get(0);
+
+        assertThat(entity.entityStatus()).isEqualTo("Success");
+        assertThat(entity.isError()).isFalse();
+        // The point of the default: the row's data survives. Throwing away a page because a status
+        // key ALM has always sent went missing would discard real rows over missing metadata.
+        assertThat(entity.id()).contains("7001");
     }
 
     @Test

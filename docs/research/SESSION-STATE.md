@@ -568,46 +568,51 @@ to return 1 of the project's 2 instances. Re-seed with
 
 1. ~~**Test Lab's drill-down**~~ — test set → instances → runs. Runs is now a rail module (ALM lists it
    as one); instances remain a link target only, as in ALM.
-2. **The `EntityStatus` question** (open item 12 in the probe log) — stated in full below, because
-   it is the next thing to do and "reasonable construction, not a probed fact" is not enough to act
-   on months later.
+2. ~~**The `EntityStatus` question**~~ **ANSWERED — probe 29, 2026-08-18.** Summary below; the full
+   run is in the probe log.
+3. **P2 — the write path.** Nothing is left blocking it.
 
-### The `EntityStatus` question, in full
+### `EntityStatus`, answered: it is unreachable
 
-ALM's collection envelope carries two per-row fields beside the data: `EntityStatus` and
-`ErrorMessage`. Every envelope this project has ever captured — all 15 entities, every probe —
-sends `EntityStatus:"Success"` explicitly. **We have never seen a row that failed.**
+**The answer is "that state cannot happen here", and that is a real answer.**
+`scripts/probe/probe-entity-status.py` + `probe-entity-status-bulk.py` threw ~25 deliberately broken
+reads at the server — non-existent fields, non-existent ids, virtual and inactive fields, per-subtype
+fields across all 8 requirement types, forbidden collections, degenerate paging — plus single and
+multi-entity writes in **both** media types.
 
-Two decisions rest on that absence, both in `bff/.../alm/read/`:
+**Every failure is reported at the REQUEST level**, as a `QCRestException` (`Id`/`Title`/
+`ExceptionProperties`) with no `entities` envelope at all. Not one row ever carried a status other
+than `"Success"`; not one row ever omitted the key.
 
-- `AlmEntityParser` line ~97 reads a **missing** `EntityStatus` as `"Success"` — "no evidence of
-  failure" rather than an error state no fixture predates.
-- `AlmEntityPage.AlmEntity.isError()` is `!"Success".equals(entityStatus)`, so **any** other string
-  counts as a failure.
+⚠️ **There is no bulk write on this deployment** — the one operation that would *need* a per-row
+status. A multi-entity JSON body is parsed as **one** entity and 500s on the missing top-level
+`Fields`; the XML `<Entities>` wrapper is refused 400 while the *same builder's* single `<Entity>`
+commits 201. That sanity write is what makes the 400 a statement about the wrapper and not about our
+XML.
 
-Both are reasonable. Neither is observed, and they fail in opposite directions:
+`EntityStatus` is a property of an entity **representation** — a JSON member on reads, an XML
+attribute on writes (`<Entity EntityStatus="Success" ErrorMessage="" …>`, captured at
+`tests/fixtures/entities/entity-write-single.xml`).
 
-- If ALM **omits** `EntityStatus` on a failed row, we render it as a healthy record with blank or
-  partial fields — a wrong record shown confidently, which is this project's recurring failure mode.
-- If ALM uses some other success-ish token (`"OK"`, `""`, a localised string), every row becomes an
-  error and the grid fills with alerts.
+**Nothing behavioural changed.** Both defaults are kept and now documented as deliberate opposites:
+an unknown *value* is evidence of something (`isError()` flags it), an absent *key* is evidence of
+nothing (`AlmEntityParser` defaults to `Success`, so a page stays renderable). `DetailPane`'s
+`row.error` is knowingly **dead UI** on this deployment — kept for the asymmetric cost, not to be
+extended.
 
-⚠️ **This is no longer theoretical.** The detail pane renders `row.error` as a visible alert ("ALM
-flagged this row: …"), so a code path that has never seen its real input now has a UI attached.
+⚠️ **One instance, one version.** Re-verify on-prem before trusting it; that is precisely why
+`isError()` was documented rather than deleted.
 
-**How to settle it — cheap, read-only, sandbox or any project:**
+**A real bug fell out of it:** the test named `missingEntityStatusDefaultsToSuccess` read
+`entity-page-multi-row.json`, a fixture that **carries** `EntityStatus`. The default it claimed to
+pin had never once been executed. Now `absentEntityStatusDefaultsToSuccess`, built inline. 226 BFF
+tests.
 
-1. Request a collection with a deliberately bad `fields=` value and capture the envelope.
-2. Read an entity the API key cannot see (a permission-restricted subtype, if one exists).
-3. Bulk-read a page spanning a record deleted between the count and the read.
-
-Any one of those that produces a non-`Success` row settles both decisions at once. Capture it as a
-fixture under `tests/fixtures/entities/` — the hand-built
-`entity-page-entity-status-error.json` currently standing in for it is **invented**, and its two
-tests (`nonSuccessEntityStatusIsSurfacedAsError`, `missingEntityStatusDefaultsToSuccess`) pin our
-guess rather than ALM's behaviour.
-3. **P2 — the write path.** Nothing in P1 is left blocking it.
-4. Then P2: the write path, against the hazards already built and unit-tested but wired to nothing.
+**What P2 inherits:** the write hazards are already built and unit-tested but wired to nothing —
+`AlmEntityBody` (deterministic field order), `AlmWriteOutcome` (5xx → UNKNOWN, never REJECTED),
+`AlmWriteRetry` (the single missing-required-field retry). Probe 29 adds one constraint to that list:
+**writes are single-entity only**, so P2 must not design a batch API on the assumption a bulk
+endpoint exists to back it.
 
 **⚠️ The dependency-ordered list that used to sit here is gone because every item on it is done**
 (tab strip 0c, per-type fields 0a, the module rail 0, group-by 1). It also repeated gap 0a's wrong

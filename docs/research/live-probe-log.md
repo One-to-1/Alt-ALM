@@ -1761,6 +1761,106 @@ visible until someone reads the record. When P2 builds memo editing it must emit
 
 ---
 
+## Probe 28 — Test Lab seeding, and the sweep that cannot see what it swept (2026-08-18)
+
+*(recorded with probe 29 below; the seeding itself is described in the Test Lab section of
+`SESSION-STATE.md`.)*
+
+⚠️ **A test instance has no `name` field**, so the documented orphan sweep
+(`?query={name[ALTALM-PROBE*]}`) against `test-instances` answers **HTTP 404, not an empty list** — a
+sweep that includes it prints one 404 and then reports "no orphans" while the instance is still
+there. Sweep instances **through their parent test set** (`{cycle-id[<set-id>]}`) *before* deleting
+the set, or deleting the set orphans them. The `alm-live-probe` skill has been corrected.
+
+**General rule:** check that a collection actually *has* the field you are sweeping on before
+trusting the sweep's silence.
+
+---
+
+## Probe 29 — `EntityStatus` is unreachable, and that is the answer (2026-08-18)
+
+`scripts/probe/probe-entity-status.py` (reads, ~25 cases) and
+`scripts/probe/probe-entity-status-bulk.py` (writes, sandbox, prefixed + swept).
+
+**Open item #12, closed.** Every envelope this project had ever captured sent
+`EntityStatus:"Success"` explicitly, and two decisions in `bff/.../alm/read/` rested on that absence
+while failing in *opposite* directions: `AlmEntityParser` reads a **missing** key as `"Success"`,
+`AlmEntityPage.AlmEntity.isError()` treats **any** other string as a failure. The detail pane had
+started rendering `row.error`, so a code path that had never seen its real input had a UI attached.
+
+**Hypothesis:** `EntityStatus` is a per-row error channel, and a partially-satisfiable read produces
+a row with a non-`Success` status.
+
+### What was tried
+
+| Class | Cases | Result |
+|---|---|---|
+| Non-existent field | `fields=id,no-such-field`, alone, and a real field belonging to another entity | **HTTP 400**, `QCRestException`, no envelope |
+| Non-existent ids | `{id[999999]}`, `{id[1 Or 999999]}`, `{id[>999999]}` | **200, 0 rows.** A missing id narrows the set; it does not produce a failed row |
+| Single missing id | `GET requirements/999999` | **404** `qccore.entity-not-found` |
+| Virtual / inactive fields | `has-linkage`, `father-name`, `no-of-sons`, `request-note`, `istemplate`, `rbt-analysis-result-data`, `has-rich-content` | **200, all `Success`** |
+| Per-subtype fields | all 8 requirement types' field sets diffed; the 2 fields unique to one type requested across a mixed read | **200, all `Success`** |
+| Forbidden / absent collections | `components`, `component-folders` → **403**; `libraries`, `timeslots` → **404** | request-level, no envelope |
+| Degenerate paging | `page-size=0`, `start-index=99999` | **200, 0 rows** |
+| Failing single write | bad `parent-id` (XML **and** JSON) | **500** `qccore.general-error` "Invalid parent requirement" |
+| Failing single write | required field omitted | **400** `qccore.required-field-missing` |
+
+**Not one row, in any case, carried a status other than `"Success"`, and not one row ever omitted
+the key.**
+
+### Where `EntityStatus` actually lives
+
+It is a property of an **entity representation**, present on every entity the server returns — a JSON
+member on reads, an **XML attribute** on writes:
+
+```xml
+<Entity EntityStatus="Success" ErrorMessage="" Type="requirement">
+  <ChildrenCount><Value>0</Value></ChildrenCount>
+  <Fields>…</Fields>
+</Entity>
+```
+
+Captured at `tests/fixtures/entities/entity-write-single.xml` — our own sandbox record, probe-named,
+all fields empty.
+
+### ⚠️ There is no bulk write on this deployment
+
+Which matters, because a bulk write is the one operation that *would* need a per-row status:
+
+- `POST {collection}` with `{"entities":[…]}` → **500**, `Cannot invoke "String.equals(Object)"
+  because the return value of "org.hp.qc.web.restapi.entities.Fi…"` — the server parses a JSON body
+  as **one** entity and NPEs on the missing top-level `Fields`. Same opaque-NPE class as the
+  field-order trap (§1.1).
+- `POST {collection}` with `<Entities><Entity/><Entity/></Entities>` → **400 Bad Request**.
+- The **same builder's** single `<Entity>` → **201 Created**. That sanity write is what makes the 400
+  a statement about the wrapper rather than about our XML.
+- Bulk `PUT` fails identically.
+
+Nothing committed from any bulk attempt; the sweep returned zero.
+
+### Verdict
+
+**`EntityStatus != "Success"` is unreachable through every operation available to us.** ALM reports
+failure at the **request** level — `QCRestException` with `Id`/`Title`/`ExceptionProperties` and no
+`entities` envelope — and the per-row channel is vestigial on this deployment.
+
+This is a real answer, not "we could not make it fail": the failure modes were enumerated by class
+(schema, referential, validation, permission, paging, bulk) and every class landed in the same place.
+
+**What changed in the code:** nothing behavioural. Both defaults are kept, and both javadocs now
+state the evidence and say why they default in opposite directions — an unknown *value* is evidence
+of something, an absent *key* is evidence of nothing. `tests/fixtures/entities/README.md` records
+that the invented fixture now pins **our** contract rather than ALM's, and that `DetailPane`'s
+`row.error` is knowingly dead UI on this deployment.
+
+⚠️ **Re-verify per deployment.** This is one SaaS instance at ALM 26.1. An on-prem instance, an older
+version, or an operation not exercised here could still produce a failed row — which is exactly why
+`isError()` survives rather than being deleted.
+
+**Sandbox state after:** 3 runs, all swept, zero `ALTALM-PROBE-*` rows remaining.
+
+---
+
 ## Open items for the next probe round
 
 1. ~~Map `SiteVersion 20.0 (20.00.0.143)` → marketing version~~ **DONE: ALM 26.1** (probe 3).
@@ -1786,10 +1886,15 @@ visible until someone reads the record. When P2 builds memo editing it must emit
     `IMAGE_COMPRESSION_LEVEL` round-trip.
 11. **NEW (probe 15), blocked on the record generator**: is an over-cap `page-size` silently clamped
     to 2,000? Untestable while the sandbox's largest collection holds 2 rows. See Q45.
-12. **NEW (P1 build, 2026-08-14)**: what does a collection read actually return for an entity whose
-    `EntityStatus` is not `"Success"`, and is `EntityStatus` ever absent? Every envelope captured so
-    far carries `EntityStatus:"Success"` explicitly, so `AlmEntityParser`'s handling of the failure
-    row — and its default-to-`Success`-when-absent — is a **reasonable construction, not a probed
-    fact**, and is labelled as such in the code and its fixture. Cheap to settle: request a
-    collection with a deliberately bad `fields=` value, or read an entity the key cannot see, and
-    capture the row. Do this before any UI surfaces a per-row error state.
+12. ~~What does a collection read return for an entity whose `EntityStatus` is not `"Success"`?~~
+    **DONE — it cannot happen** (probe 29). ~25 broken reads plus single and bulk writes in both
+    media types: every failure is request-level `QCRestException`, no row ever carried another
+    status, no row ever omitted the key, and there is **no bulk write** on this deployment to
+    produce a mixed page. Both parser defaults kept and now documented as deliberate opposites.
+    ⚠️ One instance, one version — re-verify on-prem.
+13. **NEW (probe 29)**: is the missing bulk write a *deployment* limitation or a product one? The
+    JSON body 500s inside `org.hp.qc.web.restapi.entities` and the XML `<Entities>` wrapper is
+    refused 400, but neither error says "unsupported". Worth one probe against a different ALM
+    instance before P2 assumes single-entity writes are the only shape — a bulk path would change
+    the write-safety design, since a partially-committed bulk is a worse version of the 5xx problem
+    (§1.2).

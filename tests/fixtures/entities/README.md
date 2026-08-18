@@ -11,23 +11,36 @@ by hand to exercise `AlmEntityParser`, and they are only as trustworthy as the r
 | `entity-page-null-value.json` | a JSON `null` inside `values` | **Shape verified, placement inferred.** Probe 15 observed `"referenceValue":null` in a sibling (group-by) response; a null inside an entity's `values` array is the analogous case and has not itself been captured |
 | `entity-page-multivalue.json` | two entries in one `values` array | **Inferred.** `values` is unambiguously an array on the wire, and the data model documents exactly two multivalue fields in the whole product — but no captured response in this repo actually contains one |
 | `entity-page-total-results-mismatch.json` | 2 rows alongside `TotalResults: 0` | **Probe-verified behaviour** (probe 15 §15.3: `page-size=0` returns `TotalResults=0` on a non-empty collection), reproduced here as a fixture |
-| `entity-page-entity-status-error.json` | `EntityStatus: "Failure"` + `ErrorMessage` | ⚠️ **UNVERIFIED — invented.** See below |
+| `entity-page-entity-status-error.json` | `EntityStatus: "Failure"` + `ErrorMessage` | ⚠️ **Still invented, and now known to be UNREACHABLE.** See below |
+| `entity-write-single.xml` | `<Entity EntityStatus="Success" ErrorMessage="" …>` | **Captured** (probe 29) — a real single-entity write response from our own sandbox, kept because it is the only evidence in the repo of where `EntityStatus` lives in the XML media type |
 
 ## The one to be careful about
 
-`entity-page-entity-status-error.json` is a **guess about a failure mode nobody has observed.** Every
-envelope captured from this server carries `EntityStatus:"Success"` explicitly; no probe has produced
-a row that failed, so:
+`entity-page-entity-status-error.json` is a **guess about a failure mode that probe 29 has now shown
+this server does not produce.** It is still invented, and it is no longer merely unverified — it is
+positively contradicted as a *reachable* state:
 
-- the literal value `"Failure"` is assumed — the server may use a different token entirely;
-- the `ErrorMessage` text is invented and should never be pattern-matched against;
-- the parser's rule "absent `EntityStatus` means success" is a defensible default, not a fact.
+- the literal value `"Failure"` is assumed and remains assumed — the server has never emitted any
+  token but `"Success"`, so there is nothing to check it against;
+- the `ErrorMessage` text is invented and must never be pattern-matched against;
+- ⚠️ **every failure ALM was provoked into is reported at the REQUEST level**, as a
+  `QCRestException` with `Id`/`Title`/`ExceptionProperties` and no `entities` envelope at all — not
+  as a row inside a 200. That covers ~25 broken reads plus single and bulk writes in both media
+  types (probe 29).
 
-`AlmEntityParser` treats any non-`Success` value as an error rather than matching `"Failure"`
-specifically, which is what keeps this guess from becoming load-bearing. **Do not build a per-row
-error state in the UI on top of this** until open item #12 in
-[`live-probe-log.md`](../../../docs/research/live-probe-log.md) is settled with a real captured
-failure row.
+**So this fixture pins OUR contract, not ALM's.** The two tests over it
+(`nonSuccessEntityStatusIsSurfacedAsError`, `missingEntityStatusDefaultsToSuccess`) are regression
+guards on the parser's own defaults — they say "if this ever arrives, here is what we do" — and they
+are not, and must never be cited as, evidence about the server.
+
+Deleting it was considered and rejected: the two defaults default in *opposite* directions on
+purpose (see `AlmEntityPage.AlmEntity#isError`), and an untested pair of deliberate opposites is how
+one of them quietly flips during a refactor.
+
+⚠️ The earlier instruction here — *"do not build a per-row error state in the UI on top of this"* —
+was overtaken: `DetailPane` does render `row.error`. That is now knowingly dead UI on this
+deployment, kept for the same asymmetric-cost reason as `isError()` itself. Do not extend it, do not
+give it a prominent affordance, and do not let a screenshot of it become documentation of a feature.
 
 ## Rules for adding to this directory
 
@@ -36,3 +49,7 @@ failure row.
   this repo (`CLAUDE.md`).
 - If you capture a *real* envelope, redact it and put it in `tests/fixtures/` proper, then update the
   row above from "inferred" to "probe-verified" and cite the probe number.
+- A capture from our own **sandbox** may live here (see `entity-write-single.xml`) because its
+  content is ours — probe-prefixed names, empty fields. A capture from any **borrowed** project may
+  not, at any level of redaction: `CLAUDE.md` forbids their data entering the repo at all, and
+  "redacted" is a judgement call that only has to be wrong once.

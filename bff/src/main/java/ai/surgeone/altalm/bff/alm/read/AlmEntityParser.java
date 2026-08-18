@@ -91,9 +91,21 @@ public final class AlmEntityParser {
 
         String type = e.path("Type").asString("");
         int childrenCount = e.path("children-count").asInt(0);
-        // "EntityStatus" is treated as optional-with-default rather than required: every captured
-        // envelope for a healthy row sends it explicitly ("Success"), so an absent key is read as
-        // "no evidence of failure" rather than forced into an error state that no fixture predates.
+        // "EntityStatus" is optional-with-default, and probe 29 is why that is now a decision
+        // rather than a guess. It threw ~25 deliberately broken reads at the server — fields that do
+        // not exist, ids that do not exist, virtual and inactive fields, per-subtype fields,
+        // forbidden collections, degenerate paging — plus single and multi-entity writes in both
+        // media types. Every single failure came back as a REQUEST-level `QCRestException`
+        // (Id/Title/ExceptionProperties) with no entity envelope at all, and every entity the server
+        // ever returned carried EntityStatus explicitly as "Success". ⚠️ There is no bulk write on
+        // this deployment to produce a mixed page: a multi-entity JSON body is parsed as ONE entity
+        // and 500s on the missing top-level Fields, and the XML <Entities> wrapper is refused 400
+        // while the same builder's single <Entity> commits 201.
+        //
+        // So an absent EntityStatus has never been observed, and neither has a non-"Success" one.
+        // Defaulting to SUCCESS keeps a page renderable if a future version drops a key it has
+        // always sent; throwing instead would discard real rows over missing metadata. The opposite
+        // default is taken in AlmEntityPage.AlmEntity#isError, deliberately — see its javadoc.
         String entityStatus = e.path("EntityStatus").asString(SUCCESS);
         String errorMessage = e.path("ErrorMessage").asString("");
 
