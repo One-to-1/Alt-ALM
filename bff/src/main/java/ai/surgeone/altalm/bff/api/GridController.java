@@ -34,16 +34,18 @@ public class GridController {
     private final TreeService trees;
     private final TabService tabs;
     private final HistoryService history;
+    private final ModuleService modules;
     private final AlmAccessPolicy policy;
     private final AlmCredentials credentials;
 
     public GridController(GridService grids, TreeService trees, TabService tabs,
-                          HistoryService history, AlmAccessPolicy policy,
-                          AlmCredentials credentials) {
+                          HistoryService history, ModuleService modules,
+                          AlmAccessPolicy policy, AlmCredentials credentials) {
         this.grids = grids;
         this.trees = trees;
         this.tabs = tabs;
         this.history = history;
+        this.modules = modules;
         this.policy = policy;
         this.credentials = credentials;
     }
@@ -219,6 +221,17 @@ public class GridController {
             parsed.put(f.substring(0, colon), f.substring(colon + 1));
         }
         return parsed;
+    }
+
+    /**
+     * ALM's navigation rail, with a reachability verdict against every entry.
+     *
+     * <p>Not project-scoped and reads nothing: the rail's shape is ALM's product structure, and the
+     * verdicts are about this build's capabilities rather than about any one project's data.
+     */
+    @GetMapping("/modules")
+    public ModuleDto.Rail modules() {
+        return modules.rail();
     }
 
     /**

@@ -49,37 +49,6 @@
   font-weight: 500;
 }
 
-.app-modules {
-  display: flex;
-  align-items: center;
-  gap: 1px;
-  min-width: 0;
-  overflow-x: auto;
-}
-
-.app-module {
-  padding: 5px 10px;
-  border: 0;
-  border-radius: var(--radius-sm);
-  background: none;
-  color: var(--text);
-  font: 500 var(--text-sm) / 1 var(--sans);
-  white-space: nowrap;
-  cursor: pointer;
-  transition: background 120ms ease, color 120ms ease;
-}
-
-.app-module:hover {
-  background: var(--surface-alt);
-  color: var(--text-h);
-}
-
-.app-module.is-active {
-  background: var(--accent-bg);
-  color: var(--accent);
-  font-weight: 600;
-}
-
 .app-bar-right {
   display: flex;
   align-items: center;

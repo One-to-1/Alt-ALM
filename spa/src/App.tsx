@@ -7,6 +7,7 @@ import { GroupBar } from './grid/GroupBar.tsx'
 import { TreeGrid } from './tree/TreeGrid.tsx'
 import { DetailPane } from './detail/DetailPane.tsx'
 import { Splitter } from './shell/Splitter.tsx'
+import { ModuleRail } from './shell/ModuleRail.tsx'
 import { ChevronLeft, Close, GridView, Moon, Monitor, Search, Sun, TreeView } from './shell/icons.tsx'
 import { applyTheme, readTheme, THEMES, type Theme } from './shell/theme.ts'
 import {
@@ -40,16 +41,25 @@ const COLLECTIONS = [
 type Collection = (typeof COLLECTIONS)[number]
 
 /**
- * The module bar, matching ALM's own.
+ * The collections this build renders a screen for — half of what makes a rail entry navigable; the
+ * server supplies the other half (whether the API can reach it at all).
  *
- * ⚠️ Test instances and runs are absent on purpose. In ALM they are not modules: **Test Lab** is the
- * module, a test set lives in it, test instances live inside a test set and runs inside an instance.
- * Listing them as peers of Test Lab reads as a different product to anyone who knows this one.
+ * ⚠️ **Test instances are absent and runs are present**, which looks inconsistent and is not. The
+ * reference is ALM's own left rail: it lists **Test Runs** under Testing as a module in its own
+ * right, and it does not list test instances at all — an instance lives inside a test set, reachable
+ * by drilling into one. So runs get a rail entry and instances stay a link target only.
  *
- * They stay reachable by link until Test Lab grows its own test-set → instances → runs drill-down,
- * which is where they belong.
+ * An earlier version excluded runs too. That was right for the header bar it was written for, where
+ * the four entries read as peers; it is wrong against ALM's actual rail, which is now what this
+ * mirrors.
  */
-const MODULES = ['requirements', 'tests', 'test-sets', 'defects'] as const satisfies readonly Collection[]
+const MODULES = [
+  'requirements',
+  'tests',
+  'test-sets',
+  'runs',
+  'defects',
+] as const satisfies readonly Collection[]
 
 /**
  * ALM's own module names, not the collection names.
@@ -477,24 +487,6 @@ function App() {
           Alt<span className="app-brand-dim">-ALM</span>
         </div>
 
-        <nav className="app-modules" aria-label="Modules">
-          {MODULES.map((c) => (
-            <button
-              key={c}
-              type="button"
-              className={`app-module${c === collection ? ' is-active' : ''}`}
-              aria-current={c === collection ? 'page' : undefined}
-              onClick={() => {
-                if (c === collection) return
-                pushHistory()
-                setCollection(c)
-              }}
-            >
-              {COLLECTION_LABELS[c]}
-            </button>
-          ))}
-        </nav>
-
         <div className="app-bar-right">
           {/* Three states, not two: "system" stamps no attribute and lets the OS decide, so a
               machine that switches at sunset carries the app with it. */}
@@ -650,6 +642,18 @@ function App() {
       </div>
 
       <div className="app-body">
+        {/* ALM's own left navigation. It replaced the header module bar rather than joining it:
+            ALM has one nav, and two would have to agree about what "current module" means. */}
+        <ModuleRail
+          active={collection}
+          rendered={MODULES}
+          onSelect={(c) => {
+            if (!isCollection(c) || c === collection) return
+            pushHistory()
+            setCollection(c)
+          }}
+        />
+
         <section
           className="app-pane app-pane-main"
           aria-label={showTree ? 'Folders' : COLLECTION_LABELS[collection]}

@@ -538,6 +538,44 @@ export function fetchHistory(
   )
 }
 
+/**
+ * What stands between the user and a module.
+ *
+ * Three kinds of "no", kept apart because they are different promises: `BUILDABLE` will arrive,
+ * `NEEDS_SIDECAR` needs a Windows deployment, `NO_API` is a permanent property of the product.
+ */
+export type ModuleReach = 'READABLE' | 'BUILDABLE' | 'NEEDS_SIDECAR' | 'NO_API'
+
+export interface ModuleItem {
+  key: string
+  label: string
+  /** The collection to open, or '' when there is nothing to open. */
+  collection: string
+  reach: ModuleReach
+  /** One sentence naming the evidence. Empty when READABLE. */
+  reason: string
+}
+
+export interface ModuleGroup {
+  /** ALM's own grouping. Empty for an ungrouped entry. */
+  name: string
+  items: ModuleItem[]
+}
+
+export interface ModuleRail {
+  groups: ModuleGroup[]
+}
+
+/**
+ * ALM's navigation rail with a reachability verdict per entry.
+ *
+ * Not project-scoped: the rail is ALM's product structure, and the verdicts describe this build's
+ * capabilities rather than any project's data.
+ */
+export function fetchModules(): Promise<ModuleRail> {
+  return apiGet<ModuleRail>('/api/modules')
+}
+
 /** Server-side group-by counts for one field. */
 export function fetchGroups(
   project: string,
