@@ -161,11 +161,21 @@ a labelled placeholder: Alt-ALM cannot fetch attachments, and rendering one woul
 the memo's author chose. **The SPA now has vitest + jsdom** (`npm test`, gated in CI) — added for
 this suite, which is a payload suite.
 
-⚠️ **ALM sanitises memo HTML on write itself** (probe 27, the first write probe since P0): it
-removes `<script>`, `onerror`, `javascript:` hrefs and `url()` in styles, and keeps all ordinary
-formatting. This is **not** a reason to trust memo HTML — one instance, one version, the REST path
-only, and OTA and ALM's own older clients also write memos. It **keeps** remote `<img src>`
-verbatim. Also re-confirmed: a requirement's `parent-id` of `-1` is the root **sentinel, not a row**
+⚠️ **Memo fields are HTML and only HTML** (probe 27). No markdown, no wiki: everything is parsed
+as HTML and re-serialised into a full `<html><body>` document — a bare fragment gets wrapped, a stray
+`<` becomes `&lt;`, and markdown/wiki characters are stored literally. **Newlines are collapsed to
+spaces, not converted to `<br>`** — a plain-text write path would silently flatten paragraphs, which
+is P2's trap to avoid.
+
+⚠️ **A hostile memo does not survive a REST round trip — but that is OUTPUT sanitisation, and it is
+configurable** (probe 27 + OpenText REST docs). `<script>`, `onerror`, `javascript:` hrefs and
+`url()` in styles all come back stripped, and the first reading of that ("ALM sanitises on write")
+was **wrong**: the docs say output sanitisation *"removes or encodes data returned by requests"* and
+the raw value stays in the database. It is set **per field** in project customization (*Do nothing* /
+*Text encoding* / *HTML sanitization*) against a deployment-owned `sanitizer-whitelist.xml`, so a
+project configured *Do nothing* returns the payload live. Our client-side sanitiser is therefore
+**load-bearing, not defence in depth** — the only filter that does not depend on a server setting we
+cannot see. ALM **keeps** remote `<img src>` verbatim regardless. Also re-confirmed: a requirement's `parent-id` of `-1` is the root **sentinel, not a row**
 — POSTing a child against it returns `500 Entity with key '-1' does not exist in table 'REQ'`.
 
 ⚠️ **An unquoted multi-word filter value silently returns the whole collection** (probe 26): `NOT` is

@@ -26,6 +26,23 @@ import DOMPurify from 'dompurify'
  *
  * The tests in `richText.test.ts` are payloads, not examples — that is the point of them.
  *
+ * <h2>ALM strips hostile markup too, and that is not a reason to relax any of this</h2>
+ *
+ * Probe 27 sent `<script>`, `onerror`, a `javascript:` href and a remote `url()` into a memo and got
+ * none of them back. It would be easy to read that as "the server already handles it". It is not:
+ * what ALM applies is **output sanitisation**, its own documentation says it *"removes or encodes
+ * data returned by requests"*, and the raw value stays in the database. It is configured **per
+ * field** in project customization — *Do nothing* / *Text encoding* / *HTML sanitization* — against
+ * a `sanitizer-whitelist.xml` owned by whoever deployed the server.
+ *
+ * So the filtering is a setting, not a property: a project whose Description field is set to *Do
+ * nothing* hands us the payload live, and nobody would tell us it had been changed. This sanitiser
+ * is the only filter in the chain that does not depend on that setting, which makes it load-bearing
+ * rather than belt-and-braces.
+ *
+ * The one thing ALM does **not** strip in any configuration is a remote `<img src>` — see the image
+ * handling below, which is ours to do.
+ *
  * <h2>What we allow, and why it is not DOMPurify's default</h2>
  *
  * The default profile is far wider than any memo needs. This list is what ALM's own rich-text

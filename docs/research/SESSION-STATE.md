@@ -532,9 +532,13 @@ in `spa/src/detail/richText.ts`; the short version:
 - **DOMPurify does not sanitise CSS.** Defensible on its part (`expression()` is dead, `url(js:)`
   does not execute), but `url(https://…)` in a style attribute is a beacon, so declarations are
   filtered separately.
-- **Probe 27 found ALM strips executable memo markup on write itself** — and that changed nothing,
-  because it is one instance's undocumented behaviour on the REST path only. What ALM does *not*
-  strip is the remote `<img src>`, which is exactly the case the renderer handles.
+- **Probe 27: a hostile memo does not survive a REST round trip — because of OUTPUT sanitisation,
+  which is per-field project configuration over a deployment-owned whitelist file.** The first
+  reading ("ALM sanitises on write") was wrong; the raw value stays in the database and a project
+  set to *Do nothing* returns it live. That makes the client-side sanitiser **load-bearing rather
+  than defence in depth**. ALM does *not* strip remote `<img src>` in any configuration.
+- **Memo fields are HTML and only HTML** — no markdown, no wiki, and ⚠️ **newlines are collapsed to
+  spaces rather than becoming `<br>`**, which is a data-loss trap waiting for P2's write path.
 
 **Next, in order:**
 

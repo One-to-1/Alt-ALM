@@ -1673,7 +1673,8 @@ re-formats every memo it stores, and nobody had looked at what comes out.
 
 **Hypothesis:** ALM stores memo HTML largely intact and does **not** sanitise, because its own
 client renders in an environment that trusts the server.
-**Result: REFUTED, and usefully so.** Sent 1,188 chars of memo, got 994 back.
+**Result: REFUTED as stated, then the refutation itself turned out to be half wrong** — see the
+correction below. Sent 1,188 chars of memo, got 994 back.
 
 | Sent | Stored |
 |---|---|
@@ -1684,13 +1685,36 @@ client renders in an environment that trusts the server.
 | `style="background: url(https://…)"` | **removed by ALM** |
 | `<img src="https://…/attachment.png">` | ⚠️ **stored verbatim** |
 
+### ⚠️ Correction, same day — this is OUTPUT sanitisation, not write sanitisation
+
+The table above says "removed by ALM", and the first draft of this entry read that as *removed on
+write*. **It is not.** The probe cannot see the database; it sees what a GET returns, and those are
+different claims. OpenText's own REST documentation settles it: **"REST API output sanitization
+removes or encodes data returned by requests"**, and the "Do nothing" option is documented as
+returning *"the value as it is stored in the database"* — which only means anything if the raw value
+is still sitting there. It is.
+
+This matters more than the original finding did, and it inverts its conclusion:
+
+- **It is configuration, not behaviour, and not ours.** Sanitisation is set **per field**, in
+  project customization, to one of three values: *Do nothing* / *Text encoding* / *HTML
+  sanitization*. It is on by default and an administrator can turn it off — on a project where the
+  Description field is set to *Do nothing*, everything in the payload table above comes back live.
+- **The allowed set is a deployment-owned file.** `sanitizer-whitelist.xml`, under
+  `qcbin/WEB-INF/classes/`, read at service start. Our sandbox's effective whitelist is far wider
+  than the sample in the docs (`html, head, meta, body, a, b`) — `<h2>`, `<table>`, `<font>` and
+  `<li>` all round-tripped here and would not have survived the sample list. So neither the strict
+  nor the permissive end is safe to assume.
+- Therefore the client-side sanitiser is **load-bearing, not defence in depth**. It is the only
+  filter in the chain that does not depend on a server-side setting we cannot see, do not control,
+  and would not be told about if it changed. The original entry had this backwards.
+
 **What this does and does not license.**
 
-1. It does **not** retire the client-side sanitiser. This is one undocumented behaviour of one
-   instance at one version, observed on **the REST path only**. A memo can also be written over OTA
-   and by ALM's own older clients, and nothing in the metadata or the documentation promises any of
-   this. A sanitiser that is redundant today and load-bearing after a server upgrade must be there
-   before the upgrade.
+1. It does **not** retire the client-side sanitiser — see the correction above for why the case is
+   now stronger, not weaker. Even taking the stripping at face value it would be one instance at one
+   version on **the REST path only**, and a memo can also be written over OTA and by ALM's own older
+   clients.
 2. The one thing ALM does **not** strip is the thing Alt-ALM has to handle itself: a remote `<img
    src>`. Nothing executes, but rendering it fetches from a host the memo's author chose. The
    renderer drops the `src` and replaces the element with a labelled placeholder — chosen over
@@ -1707,6 +1731,31 @@ client renders in an environment that trusts the server.
   existing record's own `id`.
 - The 500 above committed nothing, consistent with — but not proof of — the general rule. The
   prefix sweep in `finally` is what makes that survivable rather than a mystery orphan.
+
+### What format does a memo actually accept? (`--formats`, same probe)
+
+Asked because "rich text" does not say whether ALM has a markup **dialect** — markdown, wiki — or
+whether HTML is simply the storage format. Five records, each sent a different flavour, each read
+back:
+
+| Sent | Stored |
+|---|---|
+| `The batch importer must reject malformed rows.` | `<html><body>` + the text + `</body></html>` |
+| `# Heading` / `**bold**` / `- item` (markdown) | `<html><body>` + **the literal characters**, newlines gone |
+| `== Heading ==` / `'''bold'''` (wiki) | `<html><body>` + **the literal characters**, newlines gone |
+| `<p>A <b>fragment</b>…</p>` | wrapped in `<html><body>`, markup preserved |
+| `if (a < b && c > d)` | `if (a &lt; b &amp;&amp; c &gt; d)` — escaped, not parsed |
+
+**HTML, and nothing else.** There is no markdown, no wiki, no plain-text mode. Everything is parsed
+as HTML and re-serialised into a full document: real tags survive, a stray `<` becomes `&lt;`, and
+anything that is not markup is text. This matches the documentation's instruction to keep content
+*"inside the `<html>` and `<body>` tags of a valid HTML document"* to avoid unintended sanitisation —
+ALM adds the wrapper for you if you leave it off.
+
+⚠️ **The trap is newlines, and it is P2's problem.** Sent `\n`, stored nothing — the line breaks are
+not converted to `<br>`, they are **collapsed to spaces**. A user typing three paragraphs into a
+plain-text box and a naive write path would silently store one run-on line, and the data loss is not
+visible until someone reads the record. When P2 builds memo editing it must emit `<br>`/`<p>` itself.
 
 **Sandbox state after:** swept, zero `ALTALM-PROBE-*` requirements remaining.
 

@@ -7,9 +7,10 @@ has looked at what comes out the other side.
 
 Two things this settles, and they pull in opposite directions:
 
-  1. If ALM strips the payloads itself, our sanitiser is defence in depth rather than the only line
-     - good to know, and NOT a reason to relax it: the stripping would be ALM's behaviour on this
-     version of this instance, not a contract.
+  1. If the payloads do not come back, that is NOT the same as "ALM refuses to store them". ALM
+     sanitises on OUTPUT, per field, against a whitelist file the deployment owns - so a quiet
+     round trip means the setting is on here, not that the data is clean. (Established after the
+     first run of this probe read its own result as write-time stripping. It is not.)
   2. If ALM stores them verbatim, then a stored-XSS payload can sit in a real requirement's
      Description right now, and the sanitiser is the only thing between it and every Alt-ALM user.
      That is the answer that makes the sanitiser load-bearing rather than precautionary.
@@ -182,6 +183,61 @@ def main():
             code, _ = call('DELETE', f'{proj}/requirements/{rid}')
             print(f'sweep: DELETE requirements/{rid} -> HTTP {code}')
 
+    # What does a memo field accept BESIDES a full HTML document? The question behind it is whether
+    # ALM has a markup DIALECT (markdown, wiki) that it interprets, or whether HTML is simply the
+    # storage format - in which case everything else is inert text that renders as itself.
+    FORMAT_CASES = [
+        ('plain text, no markup at all',
+         'The batch importer must reject malformed rows.'),
+        ('markdown',
+         '# Heading\n\n**bold** and *italic*\n\n- first item\n- second item'),
+        ('wiki markup',
+         "== Heading ==\n'''bold''' and ''italic''\n* first item\n* second item"),
+        ('bare HTML fragment, no html/body wrapper',
+         '<p>A <b>fragment</b> with no document around it.</p>'),
+        ('text that merely looks like markup',
+         'if (a < b && c > d) then "escape me"'),
+    ]
+
+    if '--formats' in argv:
+        made = []
+        try:
+            status, txt = call('GET', f'{proj}/requirements?page-size=1&fields=id,type-id')
+            rows = json.loads(txt).get('entities', [])
+            if not rows:
+                print('no requirement to parent under')
+                return 1
+            parent_id = field(rows[0], 'id')
+            type_id = field(rows[0], 'type-id')
+            stamp = datetime.datetime.now().strftime('%Y%m%d-%H%M%S')
+
+            for i, (label, sent) in enumerate(FORMAT_CASES):
+                entity = {'Fields': [
+                    {'Name': 'name', 'values': [{'value': f'{PREFIX}{stamp}-fmt{i}'}]},
+                    {'Name': 'parent-id', 'values': [{'value': str(parent_id)}]},
+                    {'Name': 'type-id', 'values': [{'value': str(type_id)}]},
+                    {'Name': 'description', 'values': [{'value': sent}]},
+                ], 'Type': 'requirement'}
+                status, txt = call('POST', f'{proj}/requirements', json.dumps(entity))
+                print(f'--- {label}')
+                if status not in (200, 201):
+                    print(f'    POST -> HTTP {status}\n')
+                    continue
+                rid = field(json.loads(txt), 'id')
+                made.append(rid)
+                _, back = call('GET', f'{proj}/requirements/{rid}?fields=id,description')
+                stored = field(json.loads(back), 'description') or ''
+                print(f'    sent   : {sent[:110]!r}')
+                print(f'    stored : {stored[:240]!r}')
+                print(f'    wrapped: {"yes" if "<body" in stored.lower() else "no"}')
+                print()
+        finally:
+            for rid in made:
+                call('DELETE', f'{proj}/requirements/{rid}')
+            sweep()
+            call('POST', base + '/authentication-point/logout')
+        return 0
+
     if sweep_only:
         sweep()
         return 0
@@ -245,7 +301,7 @@ def main():
                     beacons += 1
                 else:
                     executable += 1
-            print(f'  payload     {label:22} {"STORED VERBATIM" if present else "removed by ALM"}')
+            print(f'  payload     {label:22} {"RETURNED VERBATIM" if present else "not returned"}')
 
         print()
         print(f'sent {len(MEMO)} chars, stored {len(stored)} chars')
@@ -255,11 +311,12 @@ def main():
                   'field can carry live markup, so the client-side sanitiser is the only thing '
                   'preventing stored XSS.')
         else:
-            print('FINDING: ALM removed every executable payload on its own, on write, '
-                  'without being asked. That is worth knowing and is NOT a reason to '
-                  'relax the sanitiser: it is this instance undocumented behaviour on '
-                  'this version, observed on the REST path only, and a memo can also be '
-                  'written over OTA and by ALM own '
+            print('FINDING: no executable payload came back. Note what this does NOT show: '
+                  'the probe cannot see the database, and ALM applies OUTPUT sanitisation - '
+                  'per-field project configuration (Do nothing / Text encoding / HTML '
+                  'sanitization) over a deployment-owned sanitizer-whitelist.xml. The raw '
+                  'value is still stored. A project set to Do nothing returns it live, which '
+                  'is why the client-side sanitiser is load-bearing rather than '
                   'older clients.')
         if beacons:
             print(f'{beacons} remote image src survived. Nothing executes, but rendering it would '
