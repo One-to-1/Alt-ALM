@@ -243,6 +243,11 @@ every conflict**; probes 1–15), [alm-api-reference.md](docs/research/alm-api-r
   login, there is **no one-machine-at-a-time constraint**. `JSESSIONID`, `LWSSO_COOKIE_KEY`,
   `QCSession`, `XSRF-TOKEN` are each unique per session; only `ALM_USER` is shared. Multi-machine
   (different IP) behaviour is `UNVERIFIED` — all 50 came from one host.
+- ⚠️ **No optimistic locking: `ver-stamp` is a counter, not a token** (probe 31). It increments on
+  every write *including memo writes*, but ALM **accepts a stale one and lets the write land**, so
+  last-writer-wins is the server's behaviour. It is still a reliable change *detector* — re-read it
+  immediately before a PUT and refuse on a change — which narrows the lost-update race without
+  closing it. Never describe that as safe.
 - ⚠️ **A memo PUT REPLACES the field — a comment write destroys every earlier comment** (probe 30).
   There is no server-side append and no banner, user, or timestamp added by ALM (workflow bypass).
   The obvious comment UI deletes the record's whole history and answers **HTTP 200**. Comment writes

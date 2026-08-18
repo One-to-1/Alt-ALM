@@ -1945,6 +1945,55 @@ it is a Windows-console rule and applies to the Python probes too.
 
 ---
 
+## Probe 31 - `ver-stamp` is a counter, not a concurrency token (2026-08-18)
+
+`scripts/probe/probe-verstamp.py`. Run before building the comment path, because the answer decides
+that path's shape.
+
+Probe 30 forced comment writes to be read-modify-write, which immediately inherits the **lost
+update**: two people open a record, both append, the second write is built on a value read before the
+first landed, and the first comment vanishes. HTTP 200, no warning - the same silent data loss
+read-modify-write was introduced to fix, just harder to notice.
+
+`ver-stamp` was the obvious candidate for optimistic concurrency. Four questions, asked in an order
+where the last one is what makes the others mean anything:
+
+| # | Question | Answer |
+|---|---|---|
+| 1 | What does metadata say? | `ver-stamp` = Number, `editable:false`, ⚠️ **`active:false`**, physical `RQ_REQ_VER_STAMP`. (`last-modified` = DateTime, `RQ_VTS`.) |
+| 2 | Does it move on every write? | ✅ **Yes** - 1 → 2 → 3, and it moved on the **memo** write too |
+| 3 | Is a CURRENT one accepted in a body? | **HTTP 200** - so ALM does not refuse the field outright |
+| 4 | Is a STALE one rejected? | ❌ **HTTP 200, and the write landed** |
+
+Question 3 exists because without it, a rejection in (4) would be indistinguishable from "ALM does
+not accept this field in a write body" - a rejection would have looked like concurrency control and
+been nothing of the sort.
+
+### Verdict
+
+**There is no optimistic locking on this route.** `ver-stamp` is a monotonic counter the server
+maintains and ignores on input: a PUT carrying `ver-stamp=1` against a row at 4 succeeds and
+overwrites. Last-writer-wins is the server's behaviour and cannot be configured away from here.
+
+### ⚠️ But it is a reliable CHANGE DETECTOR, and that is worth having
+
+It increments on **every** write including memo writes, which is exactly the case a token that missed
+memos would have failed to guard. So Alt-ALM can do client-side conflict *detection* even though it
+cannot get server-side conflict *prevention*:
+
+1. read the memo **and** its `ver-stamp` together;
+2. immediately before the PUT, re-read the `ver-stamp`;
+3. if it moved, someone else wrote - surface a conflict instead of clobbering.
+
+⚠️ **This narrows the race, it does not close it.** A write landing between step 2 and the PUT is
+still lost, and no amount of client-side care fixes that without server support. The honest framing:
+this converts "silent data loss, always" into "detected in all but a millisecond-wide window", and
+the remaining window must be documented rather than described as safe.
+
+**Sandbox state after:** swept, zero `ALTALM-PROBE-*` rows remaining.
+
+---
+
 ## Open items for the next probe round
 
 1. ~~Map `SiteVersion 20.0 (20.00.0.143)` → marketing version~~ **DONE: ALM 26.1** (probe 3).
