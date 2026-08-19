@@ -44,9 +44,14 @@ scripts.
   host/domain/project/keys/usernames in every output and fixture.
 - ⚠️ **The GET-only rule for other projects was LIFTED by the user on 2026-08-18.** `AlmAccessPolicy`
   now permits writes to **any project on the allowlist**, not just the sandbox; enrolling a project
-  in `alt-alm.alm.readable-projects` grants write access to it. **Only the sandbox is currently
-  reachable** (user, 2026-08-18), so nothing else is enrolled — but that setting is now load-bearing
-  in a way it was not before, and adding a project to it is a write grant, not a read grant.
+  in `alt-alm.alm.readable-projects` grants write access to it. ⚠️ **CORRECTED 2026-08-19: this file
+  previously claimed "nothing else is enrolled". That was wrong** — `Secrets/local.properties`
+  enrols **8** projects, and has since before the rule was lifted, so lifting it silently converted
+  eight read grants into write grants. **The user was asked and confirmed on 2026-08-19 that all
+  projects should be readable AND writable**, so this is the intended configuration, not a drift.
+  What it means in practice: a local run reports **9 of 9 projects writable**, and the SPA's Edit
+  button is gated on exactly that flag, so Alt-ALM will offer editing on the other teams' live
+  records. The only control is which projects are enrolled.
 - **Other projects in the tenant** (user, 2026-08-14; write restriction since lifted, above). Eight
   were reachable with the same key; `PROJECT-5` (233 reqs / 129 tests / 80 defects / 227
   test-instances / 178 runs) was the P1 read target — real names in git-ignored
