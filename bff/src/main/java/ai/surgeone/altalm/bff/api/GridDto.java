@@ -31,13 +31,23 @@ public final class GridDto {
      * @param riskGroup     the field belongs to ALM's built-in Risk Analysis group
      *                      ({@code active && !visibleInWebUI}) — exactly 25 fields in every project
      *                      probed
+     * @param writable      whether an editor may offer this field at all. ⚠️ <strong>Derived from
+     *                      {@code virtual} alone, and that narrowness is the point.</strong>
+     *                      {@code virtual} means computed server-side and is the one write-related
+     *                      metadata flag probing found reliable. {@code required} and
+     *                      {@code editable} are deliberately <em>not</em> exposed to the SPA:
+     *                      probe 9's field is reported as neither required nor editable and the
+     *                      create fails without it, so a client that trusted them would grey out a
+     *                      field ALM demands. Withholding them is cheaper than documenting, in
+     *                      every consumer, why they must be ignored
      * @param groupable     ALM's own Groupable flag — whether {@code groups/{field}} will aggregate
      *                      on it. The Group-by control offers exactly these fields, so a project
      *                      that made a field ungroupable stops seeing it offered, rather than
      *                      seeing it offered and failing on click
      */
     public record Column(String name, String label, String type, int listId, boolean multiValue,
-                         boolean onDetailsForm, boolean riskGroup, boolean groupable) {
+                         boolean onDetailsForm, boolean riskGroup, boolean groupable,
+                         boolean writable) {
 
         /**
          * The one mapping from field metadata to a column, shared by the grid and the tree-grid —
@@ -47,7 +57,7 @@ public final class GridDto {
         public static Column of(ai.surgeone.altalm.bff.alm.metadata.FieldDescriptor f) {
             return new Column(f.name(), f.label(), f.type().name(), f.listId(),
                     f.supportsMultivalue(), f.onDetailsForm(), f.inRiskAnalysisGroup(),
-                    f.groupable());
+                    f.groupable(), !f.virtual());
         }
     }
 

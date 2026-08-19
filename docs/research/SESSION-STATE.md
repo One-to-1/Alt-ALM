@@ -575,7 +575,7 @@ to return 1 of the project's 2 instances. Re-seed with
 
 ## P2 status (started 2026-08-18; CRUD endpoints landed 2026-08-19)
 
-**321 BFF tests default, 364 with `-Pcontract`. 57 SPA tests.**
+**322 BFF tests default, 365 with `-Pcontract`. 57 SPA tests.**
 
 ✅ **The write core is in and verified live.** `bff/.../alm/write/`:
 
@@ -701,8 +701,33 @@ the text intact, because a live Save button over an unknown write is the same tr
 `writeOutcome.test.ts` asserts that absence directly — an absence is not something a reviewer
 notices.
 
-**Next in P2:** the edit form itself (`RecordEditor`) and its wiring into `DetailPane` — the write
-layer above has no UI consumer yet, so **nothing is user-visible from this slice**. Then wiring the SPA to these endpoints (edit forms, the comment box, optimistic-ish
+✅ **`RecordEditor` is in and wired into `DetailPane`** (2026-08-19) — an Edit button on the record
+header, gated on `data.writable`, swapping the Details field table for the same layout in inputs so
+the row does not jump. Two rules it follows that a generic form would not:
+
+- **Only CHANGED fields are sent.** ALM's update is partial by field but total by value, so posting
+  the whole form back would rewrite every field with whatever the browser was showing — for a memo,
+  replacing a document the user never opened.
+- **Memo fields are not offered.** They are HTML documents and this is a plain-text form; the BFF's
+  validator would refuse the write (correctly), but the better answer is not to offer it. Rich-text
+  authoring is its own slice.
+
+The editor **remounts per record** and clears on navigation, so a draft can never outlive the row it
+was typed against and be saved onto a different one.
+
+⚠️ **`GridDto.Column` gained `writable`, derived from `virtual` ALONE.** `required` and `editable`
+are deliberately **withheld from the SPA contract**: probe 9's field is reported as neither and ALM
+demands it on create, so a form trusting them would grey out the one field the server insists on.
+Withholding is cheaper than documenting in every consumer why they must be ignored — and
+`GridServiceTest.writableIsVirtualOnly` pins both directions.
+
+⚠️ **The components themselves are NOT unit-tested** — the SPA has vitest + jsdom but no React
+testing library, and the project's existing seam is to test pure modules (`richText.ts`,
+`writeOutcome.ts`) rather than renderers. Typecheck, lint and a production build pass; the editor's
+behaviour in a browser is unverified. Adding `@testing-library/react` is the honest fix if this
+grows.
+
+**Next in P2:** wiring the SPA to these endpoints (edit forms, the comment box, optimistic-ish
 refresh around the `UNKNOWN` case), a lookup-list client so `LOOKUP_LIST` values can be validated
 rather than passed through, and attachments — which need the hand-built multipart body, so they are
 their own slice rather than a field on an existing one.

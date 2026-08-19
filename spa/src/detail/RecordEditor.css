@@ -1,0 +1,80 @@
+/* Edit mode reuses .detail-fields so an edited record sits exactly where the read-only one did —
+   the row does not jump when Edit is pressed. Only the value column changes. */
+
+.record-editor .detail-field dd input {
+  width: 100%;
+  box-sizing: border-box;
+  font: inherit;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 2px 6px;
+}
+
+.record-editor .detail-field dd input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -1px;
+}
+
+.record-editor .detail-field dd input.has-problem {
+  border-color: var(--danger);
+}
+
+.record-editor-problem {
+  margin: 2px 0 0;
+  font-size: 11px;
+  color: var(--danger);
+}
+
+.record-editor-actions {
+  display: flex;
+  gap: 8px;
+  padding: 8px 12px;
+  border-top: 1px solid var(--border);
+  position: sticky;
+  bottom: 0;
+  background: var(--surface);
+}
+
+/* The banner. Four tones, and `unknown` is deliberately NOT styled as an error: it is the one
+   outcome where the change may well have been saved, and a red banner would tell the user
+   something we do not know. */
+.record-editor-banner {
+  margin: 8px 12px;
+  padding: 8px 10px;
+  border-radius: 4px;
+  border-left: 3px solid;
+  font-size: 12px;
+}
+
+.record-editor-banner p {
+  margin: 4px 0 0;
+}
+
+.record-editor-banner-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.record-editor-banner.tone-success {
+  border-color: var(--ok, #2e7d32);
+  background: color-mix(in srgb, var(--ok, #2e7d32) 8%, transparent);
+}
+
+.record-editor-banner.tone-error {
+  border-color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 8%, transparent);
+}
+
+/* Amber, not red: "we do not know" is not "it failed". */
+.record-editor-banner.tone-unknown {
+  border-color: var(--warn, #b26a00);
+  background: color-mix(in srgb, var(--warn, #b26a00) 10%, transparent);
+}
+
+.record-editor-banner.tone-conflict {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+}

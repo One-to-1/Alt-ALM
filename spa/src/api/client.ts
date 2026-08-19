@@ -45,6 +45,15 @@ export interface GridColumn {
    * getting an error on click.
    */
   groupable: boolean
+  /**
+   * Whether an editor may offer this field at all.
+   *
+   * ⚠️ Derived server-side from `virtual` ALONE, and that narrowness is the point. `required` and
+   * `editable` are deliberately not in this contract: probe 9 found a field reported as neither,
+   * which ALM nonetheless demands on create. A form that trusted them would grey out a field the
+   * server requires, so the flags are withheld rather than shipped with a warning nobody reads.
+   */
+  writable: boolean
 }
 
 export interface GridRow {

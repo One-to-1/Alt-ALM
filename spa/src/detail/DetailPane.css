@@ -420,3 +420,21 @@
     grid-template-columns: 1fr;
   }
 }
+
+/* Sits with the entity badge rather than in a toolbar of its own: ALM puts record actions on the
+   record's own header line, and a second bar would cost a row of vertical space the grid needs. */
+.detail-edit {
+  margin-left: auto;
+  font: inherit;
+  font-size: 11px;
+  padding: 1px 8px;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  cursor: pointer;
+}
+
+.detail-edit:hover {
+  border-color: var(--accent);
+}

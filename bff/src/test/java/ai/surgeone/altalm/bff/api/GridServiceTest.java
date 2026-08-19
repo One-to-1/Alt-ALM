@@ -253,4 +253,26 @@ class GridServiceTest {
 
         assertThat(grid.collection()).isEqualTo("test-set-folders");
     }
+
+    @Test
+    @DisplayName("a column's `writable` comes from `virtual` ALONE, never from required/editable")
+    void writableIsVirtualOnly() {
+        // The exact probe-9 shape: reported neither required nor editable, and ALM demands it on
+        // create. A contract that derived `writable` from `editable` would tell the SPA to grey out
+        // the one field the server insists on, and the user would have no way to supply it.
+        FieldDescriptor probe9 = new FieldDescriptor("ref-count", "TP_REF_COUNT",
+                AlmFieldType.NUMBER, "Ref count",
+                false, false, true, false, false, true, true, false, 0, 0);
+        // Computed server-side - the one write-related flag probing found trustworthy.
+        FieldDescriptor computed = new FieldDescriptor("father-name", "RQ_FATHER_NAME",
+                AlmFieldType.STRING, "Req Parent",
+                false, false, true, true, false, true, true, false, 0, 255);
+
+        assertThat(GridDto.Column.of(probe9).writable())
+                .as("editable:false must NOT make a field unwritable - probe 9")
+                .isTrue();
+        assertThat(GridDto.Column.of(computed).writable())
+                .as("virtual IS a reliable never-writable signal")
+                .isFalse();
+    }
 }

@@ -12,6 +12,7 @@ import { renderCell } from '../grid/renderers.tsx'
 import { memoToPlainText, sanitizeMemo } from './richText.ts'
 import { RelatedRows } from './RelatedRows.tsx'
 import { HistoryPanel } from './HistoryPanel.tsx'
+import { RecordEditor } from './RecordEditor.tsx'
 import { DetailRail, type RailTab } from './DetailRail.tsx'
 import {
   Beaker,
@@ -155,6 +156,15 @@ export function DetailPane({ project, collection, entityId, onNavigate, onDrillI
   const [history, setHistory] = useState<History | null>(null)
   const [historyStatus, setHistoryStatus] = useState<'loading' | 'ready' | 'error'>('loading')
   const [historyError, setHistoryError] = useState<string | null>(null)
+  const [editing, setEditing] = useState(false)
+  /**
+   * Bumped to force a re-read of the record.
+   *
+   * A counter rather than a boolean because the same reload can be asked for twice in a row — after
+   * an unknown outcome, then again after the user saves the same edit — and a boolean would make
+   * the second request a no-op precisely when the screen is least trustworthy.
+   */
+  const [reloadToken, setReloadToken] = useState(0)
 
   // The related-entity tab set is metadata, not record data: it depends on project + collection and
   // not on which record is open. Fetching it here rather than with the record means arrowing through
@@ -177,6 +187,12 @@ export function DetailPane({ project, collection, entityId, onNavigate, onDrillI
       cancelled = true
     }
   }, [project, collection])
+
+  useEffect(() => {
+    // Arrowing to another record must not carry an open editor with it: the draft belongs to the
+    // record it was typed against, and re-using it would save one record's values onto another.
+    setEditing(false)
+  }, [entityId, collection, project])
 
   useEffect(() => {
     if (!entityId) {
@@ -231,7 +247,7 @@ export function DetailPane({ project, collection, entityId, onNavigate, onDrillI
     return () => {
       cancelled = true
     }
-  }, [project, collection, entityId])
+  }, [project, collection, entityId, reloadToken])
 
   // History loads WITH the record rather than when its tab is opened.
   //
@@ -421,9 +437,21 @@ export function DetailPane({ project, collection, entityId, onNavigate, onDrillI
           <span className="detail-id">{row.id}</span>
           <span className="detail-entity">{singular(data.collection)}</span>
           {!data.writable && (
-            <span className="badge badge-ro" title="Alt-ALM has no write path yet">
+            <span
+              className="badge badge-ro"
+              title="This project is not enrolled for writes in this deployment"
+            >
               Read only
             </span>
+          )}
+          {data.writable && !editing && tab === DETAILS && (
+            <button
+              type="button"
+              className="detail-edit"
+              onClick={() => setEditing(true)}
+            >
+              Edit
+            </button>
           )}
         </div>
         <h2 className="detail-title" title={title}>
@@ -443,7 +471,21 @@ export function DetailPane({ project, collection, entityId, onNavigate, onDrillI
         <DetailRail tabs={railTabs} active={tab} onSelect={setTab} />
 
         <div className="detail-body" role="tabpanel" aria-labelledby={`detail-tab-${tab}`}>
-        {tab === DETAILS && <FieldTable columns={ordered} row={row} />}
+        {tab === DETAILS &&
+          (editing ? (
+            <RecordEditor
+              // Remount when the record changes so no draft can outlive the row it belongs to.
+              key={`${collection}/${row.id}`}
+              project={project}
+              collection={collection}
+              columns={ordered}
+              row={row}
+              onReload={() => setReloadToken((n) => n + 1)}
+              onClose={() => setEditing(false)}
+            />
+          ) : (
+            <FieldTable columns={ordered} row={row} />
+          ))}
 
         {activeMemo && (
           <MemoBody
