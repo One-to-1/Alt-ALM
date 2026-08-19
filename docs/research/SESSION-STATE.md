@@ -575,7 +575,7 @@ to return 1 of the project's 2 instances. Re-seed with
 
 ## P2 status (started 2026-08-18; CRUD endpoints landed 2026-08-19)
 
-**322 BFF tests default, 365 with `-Pcontract`. 57 SPA tests.**
+**322 BFF tests default, 365 with `-Pcontract`. 68 SPA tests.**
 
 ✅ **The write core is in and verified live.** `bff/.../alm/write/`:
 
@@ -721,11 +721,23 @@ demands it on create, so a form trusting them would grey out the one field the s
 Withholding is cheaper than documenting in every consumer why they must be ignored — and
 `GridServiceTest.writableIsVirtualOnly` pins both directions.
 
-⚠️ **The components themselves are NOT unit-tested** — the SPA has vitest + jsdom but no React
-testing library, and the project's existing seam is to test pure modules (`richText.ts`,
-`writeOutcome.ts`) rather than renderers. Typecheck, lint and a production build pass; the editor's
-behaviour in a browser is unverified. Adding `@testing-library/react` is the honest fix if this
-grows.
+✅ **Component tests are in** (`@testing-library/react`, added 2026-08-19) — and they earned their
+keep on the first run.
+
+⚠️ **They immediately found the exact bug the design exists to prevent.** `writeOutcome.ts` says
+`mayKeepEditing(unknown) === false`, and the banner correctly offered only "Reload" — but
+`RecordEditor` never *acted* on that, so **the form's own Save button sat live underneath the
+banner**. A user could press Save again on a write that may already have committed. Suppressing one
+route to a second write while leaving another open is the same duplicate reached by a different
+button.
+
+The fix locks the form once an unrepeatable outcome arrives: inputs disabled, Cancel becomes Close,
+and Save is **removed rather than greyed out** — a disabled Save still reads as "the thing to press
+once this clears", and nothing will clear it except re-reading the record.
+
+**The lesson worth keeping:** a pure module can encode a safety rule perfectly and the component can
+still not obey it. Testing only the pure layer proves the rule is *stated*, never that it is
+*followed*.
 
 **Next in P2:** wiring the SPA to these endpoints (edit forms, the comment box, optimistic-ish
 refresh around the `UNKNOWN` case), a lookup-list client so `LOOKUP_LIST` values can be validated

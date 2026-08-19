@@ -76,6 +76,17 @@ export function RecordEditor({ project, collection, columns, row, onReload, onCl
   const message = result ? outcomeMessage(result) : null
   const changed = Object.keys(draft).filter((name) => draft[name] !== initial[name])
 
+  /**
+   * True once an outcome has arrived that must not be re-sent — an unknown one.
+   *
+   * ⚠️ This exists because the banner alone is not enough, and a component test proved it: the
+   * banner correctly offered only "Reload", while the form's own Save button sat live underneath
+   * it. Suppressing one route to a second write and leaving the other open is the same duplicate,
+   * reached by a different button. `mayKeepEditing` is the single rule; this is where the form
+   * obeys it.
+   */
+  const locked = result !== null && !mayKeepEditing(result)
+
   async function save() {
     if (changed.length === 0) {
       onClose()
@@ -165,6 +176,7 @@ export function RecordEditor({ project, collection, columns, row, onReload, onCl
                   id={`edit-${column.name}`}
                   className={problem ? 'has-problem' : undefined}
                   value={draft[column.name] ?? ''}
+                  disabled={locked}
                   aria-invalid={problem ? true : undefined}
                   aria-describedby={problem ? `problem-${column.name}` : undefined}
                   onChange={(event) =>
@@ -189,11 +201,20 @@ export function RecordEditor({ project, collection, columns, row, onReload, onCl
       </p>
 
       <div className="record-editor-actions">
-        <button type="submit" disabled={saving || changed.length === 0}>
-          {saving ? 'Saving…' : changed.length === 0 ? 'No changes' : `Save ${changed.length} change${changed.length === 1 ? '' : 's'}`}
-        </button>
+        {/* Not merely disabled — absent. A greyed-out Save still reads as "the thing to press once
+            this clears", and for an unknown outcome there is nothing that will clear it except
+            re-reading the record. */}
+        {!locked && (
+          <button type="submit" disabled={saving || changed.length === 0}>
+            {saving
+              ? 'Saving…'
+              : changed.length === 0
+                ? 'No changes'
+                : `Save ${changed.length} change${changed.length === 1 ? '' : 's'}`}
+          </button>
+        )}
         <button type="button" onClick={onClose} disabled={saving}>
-          Cancel
+          {locked ? 'Close' : 'Cancel'}
         </button>
       </div>
     </form>

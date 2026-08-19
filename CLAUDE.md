@@ -153,7 +153,7 @@ finding in the project surfaced by product code under test rather than a hand-wr
   **bounded retry on 5xx reads** — separate from the 5xx-on-*write* verify-by-query rule (**Q46**).
 
 🟡 **P2 IN PROGRESS — the write core, the CRUD endpoints and the validation layer are in and
-verified live (2026-08-19). 322 BFF tests (365 with `-Pcontract`) + 57 SPA tests green. Records are editable in the SPA.**
+verified live (2026-08-19). 322 BFF tests (365 with `-Pcontract`) + 68 SPA tests green. Records are editable in the SPA.**
 `AlmWriteClient` is the single write path; `ApiIsReadOnlyTest` asserts writes *route through it*
 rather than that none exist, and now has real endpoints to guard. See `SESSION-STATE.md`.
 
