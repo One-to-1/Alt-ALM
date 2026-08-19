@@ -575,7 +575,7 @@ to return 1 of the project's 2 instances. Re-seed with
 
 ## P2 status (started 2026-08-18; CRUD endpoints landed 2026-08-19)
 
-**321 BFF tests default, 364 with `-Pcontract`.** 27 SPA tests.
+**321 BFF tests default, 364 with `-Pcontract`. 57 SPA tests.**
 
 ✅ **The write core is in and verified live.** `bff/.../alm/write/`:
 
@@ -677,7 +677,32 @@ committed, and a client treating it as "failed, retry" will create duplicates. T
 test-instance that makes ALM synthesize a `Fast_Run`) and `attachments` (multipart, not a JSON
 entity). Both refused as endpoints rather than offered and failed.
 
-**Next in P2:** wiring the SPA to these endpoints (edit forms, the comment box, optimistic-ish
+✅ **The SPA's write layer is in — client and outcome logic, tested (2026-08-19).** No form yet;
+see Next below.
+
+- **`client.ts` write half** — returns a **discriminated union**, not a promise that resolves or
+  throws. ⚠️ The reason is one branch ordering: the BFF serves an unresolved `UNKNOWN` as **502**,
+  and a 502 falling through to the read path's error handling becomes `retryable: true` — an
+  invitation to re-send a write that may already have landed. **Whenever the body carries a write
+  outcome, the body is the authority and the status is not.** There is no `ok` boolean, for the same
+  reason `AlmWriteResult` has no `isSuccess()`.
+- ⚠️ **A dropped connection on a write is `retryable: false`**, unlike every read. The request may
+  have reached the server and committed before the socket died, so "the connection failed" still
+  means *go and look*.
+- **`writeOutcome.ts`** — the outcome→message mapping, kept pure so what it *offers* can be
+  asserted, the way `richText.ts` is.
+
+⚠️ **The design decision worth not re-litigating: an `unknown` outcome NEVER offers "Retry".**
+The friendly, obvious design — red banner, Retry button — manufactures duplicate records for exactly
+the writes that succeeded. Every other failure in this app is safe to retry; this one is not, and it
+looks like the others. `unknown` gets its own tone (neither success nor error), language that does
+not claim to know, and one action: reload. The editor also **closes** rather than staying open with
+the text intact, because a live Save button over an unknown write is the same trap wearing a hat.
+`writeOutcome.test.ts` asserts that absence directly — an absence is not something a reviewer
+notices.
+
+**Next in P2:** the edit form itself (`RecordEditor`) and its wiring into `DetailPane` — the write
+layer above has no UI consumer yet, so **nothing is user-visible from this slice**. Then wiring the SPA to these endpoints (edit forms, the comment box, optimistic-ish
 refresh around the `UNKNOWN` case), a lookup-list client so `LOOKUP_LIST` values can be validated
 rather than passed through, and attachments — which need the hand-built multipart body, so they are
 their own slice rather than a field on an existing one.

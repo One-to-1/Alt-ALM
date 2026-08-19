@@ -610,3 +610,285 @@ export function fetchGroups(
     `/api/groups/${encodeURIComponent(collection)}/${encodeURIComponent(field)}?${params.toString()}`,
   )
 }
+
+// ============================================================================================
+// Writes.
+//
+// ⚠️ The shape of this half is dictated by one fact: an ALM 5xx MAY HAVE COMMITTED THE ROW. So a
+// write has three outcomes, not two, and the third one is not an error — it is an answer the user
+// has to be shown. Modelling it as a thrown ApiError with `retryable: true` (the shape reads use)
+// would be actively harmful here: it invites the automatic retry that turns one uncertain write
+// into two records.
+//
+// Hence a discriminated union rather than a promise that resolves or throws. There is deliberately
+// no `ok` boolean and no `success` field, for the same reason the BFF's AlmWriteResult has no
+// isSuccess(): a convenience boolean is exactly how 'unknown' gets quietly bucketed with one of
+// the other two.
+
+/** One thing wrong with a write body, refused before it reached ALM. */
+export interface WriteProblem {
+  /** The field it concerns; empty for a whole-body problem. */
+  field: string
+  /** Stable machine-readable code — branch on this, never on `detail`. */
+  code: string
+  detail: string
+}
+
+export type WriteResult =
+  /** The server confirmed it. */
+  | { kind: 'committed'; id: string | null; retried: boolean }
+  /**
+   * ⚠️ ALM returned a server error and the row's fate is genuinely unknown.
+   *
+   * `verified: true` means a follow-up query found the record, so the caller can proceed — but this
+   * is still not `committed`, because "the row exists" and "the write succeeded" are different
+   * claims and only the first has evidence. `verified: false` means nobody knows: re-read before
+   * retrying, because retrying blind is how duplicates get made.
+   */
+  | { kind: 'unknown'; id: string | null; verified: boolean; detail: string }
+  /** ALM refused it outright. Nothing was written. */
+  | { kind: 'rejected'; errorId: string; detail: string }
+  /** Refused by the BFF's validation before ALM was contacted. Nothing was written. */
+  | { kind: 'invalid'; problems: WriteProblem[] }
+  /**
+   * The record changed since it was read.
+   *
+   * ⚠️ A normal outcome of editing, not an exception — hence a union member the caller must handle
+   * rather than a throw it can forget. Note this is *detection*: ALM has no optimistic locking, so
+   * a write landing in the instant between the check and the request is still lost.
+   */
+  | { kind: 'conflict'; detail: string }
+
+/** The wire shape of the BFF's write response. Not exported: callers get a `WriteResult`. */
+interface WriteResponseBody {
+  outcome: string
+  id: string | null
+  verified: boolean
+  retried: boolean
+  errorId: string
+  detail: string
+  problems: WriteProblem[]
+}
+
+function isWriteResponseBody(value: unknown): value is WriteResponseBody {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    typeof (value as { outcome?: unknown }).outcome === 'string'
+  )
+}
+
+function toWriteResult(body: WriteResponseBody): WriteResult {
+  switch (body.outcome) {
+    case 'COMMITTED':
+      return { kind: 'committed', id: body.id, retried: body.retried }
+    case 'UNKNOWN':
+      return { kind: 'unknown', id: body.id, verified: body.verified, detail: body.detail }
+    case 'REJECTED':
+      return { kind: 'rejected', errorId: body.errorId, detail: body.detail }
+    case 'INVALID':
+      return { kind: 'invalid', problems: body.problems ?? [] }
+    default:
+      // An outcome this build does not know. Treated as unknown rather than as success: the safe
+      // direction for an unrecognised write outcome is "go and look", never "it worked".
+      return {
+        kind: 'unknown',
+        id: body.id,
+        verified: false,
+        detail: `The server reported an outcome this app does not recognise (${body.outcome}). Re-read the record before retrying.`,
+      }
+  }
+}
+
+async function apiWrite(
+  path: string,
+  method: 'POST' | 'PUT' | 'DELETE',
+  body?: unknown,
+): Promise<WriteResult> {
+  let response: Response
+  try {
+    response = await fetch(path, {
+      method,
+      headers:
+        body === undefined
+          ? { Accept: 'application/json' }
+          : { Accept: 'application/json', 'Content-Type': 'application/json' },
+      body: body === undefined ? undefined : JSON.stringify(body),
+    })
+  } catch {
+    // ⚠️ A network failure on a WRITE is not the same as one on a read. The request may have
+    // reached the server and committed before the connection dropped, so this is explicitly NOT
+    // retryable — the one case where a fetch that never returned still means "go and look".
+    throw new ApiError({
+      kind: 'network',
+      message:
+        'The connection failed while saving. The change may or may not have been applied — re-read the record before trying again.',
+      retryable: false,
+      status: null,
+    })
+  }
+
+  let parsed: unknown = null
+  try {
+    parsed = await response.json()
+  } catch {
+    // Non-JSON body; handled below.
+  }
+
+  // A version conflict has its own status and its own body shape.
+  if (response.status === 409) {
+    const detail =
+      typeof parsed === 'object' && parsed !== null && 'detail' in parsed
+        ? String((parsed as { detail: unknown }).detail)
+        : 'The record changed since you opened it.'
+    return { kind: 'conflict', detail }
+  }
+
+  // ⚠️ This branch must come BEFORE the generic !response.ok handling, and that ordering is the
+  // whole point. The BFF serves an unresolved UNKNOWN as 502; a 502 falling through to the error
+  // path would become `retryable: true` — an invitation to re-send a write that may already have
+  // landed. Whenever the body carries a write outcome, the BODY is the authority, not the status.
+  if (isWriteResponseBody(parsed)) {
+    return toWriteResult(parsed)
+  }
+
+  if (!response.ok) {
+    throw toApiErrorFrom(response, parsed)
+  }
+
+  throw new ApiError({
+    kind: 'unknown',
+    message: 'The server returned a response this app could not interpret.',
+    retryable: false,
+    status: response.status,
+  })
+}
+
+/** `toApiError` for a body already consumed — a Response body can only be read once. */
+function toApiErrorFrom(response: Response, body: unknown): ApiError {
+  if (isKnownErrorBody(body)) {
+    switch (body.error) {
+      case 'access-denied':
+        return new ApiError({
+          kind: 'access-denied',
+          message: body.detail || 'Access to this project was denied.',
+          retryable: false,
+          status: response.status,
+          detail: body.detail,
+        })
+      case 'bad-request':
+        return new ApiError({
+          kind: 'bad-request',
+          message: body.detail || 'The request was invalid.',
+          retryable: false,
+          status: response.status,
+          detail: body.detail,
+        })
+      case 'alm-unavailable':
+        return new ApiError({
+          kind: 'alm-unavailable',
+          message: `ALM did not respond correctly (upstream status ${body.almStatus}).`,
+          // Not retryable, unlike the read path's handling of the same body: this is a write.
+          retryable: false,
+          status: response.status,
+          almStatus: body.almStatus,
+        })
+    }
+  }
+  return new ApiError({
+    kind: 'unknown',
+    message: `The save failed with status ${response.status}. The change may not have been applied — re-read the record.`,
+    retryable: false,
+    status: response.status,
+  })
+}
+
+function projectQuery(project: string): string {
+  return `?project=${encodeURIComponent(project)}`
+}
+
+/** Creates one record. `fields` is logical field name → value; order is irrelevant. */
+export function createRecord(
+  project: string,
+  collection: string,
+  fields: Record<string, string>,
+): Promise<WriteResult> {
+  return apiWrite(`/api/records/${encodeURIComponent(collection)}${projectQuery(project)}`, 'POST', {
+    fields,
+  })
+}
+
+/**
+ * Updates one record.
+ *
+ * ⚠️ Fields omitted from `fields` are left alone, but a field that IS present is replaced outright.
+ * For a comment field that means every earlier comment is destroyed — use {@link addComment}, which
+ * exists precisely because this function would do that and report success.
+ *
+ * @param expectedVersion the `ver-stamp` the edit was based on. Omitting it is "I accept
+ *   overwriting a concurrent edit", not "there is no concurrency".
+ */
+export function updateRecord(
+  project: string,
+  collection: string,
+  id: string,
+  fields: Record<string, string>,
+  expectedVersion?: string,
+): Promise<WriteResult> {
+  return apiWrite(
+    `/api/records/${encodeURIComponent(collection)}/${encodeURIComponent(id)}${projectQuery(project)}`,
+    'PUT',
+    { fields, expectedVersion: expectedVersion ?? null },
+  )
+}
+
+/** Deletes one record. ⚠️ No cascade: deleting a folder does not delete what is inside it. */
+export function deleteRecord(
+  project: string,
+  collection: string,
+  id: string,
+): Promise<WriteResult> {
+  return apiWrite(
+    `/api/records/${encodeURIComponent(collection)}/${encodeURIComponent(id)}${projectQuery(project)}`,
+    'DELETE',
+  )
+}
+
+/** Adds a comment, preserving the ones already there. The merge happens server-side. */
+export function addComment(
+  project: string,
+  collection: string,
+  id: string,
+  comment: string,
+  author?: string,
+  expectedVersion?: string,
+): Promise<WriteResult> {
+  return apiWrite(
+    `/api/records/${encodeURIComponent(collection)}/${encodeURIComponent(id)}/comments${projectQuery(project)}`,
+    'POST',
+    { comment, author: author ?? null, expectedVersion: expectedVersion ?? null },
+  )
+}
+
+/**
+ * The comment field's name for a collection, or null when it has none.
+ *
+ * Discovered rather than assumed: a requirement's is `comments`, a defect's is `dev-comments`, and
+ * neither tracks the physical column name. A null means do not offer a comment box at all.
+ */
+export async function fetchCommentField(
+  project: string,
+  collection: string,
+): Promise<string | null> {
+  try {
+    const body = await apiGet<{ field: string }>(
+      `/api/records/${encodeURIComponent(collection)}/comment-field${projectQuery(project)}`,
+    )
+    return body.field
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 404) {
+      return null
+    }
+    throw error
+  }
+}

@@ -153,7 +153,7 @@ finding in the project surfaced by product code under test rather than a hand-wr
   **bounded retry on 5xx reads** — separate from the 5xx-on-*write* verify-by-query rule (**Q46**).
 
 🟡 **P2 IN PROGRESS — the write core, the CRUD endpoints and the validation layer are in and
-verified live (2026-08-19). 302 BFF tests (345 with `-Pcontract`) + 27 SPA tests green.**
+verified live (2026-08-19). 321 BFF tests (364 with `-Pcontract`) + 57 SPA tests green.**
 `AlmWriteClient` is the single write path; `ApiIsReadOnlyTest` asserts writes *route through it*
 rather than that none exist, and now has real endpoints to guard. See `SESSION-STATE.md`.
 
@@ -169,6 +169,12 @@ limitation rather than our own rule.
 ⚠️ **An unresolved `UNKNOWN` write is served as HTTP 502, and that status describes the UPSTREAM, not
 the row.** The write may well have committed. `"outcome": "UNKNOWN"` in the body is the authority; a
 client that treats 502 as "failed, retry" will create duplicates.
+
+⚠️ **In the SPA, an `unknown` write outcome must never offer "Retry"** (`spa/src/detail/
+writeOutcome.ts`). An ALM 5xx may have committed the row, so the obvious red-banner-plus-Retry
+design creates duplicates for precisely the writes that worked. It gets its own tone, one action
+(reload), and the editor closes. Likewise the write client returns a **union, not an ok/throw**, and
+treats a dropped connection as *not* retryable — unlike every read.
 
 ⚠️ **`runs` and `attachments` are not writable through the API, by design** — `POST runs` fails
 definitively (the only route is a status `PUT` on a test-instance that makes ALM synthesize a
