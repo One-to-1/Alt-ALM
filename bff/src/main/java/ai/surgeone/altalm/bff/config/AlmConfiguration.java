@@ -5,9 +5,11 @@ import ai.surgeone.altalm.bff.alm.metadata.AlmMetadataCatalog;
 import ai.surgeone.altalm.bff.alm.metadata.AlmMetadataClient;
 import ai.surgeone.altalm.bff.alm.read.AlmAccessPolicy;
 import ai.surgeone.altalm.bff.alm.read.AlmEntityClient;
+import ai.surgeone.altalm.bff.alm.write.AlmCommentWriter;
 import ai.surgeone.altalm.bff.alm.write.AlmFieldResolver;
 import ai.surgeone.altalm.bff.alm.write.AlmMetadataFieldResolver;
 import ai.surgeone.altalm.bff.alm.write.AlmWriteClient;
+import ai.surgeone.altalm.bff.alm.write.AlmWriteValidator;
 import ai.surgeone.altalm.bff.alm.read.AlmProjectRef;
 import ai.surgeone.altalm.bff.alm.read.AlmReadRetry;
 import ai.surgeone.altalm.bff.alm.session.AlmAuthClient;
@@ -220,6 +222,32 @@ public class AlmConfiguration {
     @Bean
     public AlmFieldResolver almFieldResolver(AlmMetadataCatalog catalog, AlmAccessPolicy policy) {
         return new AlmMetadataFieldResolver(catalog, policy.sandbox());
+    }
+
+    /**
+     * The stand-in for ALM's own validation, which is switched off for us.
+     *
+     * <p>Workflow scripts are bypassed on REST writes by default, so a record Alt-ALM writes skips
+     * every rule a record created in the stock client passes through. This bean is the only thing
+     * checking a write body against what the project's metadata actually says — and it is
+     * necessarily incomplete against arbitrary VBScript, which CLAUDE.md records as permanent.
+     */
+    @Bean
+    public AlmWriteValidator almWriteValidator(AlmMetadataCatalog catalog) {
+        return new AlmWriteValidator(catalog);
+    }
+
+    /**
+     * The comment path, which exists because the obvious implementation deletes data.
+     *
+     * <p>A memo PUT replaces the field (probe 30), so a comment written straight through
+     * {@link AlmWriteClient} destroys the record's whole comment history and returns HTTP 200. This
+     * bean does the read-modify-write, once, server-side.
+     */
+    @Bean
+    public AlmCommentWriter almCommentWriter(AlmEntityClient entities, AlmWriteClient writes,
+                                             AlmMetadataCatalog catalog) {
+        return new AlmCommentWriter(entities, writes, catalog);
     }
 
     /**

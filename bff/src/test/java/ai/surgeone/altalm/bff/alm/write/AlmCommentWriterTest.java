@@ -156,7 +156,7 @@ class AlmCommentWriterTest {
 
             assertThatThrownBy(() -> writer.addComment(PROJECT, "requirements", "requirement", "7",
                     "Alice", "mine", Optional.of("3")))
-                    .isInstanceOf(AlmCommentWriter.ConflictException.class)
+                    .isInstanceOf(AlmVersionGuard.ConflictException.class)
                     .hasMessageContaining("ver-stamp 3")
                     .hasMessageContaining("found 9");
 

@@ -57,13 +57,6 @@ public final class AlmCommentWriter {
         this.metadata = metadata;
     }
 
-    /** Raised when the record changed between the caller reading it and this write going out. */
-    public static class ConflictException extends RuntimeException {
-        public ConflictException(String message) {
-            super(message);
-        }
-    }
-
     /**
      * The comment field's logical name for an entity, from this project's metadata.
      *
@@ -84,7 +77,7 @@ public final class AlmCommentWriter {
      *                        the check. ⚠️ Passing empty is "I accept overwriting a concurrent
      *                        edit", not "there is no concurrency" — it is spelled as an explicit
      *                        {@link Optional} so that choice is visible at the call site
-     * @throws ConflictException if the record moved on since {@code expectedVersion}
+     * @throws AlmVersionGuard.ConflictException if the record moved on since {@code expectedVersion}
      */
     public AlmWriteResult addComment(AlmProjectRef project, String collection, String entity,
                                      String id, String author, String comment,
@@ -101,14 +94,7 @@ public final class AlmCommentWriter {
         String existing = row.first(field).orElse("");
         String version = row.first("ver-stamp").orElse("");
 
-        expectedVersion.filter(expected -> !expected.isBlank()).ifPresent(expected -> {
-            if (!expected.equals(version)) {
-                throw new ConflictException(
-                        "the record changed since it was read (expected ver-stamp " + expected
-                                + ", found " + version + "). Re-read and re-apply the comment — "
-                                + "writing now would overwrite whatever landed in between.");
-            }
-        });
+        AlmVersionGuard.check(expectedVersion, version);
 
         String merged = AlmCommentBanner.append(existing, author, comment, LocalDate.now());
 

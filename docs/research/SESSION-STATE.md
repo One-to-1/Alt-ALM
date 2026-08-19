@@ -1,4 +1,4 @@
-# Session State — updated 2026-08-18 (**P1 COMPLETE**; P2 is the write path)
+# Session State — updated 2026-08-19 (**P1 COMPLETE**; P2 has CRUD endpoints and a validation layer)
 
 Working state, written immediately before a context compact so the continuation loses nothing.
 Original kickoff: [docs/prompts/fable-5-research-and-plan.md](../prompts/fable-5-research-and-plan.md).
@@ -573,9 +573,9 @@ to return 1 of the project's 2 instances. Re-seed with
 3. 🟡 **P2 — the write path. STARTED 2026-08-18.** Its phase-start deferred probe is done
    (probe 30, below) and the write core has landed — see the P2 section immediately below.
 
-## P2 status (started 2026-08-18)
+## P2 status (started 2026-08-18; CRUD endpoints landed 2026-08-19)
 
-**248 BFF tests default, 277 with `-Pcontract`.**
+**302 BFF tests default, 345 with `-Pcontract`.** 27 SPA tests.
 
 ✅ **The write core is in and verified live.** `bff/.../alm/write/`:
 
@@ -612,9 +612,70 @@ that setting is load-bearing in a way it was not before. Every test that pinned 
 rewritten rather than deleted; the suite caught one that had not been anticipated (`GridServiceTest`
 pinned `writable=false` for a read-only project, and that flag drives the SPA's edit affordances).
 
-**Next in P2:** CRUD endpoints on top of the client (`requirements`, `tests`, `design-steps`,
-`defects`), the BFF validation layer that substitutes for bypassed workflow scripts, and the
-comment path's read-modify-write with the `ver-stamp` concurrency question settled first.
+✅ **CRUD endpoints are in, and validated live** (2026-08-19). `bff/.../api/`:
+
+- **`RecordController`** — `POST/PUT/DELETE /api/records/{collection}`, plus a **separate**
+  `POST .../{id}/comments` route. Its own controller rather than mappings on `GridController`,
+  so that class's "every mapping here is a GET, and that is load-bearing" javadoc stays true
+  instead of becoming a description of how things used to be.
+- **`RecordService`** — where an `UNKNOWN` write stops being a shrug. `AlmWriteClient` returns
+  `UNKNOWN` and refuses to guess because it does not know what identifies the row; this layer does,
+  so it writes the `verify()` finder: a create asks whether **one** row carries the name it sent,
+  an update asks whether the values it sent landed, a delete asks for **absence**.
+- **`AlmWriteValidator`** — the stand-in for the workflow scripts REST bypasses. See below.
+- **`AlmVersionGuard`** — the probe-31 conflict check, **extracted** so the comment path and the
+  CRUD path share one implementation. A probe-derived safety rule written twice is one that will
+  eventually be written differently, and the copy that drifts is the one nobody is watching.
+
+⚠️ **`ApiIsReadOnlyTest` now has real write endpoints to guard, and was re-verified in both
+directions** — it passes `RecordController` (which reaches `AlmWriteClient` transitively) and fails
+a deliberately-broken controller, which was then deleted. This is the first time the rewritten guard
+has had anything to catch.
+
+### The validation layer, and what it deliberately does NOT do
+
+`AlmWriteValidator` exists because **ALM's own validation is switched off for us**: workflow scripts
+are bypassed on REST writes, so a record Alt-ALM writes skips every rule a record made in the stock
+client passes through. What it enforces is what metadata actually states — unknown fields, virtual
+fields, server-owned `id`/`ver-stamp`, date and datetime grammar, declared string size, and the
+memo-is-HTML trap. What it **refuses** to enforce is the more important half:
+
+- **Required-on-create is not checked.** `required:false, editable:false` yet required by the server
+  is probe 9's actual case. Enforcing either flag would refuse writes ALM accepts.
+- **Lookup-list membership is not checked** — there is no list client yet, every Y/N flag is a
+  LookupList too, and a wrong guess rejects correct writes. ALM decides.
+- **Numbers accept decimals.** Integer-ness is **UNVERIFIED**; parsing as `Long` would have been
+  this layer inventing a constraint. Settling experiment noted in the code.
+
+⚠️ It is **necessarily incomplete** against arbitrary VBScript, and CLAUDE.md carries that as a
+permanent limitation. Do not let its existence read as "writes are validated".
+
+⚠️ **One real defect it shipped with, caught by a test**: when the per-type metadata read returned an
+**empty** set, every field of a valid body came back as `unknown-field` — a wall of confident,
+specific, wrong errors aimed at the caller rather than at the metadata read that actually failed.
+`AlmMetadataCatalog` already falls back when that fetch *throws*; nothing covered a fetch that
+succeeds and returns nothing. Now guarded, with a test.
+
+✅ **`RecordServiceContractTest`** — 10 cases live, passed first run, sweep clean. Two of them exist
+because a mock cannot answer them: **validation against this project's real field set** (a stub
+always agrees with the test that wrote it), and **a conflict against a stamp the server moved
+itself**. The second one asserts the current-stamp write proceeds *first*, so the stale-write refusal
+cannot pass for the trivial reason that the guard refuses everything.
+
+**HTTP status mapping, and the one that needs care:** committed → 201/200; validator refusal → 422
+with every problem; ALM refusal → 400; conflict → 409; **unresolved `UNKNOWN` → 502**. ⚠️ That 502
+describes what the *upstream* did, **not** what happened to the row — the write may well have
+committed, and a client treating it as "failed, retry" will create duplicates. The body's
+`"outcome": "UNKNOWN"` is the authority.
+
+**Not writable by design:** `runs` (POST fails definitively; the only route is a status PUT on a
+test-instance that makes ALM synthesize a `Fast_Run`) and `attachments` (multipart, not a JSON
+entity). Both refused as endpoints rather than offered and failed.
+
+**Next in P2:** wiring the SPA to these endpoints (edit forms, the comment box, optimistic-ish
+refresh around the `UNKNOWN` case), a lookup-list client so `LOOKUP_LIST` values can be validated
+rather than passed through, and attachments — which need the hand-built multipart body, so they are
+their own slice rather than a field on an existing one.
 
 ### P2's phase-start probe is done, and it found a data-loss trap
 

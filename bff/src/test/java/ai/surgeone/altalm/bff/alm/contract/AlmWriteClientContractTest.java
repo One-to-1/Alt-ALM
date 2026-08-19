@@ -12,6 +12,7 @@ import ai.surgeone.altalm.bff.alm.session.AlmAuthClient;
 import ai.surgeone.altalm.bff.alm.session.AlmCredentials;
 import ai.surgeone.altalm.bff.alm.session.AlmSessionPool;
 import ai.surgeone.altalm.bff.alm.write.AlmCommentWriter;
+import ai.surgeone.altalm.bff.alm.write.AlmVersionGuard;
 import ai.surgeone.altalm.bff.alm.write.AlmEntityBody;
 import ai.surgeone.altalm.bff.alm.write.AlmMetadataFieldResolver;
 import ai.surgeone.altalm.bff.alm.write.AlmWriteClient;
@@ -367,7 +368,7 @@ class AlmWriteClientContractTest {
         // second user with the page already open would be doing.
         assertThatThrownBy(() -> comments.addComment(sandbox, "requirements", "requirement", id,
                 "Contract Test", "would have clobbered", Optional.of(stampBefore)))
-                .isInstanceOf(AlmCommentWriter.ConflictException.class);
+                .isInstanceOf(AlmVersionGuard.ConflictException.class);
 
         String stored = entities.page(sandbox, "requirements",
                         AlmQuery.none().filter("id", id).fields("id", "comments").pageSize(1))

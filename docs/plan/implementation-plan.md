@@ -328,10 +328,21 @@ UX).
   - do **not** expose a batch endpoint from the BFF that implies atomicity it cannot deliver.
   ⚠️ Re-verify on another instance before assuming this is a product limitation rather than a
   deployment one (open item 13).
-- BFF validation layer from runtime metadata (`Required`/`Editable`/`List` bindings) — REST writes
-  bypass workflow-script validation by default (`CLIENT_TYPES_BYPASS_REST_WF`, `api-ref §6.8`), so
-  the BFF independently enforces what the stock client's scripts would have (D4).
-- CRUD endpoints: `POST/PUT/DELETE requirements`, `tests`, `design-steps`, `defects`
+- ✅ **DONE (2026-08-19) — `AlmWriteValidator`.** BFF validation layer from runtime metadata; REST
+  writes bypass workflow-script validation by default (`CLIENT_TYPES_BYPASS_REST_WF`,
+  `api-ref §6.8`), so the BFF independently enforces what the stock client's scripts would have (D4).
+  ⚠️ **Scoped down from this line's original wording, deliberately.** It enforces unknown/virtual/
+  server-owned fields, date and datetime grammar, declared string size, and the memo-is-HTML trap —
+  but **NOT `Required`, NOT `Editable`, and NOT `List` bindings**:
+  - `Required`/`Editable` are unreliable (probe 9: `test-parameter.ref-count` is `required:false,
+    editable:false` and the create fails without it). Enforcing either refuses writes ALM accepts.
+  - `List` membership needs a lookup-list client that does not exist yet; every Y/N flag is a
+    LookupList, so a wrong guess rejects correct writes. Deferred, and passed through meanwhile.
+  - Numbers accept decimals: integer-ness is **UNVERIFIED**.
+- ✅ **DONE (2026-08-19) — `RecordController` / `RecordService`**, `POST/PUT/DELETE
+  /api/records/{collection}` plus a separate `POST .../{id}/comments` route, 10 live contract cases.
+  ⚠️ `runs` and `attachments` are **excluded by design** — `POST runs` fails definitively, and an
+  attachment is multipart rather than a JSON entity. CRUD endpoints: `POST/PUT/DELETE requirements`, `tests`, `design-steps`, `defects`
   (`api-ref §6.1/§6.4/§6.5`); `requirement-coverages` (auto-creates one `test-config-coverages` row
   per link — never POST that side table directly, `api-ref §6.2`); `req-traces` (`api-ref §6.3`);
   `defect-links` (`second-endpoint-type` confirmed only for `defect`/`requirement` — do not assume
@@ -361,8 +372,19 @@ UX).
 
 **Exit criteria**: create/edit/delete flows work end-to-end against the sandbox for requirements,
 tests, design-steps, defects; write-safety unit tests cover the field-order regression and a mocked
-"500 that committed" case; BFF validation layer rejects a write missing a metadata-Required field
-before it reaches ALM.
+"500 that committed" case; ~~BFF validation layer rejects a write missing a metadata-Required field
+before it reaches ALM~~.
+
+⚠️ **That last criterion is WITHDRAWN (2026-08-19), and was wrong when written.** Probe 9 (2026-08-13)
+established that metadata's `Required` flag does not mean "required on create" — the field that
+actually broke a create was reported `required:false, editable:false`. A validator built to this
+criterion would **refuse writes ALM accepts** while still failing to prevent the create that
+motivated it. It is replaced by: *the validation layer rejects a write against fields this project
+does not have, and does not reject one for a flag probing showed to be unreliable* — an absence now
+pinned by tests in `AlmWriteValidatorTest.DeliberateOmissions`.
+
+**Also met**: an unresolved `UNKNOWN` write is surfaced to the caller as `UNKNOWN` with a follow-up
+verification attempted, never flattened to success or failure.
 
 **Sandbox contract-test gate**: full gate active — every contract-test write uses `ALTALM-*` prefix,
 cleanup in `finally`, orphan sweep asserts zero survivors post-suite.

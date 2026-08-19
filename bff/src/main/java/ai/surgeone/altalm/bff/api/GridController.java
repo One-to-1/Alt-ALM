@@ -31,7 +31,9 @@ import java.util.Map;
  * wherever the deployment is enrolled.
  *
  * <p>Writes go through {@code AlmWriteClient} and nothing else — {@code ApiIsReadOnlyTest} fails the
- * build if a write mapping appears in this package that cannot reach it.
+ * build if a write mapping appears in this package that cannot reach it. They live on
+ * {@link RecordController}, which is a separate class precisely so the first sentence of this javadoc
+ * stays true rather than becoming a comment describing how things used to be.
  */
 @RestController
 @RequestMapping("/api")

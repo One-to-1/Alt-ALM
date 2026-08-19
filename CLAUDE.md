@@ -152,9 +152,28 @@ finding in the project surfaced by product code under test rather than a hand-wr
   Cause UNVERIFIED, possibly the same load-balancer intermittency as Q40. P1's grid needs a
   **bounded retry on 5xx reads** — separate from the 5xx-on-*write* verify-by-query rule (**Q46**).
 
-🟡 **P2 STARTED (2026-08-18) — the write core is in and verified live. 248 BFF tests (277 with
-`-Pcontract`) + 27 SPA tests green.** `AlmWriteClient` is the single write path; `ApiIsReadOnlyTest`
-now asserts writes *route through it* rather than that none exist. See `SESSION-STATE.md`.
+🟡 **P2 IN PROGRESS — the write core, the CRUD endpoints and the validation layer are in and
+verified live (2026-08-19). 302 BFF tests (345 with `-Pcontract`) + 27 SPA tests green.**
+`AlmWriteClient` is the single write path; `ApiIsReadOnlyTest` asserts writes *route through it*
+rather than that none exist, and now has real endpoints to guard. See `SESSION-STATE.md`.
+
+⚠️ **The BFF validation layer is the ONLY validation there is, and it is incomplete on purpose.**
+`AlmWriteValidator` enforces what metadata states (unknown/virtual/server-owned fields, date and
+datetime grammar, declared size, the memo-is-HTML trap). It deliberately does **not** enforce
+`required` or `editable` — probe 9's field is both false and still required by the server — does not
+check lookup-list membership (no list client yet; every Y/N flag is a list, so a wrong guess rejects
+correct writes), and **accepts decimal Numbers because integer-ness is UNVERIFIED**. A validator that
+helpfully enforced those would refuse writes ALM accepts, and the failure would look like an ALM
+limitation rather than our own rule.
+
+⚠️ **An unresolved `UNKNOWN` write is served as HTTP 502, and that status describes the UPSTREAM, not
+the row.** The write may well have committed. `"outcome": "UNKNOWN"` in the body is the authority; a
+client that treats 502 as "failed, retry" will create duplicates.
+
+⚠️ **`runs` and `attachments` are not writable through the API, by design** — `POST runs` fails
+definitively (the only route is a status `PUT` on a test-instance that makes ALM synthesize a
+`Fast_Run`), and an attachment needs a hand-built multipart body, not a JSON entity. Both are refused
+as endpoints rather than offered and failed.
 
 🟢 **P1 IS FEATURE-COMPLETE (2026-08-18).** Grid (metadata-driven
 columns, sort, filter, paging, **group-by with real counts**), folder tree, detail pane with a
@@ -194,11 +213,15 @@ a grammar keyword, so `{status[Not Completed]}` means "status is not Completed" 
 rows against a group count of 8. `AlmQuery` quotes values containing whitespace. Never hand ALM a
 bare multi-word literal.
 
-⚠️ **THERE IS NO WRITE PATH. Records cannot be created or edited** — that is P2. Enforced in four
-places: `AlmEntityClient` has no write method; the `api` package has no non-GET mapping and
-`ApiIsReadOnlyTest` fails the build if one appears; `AlmAccessPolicy.checkWrite` allows only the
-sandbox with no override; and the borrowed projects are read-only by grant. When P2 adds writes,
-**change** that test to assert they route through the write-safety component — do not delete it.
+⚠️ **Records CAN now be created, edited and deleted** (P2, 2026-08-19) — the long-standing "there is
+no write path" note is retired. What replaced it, and what still holds:
+`AlmEntityClient` still has no write method; every write in the `api` package goes through
+`AlmWriteClient`, and **`ApiIsReadOnlyTest` fails the build if a write mapping appears that cannot
+reach it** (re-verified in both directions with a temporary violating controller). That test was
+**changed, never deleted**, exactly as this file instructed in advance. `AlmAccessPolicy.checkWrite`
+no longer restricts to the sandbox (see the lifted rule above), so **enrolment is the only remaining
+control** — which makes the routing guard, not the policy, the thing standing between a stray
+endpoint and someone else's data.
 
 ⚠️ **`spring-boot:run` forks a child JVM.** Kill the **port holder**, not the Maven parent, or the
 old build keeps serving :8080 and answering health checks while the new one fails to bind.
