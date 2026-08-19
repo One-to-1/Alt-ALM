@@ -575,7 +575,7 @@ to return 1 of the project's 2 instances. Re-seed with
 
 ## P2 status (started 2026-08-18; CRUD endpoints landed 2026-08-19)
 
-**302 BFF tests default, 345 with `-Pcontract`.** 27 SPA tests.
+**321 BFF tests default, 364 with `-Pcontract`.** 27 SPA tests.
 
 ✅ **The write core is in and verified live.** `bff/.../alm/write/`:
 
@@ -661,6 +661,11 @@ because a mock cannot answer them: **validation against this project's real fiel
 always agrees with the test that wrote it), and **a conflict against a stamp the server moved
 itself**. The second one asserts the current-stamp write proceeds *first*, so the stale-write refusal
 cannot pass for the trivial reason that the guard refuses everything.
+
+✅ **`RecordControllerTest`** — 19 cases over the HTTP layer (`@WebMvcTest`), which the contract
+suite does not reach: it proves the service is right against a real ALM but says nothing about what a
+browser receives. The mapping below is where this API is easiest to get quietly wrong, so it is
+tested rather than commented.
 
 **HTTP status mapping, and the one that needs care:** committed → 201/200; validator refusal → 422
 with every problem; ALM refusal → 400; conflict → 409; **unresolved `UNKNOWN` → 502**. ⚠️ That 502

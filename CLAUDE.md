@@ -379,7 +379,11 @@ every conflict**; probes 1–15), [alm-api-reference.md](docs/research/alm-api-r
   the starter is `spring-boot-starter-webmvc` (not `-web`), test deps are **per-starter**
   (`spring-boot-starter-webmvc-test`) rather than one `spring-boot-starter-test`, **Jackson is not
   transitive** — add `spring-boot-starter-json` — and it is **Jackson 3**, whose package is
-  **`tools.jackson.*`** (not `com.fasterxml.jackson.*`) with **unchecked** exceptions. Spring
+  **`tools.jackson.*`** (not `com.fasterxml.jackson.*`) with **unchecked** exceptions. ⚠️ **The test
+  slice annotations moved too**: `@WebMvcTest` is `org.springframework.boot.webmvc.test.autoconfigure`,
+  **not** `org.springframework.boot.test.autoconfigure.web.servlet` — the old package does not exist,
+  so the failure is a bare `symbol: class WebMvcTest` that looks like a missing dependency and is a
+  rename. Use `@MockitoBean`, not the removed `@MockBean`. Spring
   Initializr's `/metadata/client` reports legacy ids like `4.1.0.RELEASE`; the real artifact version
   is plain `4.1.0`.
 - **OTA/COM is isolated in an optional Windows-only sidecar** — mainline never touches COM; features
