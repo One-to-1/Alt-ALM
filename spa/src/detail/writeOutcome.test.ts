@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { WriteResult } from '../api/client.ts'
-import { mayKeepEditing, mayWriteAgain, outcomeMessage } from './writeOutcome.ts'
+import { fieldBlamedBy, mayKeepEditing, mayWriteAgain, outcomeMessage } from './writeOutcome.ts'
 
 /**
  * What the user is told, and — the part that matters — what they are offered.
@@ -190,5 +190,44 @@ describe('mayWriteAgain, and how it differs from mayKeepEditing', () => {
 
     expect(mayKeepEditing(conflict)).toBe(false)
     expect(mayWriteAgain(conflict)).toBe(true)
+  })
+})
+
+describe('fieldBlamedBy — reading ALM’s prose back onto an input', () => {
+  const COLUMNS = [
+    { name: 'type-id', label: 'Requirement Type' },
+    { name: 'name', label: 'Name' },
+    { name: 'req-priority', label: 'Priority' },
+  ]
+
+  it('matches the message ALM actually sends, verified live', () => {
+    // Captured from the sandbox: a create missing type-id returns 400
+    // qccore.required-field-missing with exactly this sentence, and an EMPTY problems array.
+    expect(fieldBlamedBy("The field 'Requirement Type' is required.", COLUMNS)).toBe('type-id')
+  })
+
+  it('matches on the display label, because that is what ALM names', () => {
+    // ⚠️ Not the logical name. Labels are per-project customization (ADR 0005), which is exactly
+    // why this cannot be a lookup table and has to read the project's own columns.
+    expect(fieldBlamedBy("The field 'type-id' is required.", COLUMNS)).toBeNull()
+  })
+
+  it('returns null rather than guessing when nothing matches', () => {
+    expect(fieldBlamedBy('Something went wrong.', COLUMNS)).toBeNull()
+    expect(fieldBlamedBy('', COLUMNS)).toBeNull()
+    expect(fieldBlamedBy("The field 'Some Other Field' is required.", COLUMNS)).toBeNull()
+  })
+
+  it('refuses to choose when two labels appear', () => {
+    // Picking one would be a coin toss presented as a diagnosis, and marking the wrong input sends
+    // the user to edit a field ALM never complained about.
+    expect(fieldBlamedBy("Fields 'Name' and 'Priority' are required.", COLUMNS)).toBeNull()
+  })
+
+  it('does not match a label loose in a sentence', () => {
+    // 'Name' is a common word. Requiring the quotes stops it being matched out of prose that is
+    // about something else entirely.
+    expect(fieldBlamedBy('The Name you supplied is fine but the record is locked.', COLUMNS))
+      .toBeNull()
   })
 })

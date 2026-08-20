@@ -232,6 +232,42 @@ describe('outcomes', () => {
     expect(button('Try again').disabled).toBe(false)
   })
 
+  it('marks the input ALM blamed, using the message it actually sends', async () => {
+    // Captured live: a create missing type-id returns 400 qccore.required-field-missing with this
+    // sentence and an EMPTY problems array — ALM reports per request, never per field (probe 29).
+    // Without the label match the user gets a correct banner attached to nothing.
+    respondWith(400, {
+      outcome: 'REJECTED',
+      errorId: 'qccore.required-field-missing',
+      detail: "The field 'Priority' is required.",
+    })
+    render(
+      <RecordCreator
+        {...PROPS}
+        columns={[column('name'), column('priority', { label: 'Priority' })]}
+      />,
+    )
+
+    await userEvent.click(button(/Create/))
+
+    const input = (await screen.findByLabelText('Priority')) as HTMLInputElement
+    expect(input.getAttribute('aria-invalid')).toBe('true')
+    expect((screen.getByLabelText('name') as HTMLInputElement).getAttribute('aria-invalid'))
+      .toBeNull()
+  })
+
+  it('leaves every input unmarked when the refusal names nothing it recognises', async () => {
+    respondWith(400, { outcome: 'REJECTED', errorId: 'qccore.general-error', detail: 'Locked.' })
+    render(<RecordCreator {...PROPS} />)
+
+    await userEvent.click(button(/Create/))
+    await screen.findByText('ALM refused the change')
+
+    // Marking a field ALM did not complain about sends the user to edit the wrong thing.
+    expect((screen.getByLabelText('name') as HTMLInputElement).getAttribute('aria-invalid'))
+      .toBeNull()
+  })
+
   it('says so when ALM demanded a field its own metadata never declared', async () => {
     respondWith(200, { outcome: 'COMMITTED', id: '9001', retried: true })
     render(<RecordCreator {...PROPS} />)

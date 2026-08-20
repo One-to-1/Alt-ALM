@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { Choice, GridColumn, WriteResult } from '../api/client.ts'
 import { createRecord, fetchChoices } from '../api/client.ts'
-import { mayKeepEditing, outcomeMessage } from './writeOutcome.ts'
+import { fieldBlamedBy, mayKeepEditing, outcomeMessage } from './writeOutcome.ts'
 import { FieldInput } from './FieldInput.tsx'
 import { editableColumns } from './fieldRules.ts'
 import './RecordEditor.css'
@@ -101,7 +101,21 @@ export function RecordCreator({
     }
   }, [project, collection])
 
-  const message = result ? outcomeMessage(result) : null
+  const base = result ? outcomeMessage(result) : null
+
+  /**
+   * The outcome message, with ALM's own refusal pinned to an input where it can be.
+   *
+   * ⚠️ Only ever ADDS a mark, and only when {@link fieldBlamedBy} is confident. ALM reports errors
+   * per request and never per field (probe 29), so a rejection arrives with an empty problems array
+   * and a sentence naming the field by its display label — readable, but attached to nothing.
+   */
+  const message = useMemo(() => {
+    if (!base || !result || result.kind !== 'rejected') return base
+    const blamed = fieldBlamedBy(result.detail, fields)
+    if (!blamed || base.fieldProblems[blamed]) return base
+    return { ...base, fieldProblems: { ...base.fieldProblems, [blamed]: result.detail } }
+  }, [base, result, fields])
   const locked = result !== null && !mayKeepEditing(result)
   const blocked = needsParent && !parentId
 

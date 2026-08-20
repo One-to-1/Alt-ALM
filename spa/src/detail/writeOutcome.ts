@@ -164,3 +164,43 @@ export function mayKeepEditing(result: WriteResult): boolean {
 export function mayWriteAgain(result: WriteResult): boolean {
   return result.kind !== 'unknown'
 }
+
+/**
+ * The field ALM's own refusal blames, matched back to a column so the form can mark it.
+ *
+ * <h2>⚠️ This is a heuristic over prose, and is written to fail silently</h2>
+ *
+ * ALM refuses a missing required field with {@code qccore.required-field-missing} and a message like
+ * {@code The field 'Requirement Type' is required.} — verified live. Two things make that awkward to
+ * use: the {@code problems} array is <strong>empty</strong> (per-request errors, never per-field —
+ * probe 29), and the field is named by its <em>display label</em>, which is per-project
+ * customization, not by its logical name.
+ *
+ * So the only way to connect the message to an input is to look for a column whose label appears in
+ * it. That is a guess about a sentence, and it is treated as one: no match returns null and the
+ * banner is left to speak for itself. It never invents a problem on a field it is not confident
+ * about — marking the wrong input is worse than marking none, because the user then edits a field
+ * ALM never complained about.
+ *
+ * Quoted matches are preferred over bare ones, so a label that happens to be a common word cannot
+ * be matched out of the middle of an unrelated sentence.
+ *
+ * @param detail  the message ALM returned, verbatim
+ * @param columns the form's columns, to match a label against
+ * @returns the matching column's logical name, or null when nothing matches confidently
+ */
+export function fieldBlamedBy(
+  detail: string,
+  columns: { name: string; label: string }[],
+): string | null {
+  if (!detail) return null
+
+  const quoted = columns.filter(
+    (c) => c.label && (detail.includes(`'${c.label}'`) || detail.includes(`"${c.label}"`)),
+  )
+  // More than one quoted label in one message means the sentence is not the shape this reads, and
+  // picking among them would be a coin toss presented as a diagnosis.
+  if (quoted.length === 1) return quoted[0].name
+
+  return null
+}
