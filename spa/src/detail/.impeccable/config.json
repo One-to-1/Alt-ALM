@@ -1,0 +1,17 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "broken-image",
+        "value": "*",
+        "files": [
+          "spa/src/detail/DetailPane.css"
+        ],
+        "createdAt": "2026-08-20T07:00:14.494Z",
+        "reason": "False positive: no <img> is authored here. This is a CSS rule, and the adjacent comment documents that the sanitiser REPLACES src-less images with a .memo-image-blocked span precisely because a src-less <img> draws the broken-image glyph. The codebase already solves what the rule warns about; richText.test.ts asserts remote src is replaced, not blanked."
+      }
+    ]
+  }
+}
