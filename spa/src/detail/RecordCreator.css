@@ -1,0 +1,41 @@
+/* Takes the detail pane's place rather than floating over the grid: the list behind it is the
+   context for what is being added, and a modal would cover exactly that. Reuses .detail-fields so
+   a new record is laid out the way an existing one is. */
+
+.record-creator {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: auto;
+}
+
+.record-creator-title {
+  margin: 0;
+  padding: var(--space-3) var(--space-4) 0;
+  font-size: var(--text-md);
+  font-weight: 600;
+  color: var(--text-h);
+}
+
+.record-creator-scope {
+  margin: var(--space-1) 0 var(--space-2);
+  padding: 0 var(--space-4);
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
+
+.record-creator-scope strong {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.record-creator-blocked {
+  padding: var(--space-4);
+  color: var(--text);
+  line-height: 1.5;
+}
+
+.record-creator-blocked p {
+  margin: var(--space-2) 0 var(--space-3);
+  font-size: var(--text-sm);
+}

@@ -6,6 +6,7 @@ import { ColumnPicker } from './grid/ColumnPicker.tsx'
 import { GroupBar } from './grid/GroupBar.tsx'
 import { TreeGrid } from './tree/TreeGrid.tsx'
 import { DetailPane } from './detail/DetailPane.tsx'
+import { RecordCreator } from './detail/RecordCreator.tsx'
 import { Splitter } from './shell/Splitter.tsx'
 import { ModuleRail } from './shell/ModuleRail.tsx'
 import { ChevronLeft, Close, GridView, Moon, Monitor, Search, Sun, TreeView } from './shell/icons.tsx'
@@ -183,6 +184,8 @@ function App() {
    * evidence either way.
    */
   const [listReloadToken, setListReloadToken] = useState(0)
+  /** True while the New Record form occupies the detail pane. */
+  const [creating, setCreating] = useState(false)
   /** A record to expand the tree down to. Set by a link, cleared once the tree has consumed it. */
   const [revealId, setRevealId] = useState<string | null>(null)
   const [revealIds, setRevealIds] = useState<string[]>([])
@@ -390,6 +393,13 @@ function App() {
 
   const treeCollection = TREE_FOR[collection]
   const columnsKey = `columns.${selectedProjectKey ?? ''}.${collection}`
+
+  // A draft belongs to the collection and project it was typed against. Carrying it across would
+  // post one entity's fields to another, which the BFF validator would refuse — after the user had
+  // filled in a form for nothing.
+  useEffect(() => {
+    setCreating(false)
+  }, [collection, selectedProjectKey])
 
   const filters = useMemo(() => {
     const f: Record<string, string> = {}
@@ -656,6 +666,23 @@ function App() {
           Back
         </button>
 
+        {activeProject.writable && (
+          <button
+            type="button"
+            className="btn btn-quiet"
+            onClick={() => {
+              setCreating(true)
+              // The form takes the detail pane's place, so a selected record would be hidden behind
+              // it and still "selected" when it closed. Clearing says what is on screen.
+              setSelectedRowId(null)
+            }}
+            disabled={creating}
+            title={`Create a new ${COLLECTION_LABELS[collection]} record`}
+          >
+            New
+          </button>
+        )}
+
         {treeCollection && (
           <div className="app-viewtoggle" role="group" aria-label="Main view">
             {VIEWS.map((v) => (
@@ -858,6 +885,32 @@ function App() {
           style={{ width: `${detailWidth}px` }}
           aria-label="Detail"
         >
+          {creating ? (
+            <RecordCreator
+              project={selectedProjectKey}
+              collection={collection}
+              columns={availableColumns}
+              // The current scope IS the parent — the tree node the grid is filtered to. For
+              // `requirements` that node is itself a requirement; for `tests` it is a test folder.
+              // Both are the right `parent-id`, which is why this reads the scope rather than
+              // knowing anything about which collection parents which.
+              parentId={folder?.id}
+              parentLabel={folder?.name}
+              // ⚠️ Whether a parent is REQUIRED, not whether one happens to be selected. A tree
+              // collection with no folder open cannot be created into at all: its root parent-id is
+              // a sentinel, not a row, and posting against it 500s (probe 27) — which would then be
+              // reported as an unknown outcome rather than the plain refusal it is.
+              needsParent={treeCollection !== undefined}
+              onCreated={(id) => {
+                setCreating(false)
+                setListReloadToken((n) => n + 1)
+                // A null id is an unknown outcome: a record may exist and may not. Selecting
+                // nothing is the honest result — the reloaded list is where to look.
+                if (id) setSelectedRowId(id)
+              }}
+              onCancel={() => setCreating(false)}
+            />
+          ) : (
           <DetailPane
             project={selectedProjectKey}
             collection={collection}
@@ -885,6 +938,7 @@ function App() {
               })
             }}
           />
+          )}
         </section>
       </div>
     </div>

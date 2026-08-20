@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from 'react'
 import type { Choice, GridColumn, GridRow, WriteResult } from '../api/client.ts'
 import { fetchChoices, updateRecord } from '../api/client.ts'
 import { mayKeepEditing, outcomeMessage } from './writeOutcome.ts'
+import { FieldInput } from './FieldInput.tsx'
+import { editableColumns } from './fieldRules.ts'
 import './RecordEditor.css'
 
 interface Props {
@@ -33,50 +35,18 @@ interface Props {
  */
 export function RecordEditor({ project, collection, columns, row, onReload, onClose }: Props) {
   /**
-   * The fields worth offering: writable, and of a type this form can honestly edit.
+   * The fields worth offering.
    *
-   * `writable` here is `!virtual` and nothing more — see GridDto.Column. `required` and `editable`
-   * are deliberately absent from the contract, so this form cannot accidentally grey out a field
-   * ALM actually demands (probe 9).
+   * ⚠️ The rule — including the three unrelated "field with choices" mechanisms and the fallback
+   * that differs by mechanism — lives in {@link FieldInput}, shared with the create form. It was
+   * corrected once already (one fallback applied to all three was wrong), and two copies of it
+   * would drift.
    *
-   * <h3>⚠️ Three kinds of "choose a value", not one</h3>
-   *
-   * A field that offers choices does so by one of three unrelated mechanisms, and only the first is
-   * implemented here:
-   *
-   * <ol>
-   *   <li><strong>LookupList + `listId`</strong> → `customization/used-lists`. 56 of the 58
-   *       LookupList fields in the model are bound this way. These become dropdowns.
-   *   <li><strong>Reference with `fieldRelationReferences`</strong> → a query against another
-   *       entity collection. Target Release points at `release`, Target Cycle at `release-cycle`,
-   *       and the stored value is an entity <em>id</em>, not a label.
-   *   <li><strong>Reference with NO references</strong> → `customization/entities/{e}/types`.
-   *       `type-id` (Requirement Type) is this: a subtype discriminator resolved by a third route
-   *       again.
-   * </ol>
-   *
-   * All three now resolve, through the BFF's single `/api/choices` route — which is why this form
-   * branches on `choiceSource` and never on the field's type. A Reference whose choices did NOT
-   * arrive still renders no control rather than a text box: a text box pre-filled with a raw id
-   * invites someone to type a number that silently re-points the record at a different release, or
-   * re-types the requirement itself.
-   *
-   * Multi-value fields remain excluded — exactly the two Reference fields above, the only two in
-   * the model. A multi-select is a different control, and faking one with a single-value dropdown
-   * would silently drop the other values on save.
+   * Multi-value fields remain excluded here as there: exactly the two Reference fields in the whole
+   * model. A multi-select is a different control, and faking one with a single-value dropdown would
+   * silently drop the other values on save.
    */
-  const editable = useMemo(
-    () =>
-      columns.filter(
-        (c) =>
-          c.writable &&
-          c.type !== 'MEMO' &&
-          c.name !== 'id' &&
-          c.name !== 'ver-stamp' &&
-          !c.multiValue,
-      ),
-    [columns],
-  )
+  const editable = useMemo(() => editableColumns(columns), [columns])
 
   const initial = useMemo(() => {
     const values: Record<string, string> = {}
@@ -136,33 +106,6 @@ export function RecordEditor({ project, collection, columns, row, onReload, onCl
    * obeys it.
    */
   const locked = result !== null && !mayKeepEditing(result)
-
-  /**
-   * The values a field permits, or null to fall back to a text input.
-   *
-   * Null in every "cannot tell" case, mirroring the BFF validator exactly: lists not loaded, field
-   * unbound (`listId === 0`), list unknown to this project, or list defined with no items. That
-   * last one matters — three of the sandbox's 39 lists are empty, and rendering an empty dropdown
-   * would make the field impossible to fill rather than merely unconstrained.
-   */
-  /**
-   * Whether this field's value is a record ID rather than a literal.
-   *
-   * The distinction that decides the fallback: an id typed by hand is a wrong pointer, a string
-   * typed by hand is just a value ALM can reject.
-   */
-  function pointsAtARecord(column: GridColumn): boolean {
-    return column.choiceSource === 'ENTITY' || column.choiceSource === 'SUBTYPE'
-  }
-
-  function choicesFor(column: GridColumn): Choice[] | null {
-    // ⚠️ Branches on choiceSource, never on type. `type-id` and `target-rel` are both REFERENCE and
-    // resolve by completely different routes; the BFF has already done that resolution, so all
-    // this needs to know is whether an answer arrived.
-    if (column.choiceSource === 'NONE' || choices === null) return null
-    const values = choices[column.name]
-    return values && values.length > 0 ? values : null
-  }
 
   async function save() {
     if (changed.length === 0) {
@@ -241,79 +184,24 @@ export function RecordEditor({ project, collection, columns, row, onReload, onCl
       )}
 
       <dl className="detail-fields">
-        {editable.map((column) => {
-          const problem = message?.fieldProblems[column.name]
-          return (
-            <div className="detail-field" key={column.name}>
-              <dt title={`${column.name} · ${column.type}`}>
-                <label htmlFor={`edit-${column.name}`}>{column.label || column.name}</label>
-              </dt>
-              <dd>
-                {!choicesFor(column) && pointsAtARecord(column) ? (
-                  // ⚠️ The fallback differs by MECHANISM, and one rule for all three was wrong.
-                  //
-                  // An unresolved LOOKUP falls through to a text box: its value is a literal
-                  // string, so typing one is legitimate and "let ALM decide" applies.
-                  //
-                  // An unresolved REFERENCE gets no control at all: its value is an ID. A text box
-                  // pre-filled with a raw id invites someone to type a number that silently
-                  // re-points the record at a different release, or re-types the requirement. Not
-                  // constraining is right for a string and a trap for an identifier.
-                  <span className="record-editor-unresolved">
-                    {(draft[column.name] || '—') + ' (not editable here)'}
-                  </span>
-                ) : choicesFor(column) ? (
-                  <select
-                    id={`edit-${column.name}`}
-                    className={problem ? 'has-problem' : undefined}
-                    value={draft[column.name] ?? ''}
-                    disabled={locked}
-                    aria-invalid={problem ? true : undefined}
-                    aria-describedby={problem ? `problem-${column.name}` : undefined}
-                    onChange={(event) =>
-                      setDraft({ ...draft, [column.name]: event.target.value })
-                    }
-                  >
-                    {/* Clearing a field is a legitimate edit, and a select with no empty option
-                        makes it impossible to undo a value once set. */}
-                    <option value="">—</option>
-                    {/* The record's CURRENT value, even when the list no longer offers it. A list
-                        edited after this record was written would otherwise silently re-point the
-                        dropdown at the first option and save that on the next Save. */}
-                    {draft[column.name] &&
-                      !choicesFor(column)?.some((c) => c.value === draft[column.name]) && (
-                        <option value={draft[column.name]}>
-                          {draft[column.name]} (not in list)
-                        </option>
-                      )}
-                    {choicesFor(column)?.map((choice) => (
-                      <option key={choice.value} value={choice.value}>
-                        {choice.label}
-                      </option>
-                    ))}
-                  </select>
-                ) : (
-                  <input
-                    id={`edit-${column.name}`}
-                    className={problem ? 'has-problem' : undefined}
-                    value={draft[column.name] ?? ''}
-                    disabled={locked}
-                    aria-invalid={problem ? true : undefined}
-                    aria-describedby={problem ? `problem-${column.name}` : undefined}
-                    onChange={(event) =>
-                      setDraft({ ...draft, [column.name]: event.target.value })
-                    }
-                  />
-                )}
-                {problem && (
-                  <p className="record-editor-problem" id={`problem-${column.name}`}>
-                    {problem}
-                  </p>
-                )}
-              </dd>
-            </div>
-          )
-        })}
+        {editable.map((column) => (
+          <div className="detail-field" key={column.name}>
+            <dt title={`${column.name} · ${column.type}`}>
+              <label htmlFor={`edit-${column.name}`}>{column.label || column.name}</label>
+            </dt>
+            <dd>
+              <FieldInput
+                column={column}
+                value={draft[column.name] ?? ''}
+                choices={choices}
+                disabled={locked}
+                problem={message?.fieldProblems[column.name]}
+                onChange={(value) => setDraft({ ...draft, [column.name]: value })}
+                idPrefix="edit"
+              />
+            </dd>
+          </div>
+        ))}
       </dl>
 
       <p className="detail-note">
