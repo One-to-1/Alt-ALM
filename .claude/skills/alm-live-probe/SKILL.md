@@ -44,6 +44,16 @@ Load `alm-api` first for API behaviour. This skill covers *how to safely talk to
   ⚠️ Assume the same trap for any entity whose name is derived rather than stored — check that a
   collection actually *has* the field you are sweeping on before trusting the sweep's silence.
 
+⚠️ **Stop any locally-running BFF before probing or running contract tests** (found 2026-08-20).
+Sharing the API key with a live app makes **writes fail with 5xx/`UNKNOWN`** reproducibly, and they
+pass immediately once it is stopped. Probable cause: `authentication-point/logout` ends the
+*authentication*, not one session, so one process closing its pool breaks the other's. Kill the
+**port holder** on 8080, not the Maven parent.
+
+⚠️ **Track-by-id cleanup cannot cover a 5xx write.** An `UNKNOWN` create returns **no id**, so there
+is nothing to record and nothing to delete — the row leaks. The name-prefix sweep is the only
+cleanup that catches it, which is why §1 requires it rather than treating it as belt-and-braces.
+
 ## 2. Masking discipline
 
 Every probe script builds a `maskTerms` list at startup — host, domain, project, API key, API secret,

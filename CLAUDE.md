@@ -253,6 +253,14 @@ no longer restricts to the sandbox (see the lifted rule above), so **enrolment i
 control** — which makes the routing guard, not the policy, the thing standing between a stray
 endpoint and someone else's data.
 
+⚠️ **Stop the local BFF before running `-Pcontract`** (2026-08-20). With the app serving, creates
+come back `UNKNOWN` (ALM 5xx) every time; 24/24 pass the moment it is stopped. Probable cause: both
+share one API key and `authentication-point/logout` ends the **authentication**, not one session
+(probe 13) — so a pool closing at the end of a test class invalidates the running app's sessions.
+Does *not* contradict probe 10's 50 concurrent sessions: none of those logged out mid-flight.
+⚠️ It also leaked a row — an `UNKNOWN` create returns **no id**, so id-tracking cleanup cannot delete
+it. **The `ALTALM-*` prefix sweep is not redundancy; it is the only cleanup that covers a 5xx.**
+
 ⚠️ **`spring-boot:run` forks a child JVM.** Kill the **port holder**, not the Maven parent, or the
 old build keeps serving :8080 and answering health checks while the new one fails to bind.
 

@@ -573,6 +573,28 @@ to return 1 of the project's 2 instances. Re-seed with
 3. 🟡 **P2 — the write path. STARTED 2026-08-18.** Its phase-start deferred probe is done
    (probe 30, below) and the write core has landed — see the P2 section immediately below.
 
+## ⚠️ DO NOT run the contract suite while the app is running (found 2026-08-20)
+
+**Creates return `UNKNOWN` (ALM 5xx) when a local BFF is serving at the same time.** Reproduced
+three times with the server up, and **24/24 pass the moment it is stopped** — so this is a real
+interaction, not a flaky test.
+
+Most likely mechanism: probe 13 established `POST authentication-point/logout` ends the
+**authentication**, not just the project session. Both processes share one API key, so a pool
+closing at the end of a test class plausibly invalidates sessions the running app still holds, and
+vice versa. ⚠️ This does **not** contradict probe 10's 50 concurrent sessions — those were all
+opened by one process and none logged out while others were live. The new variable is a **logout
+while another holder is active**. Mechanism is `UNVERIFIED`; the *interaction* is reproduced.
+
+**Operational rule: stop the BFF before `./mvnw test -Pcontract`.** Kill the port holder on 8080,
+not the Maven parent.
+
+⚠️ **It also leaked a row, and that is the more instructive half.** An `UNKNOWN` create returns **no
+id**, so `RecordServiceContractTest` never tracked it — and the tracked-id cleanup could not delete
+what it had never recorded. The prefix sweep caught it on a later run and failed the build, exactly
+as designed. **The lesson: cleanup that tracks ids cannot cover the one outcome where there is no
+id.** The prefix sweep is not redundancy, it is the only thing covering the 5xx case.
+
 ## P2 status (started 2026-08-18; CRUD endpoints landed 2026-08-19)
 
 **345 BFF tests default, 388 with `-Pcontract`. 76 SPA tests.**
