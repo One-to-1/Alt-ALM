@@ -846,11 +846,40 @@ reports **0 of 58** fields as list-bound — "dropdowns are impossible here" —
 Corrected in the api reference and both skills. The doc's `[docs-research]` tag was the tell: that
 line was never probe-verified.
 
-**Next in P2:** ~~edit forms~~, ~~the comment box~~, ~~a lookup-list client~~ — all three landed;
-see below. Remaining: **create and delete affordances** in the SPA (both endpoints exist and are
-tested, nothing in the UI reaches them), **multi-value editing** for the model's only two such fields
-(`target-rel`, `target-rcyc` — a multi-select is a different control), and **attachments**, which
-need the hand-built multipart body and are their own slice rather than a field on an existing one.
+**Next in P2:** ~~edit forms~~, ~~the comment box~~, ~~a lookup-list client~~, ~~create and delete
+affordances~~ — all landed. **CRUD is complete in the SPA and verified live end to end (probe 32).**
+Remaining: **multi-value editing** for the model's only two such fields (`target-rel`,
+`target-rcyc` — a multi-select is a different control, and faking one drops values on save), and
+**attachments**, which need the hand-built multipart body and are their own slice rather than a field
+on an existing one.
+
+### Create and delete are in — and each refuses one thing on purpose (2026-08-20)
+
+**Delete** (`spa/src/detail/DeleteRecord.tsx`). ⚠️ I wrote the obvious warning first — *"N records
+are filed under this one"* — and **it would have said 0, always**: ALM's `children-count` reads 0 for
+every node on this version (probe 19), which is why `TreeService` already establishes `hasChildren`
+with a second query. A warning that cannot fire is worse than none, because it reads as *"Alt-ALM
+looked and there is nothing underneath"*. Counting properly is not one query either — what is filed
+under a record can live in a **different collection** (tests under a test folder, the orphan probe 8
+actually created). So the warning is **unconditional**, says the rule reaches across modules, and
+ends with the clause that stops it being a reassurance: **Alt-ALM has not checked.**
+
+**Create** (`spa/src/detail/RecordCreator.tsx`). ⚠️ It **refuses to create at a tree root**, and the
+refusal is the design: `parent-id` `-1` is a sentinel, not a row (probe 27), and since a 5xx write is
+reported as `UNKNOWN`, defaulting to it would convert a knowable refusal into "we cannot tell whether
+a record was created" — for one that certainly was not. `parent-id` comes from the current scope, not
+from an input: it is an id, and a text box holding one invites filing under a typed number. Nothing
+is enforced as required (probe 9), and the footer says so rather than leaving it looking like an
+oversight.
+
+**The three-mechanism control rule now lives in `spa/src/detail/fieldRules.ts`**, shared by both
+forms. It was already wrong once — one fallback applied to all three mechanisms — and a second copy
+would drift. The editor was moved onto it with **no behaviour change**, evidenced by its 19 tests
+being unmodified and still green.
+
+**`App` gained `listReloadToken`**, threaded to `DataGrid` and `TreeGrid`. ⚠️ The tree **discards its
+cached children** rather than only re-reading the root: a deleted node lives in some parent's cached
+child list, and a tree that kept it would draw a row that is gone and open a 404 on click.
 
 ### The comment box is in — and it is write-only on purpose (2026-08-20)
 

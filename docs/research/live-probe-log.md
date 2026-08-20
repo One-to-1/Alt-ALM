@@ -1994,6 +1994,56 @@ the remaining window must be documented rather than described as safe.
 
 ---
 
+## Probe 32 - CRUD end to end through the running BFF, in the SPA's own shapes (2026-08-20)
+
+`scripts/probe/probe-crud-e2e.py`. Not a question about ALM - a question about **us**. The SPA's
+component tests assert its requests against a mocked `fetch`, and the BFF's contract tests assert its
+service layer against ALM. Neither shows the two agree **on the wire between them**, and that seam
+had never been exercised. This sends exactly what `spa/src/api/client.ts` sends, to the running app,
+against the sandbox.
+
+Writes go to the BFF's **default** project only - no `project` parameter is sent anywhere in the
+script, so no project name appears in it, its output, or the process list. Records carry an
+`ALTALM-E2E-<timestamp>` prefix; cleanup is id-tracked in a `finally`, then swept by prefix.
+
+**Everything agreed.** create `201 COMMITTED`; comment field discovered as `comments`; update with a
+`ver-stamp` `200 COMMITTED`; the **stale** stamp refused `409`; delete `200`; sweep found **0**
+orphans across requirements, tests, test-folders and defects.
+
+The path worth the run passed for the right reason: **two comments written in sequence, and the
+second did not destroy the first.** That is probe 30's data-loss trap verified through the real
+read-modify-write rather than through a mock of it.
+
+### ⚠️ The finding: ALM names the field, and attaches it to nothing
+
+A create missing `type-id` returns:
+
+```
+HTTP 400
+{"outcome":"REJECTED","errorId":"qccore.required-field-missing",
+ "detail":"The field 'Requirement Type' is required.","problems":[]}
+```
+
+Three things in that, each worth keeping:
+
+1. **`problems` is empty**, as probe 29 established it always will be - ALM reports errors per
+   *request*, never per field. So a refusal arrives as a correct sentence pinned to no input, and the
+   user is told which field and then left to find it.
+2. **The field is named by its DISPLAY LABEL** (`Requirement Type`), not its logical name
+   (`type-id`). Labels are per-project customization, so nothing can be hardcoded - matching has to
+   read the project's own columns. `fieldBlamedBy` in `spa/src/detail/writeOutcome.ts` does that, as
+   an explicit heuristic over prose: quoted labels only, null when two match, null when none do, and
+   it only ever *adds* a mark. Marking the wrong input is worse than marking none.
+3. ⚠️ **It is a clean 400, not a 500** - so the BFF's single missing-required-field retry does **not**
+   fire, and should not. That retry exists for probe 9's case, where metadata *fails to declare* a
+   field ALM demands and the failure surfaces as an opaque 500 naming a physical column. This is the
+   other thing entirely: ALM stating a requirement plainly, in a refusal that committed nothing.
+   Conflating them would make the client retry a write ALM has already answered.
+
+**Also confirmed incidentally:** the requirements tree root is id `0` and is a **real row** that
+accepts children - distinct from the `-1` sentinel, which is what `RecordCreator` refuses to post
+against (probe 27).
+
 ## Open items for the next probe round
 
 1. ~~Map `SiteVersion 20.0 (20.00.0.143)` → marketing version~~ **DONE: ALM 26.1** (probe 3).

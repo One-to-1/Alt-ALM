@@ -158,8 +158,9 @@ finding in the project surfaced by product code under test rather than a hand-wr
   **bounded retry on 5xx reads** — separate from the 5xx-on-*write* verify-by-query rule (**Q46**).
 
 🟡 **P2 IN PROGRESS — the write core, the CRUD endpoints and the validation layer are in and
-verified live (2026-08-19). 345 BFF tests (388 with `-Pcontract`) + 101 SPA tests green. Records are
-editable in the SPA, and comments can be added without destroying the ones already there (2026-08-20).**
+verified live (2026-08-19). 345 BFF tests (388 with `-Pcontract`) + 132 SPA tests green. **CRUD is
+complete in the SPA (2026-08-20)** — read, create, edit, comment, delete — and the whole path is
+verified end to end against the live sandbox (probe 32), in the SPA's own request shapes.**
 `AlmWriteClient` is the single write path; `ApiIsReadOnlyTest` asserts writes *route through it*
 rather than that none exist, and now has real endpoints to guard. See `SESSION-STATE.md`.
 
@@ -204,6 +205,21 @@ and merging them silently breaks one caller in whichever direction the merge wen
 design creates duplicates for precisely the writes that worked. It gets its own tone, one action
 (reload), and the editor closes. Likewise the write client returns a **union, not an ok/throw**, and
 treats a dropped connection as *not* retryable — unlike every read.
+
+⚠️ **Creating at a tree root is impossible, and the SPA refuses rather than trying** — a
+requirement's root `parent-id` of `-1` is a sentinel, not a row (probe 27). Because a 5xx write is
+reported as `UNKNOWN`, defaulting the parent to `-1` would turn a knowable refusal into "we cannot
+tell whether a record was created". The root row itself (id **0** for requirements) *does* accept
+children; it is the sentinel that does not.
+
+⚠️ **ALM names a refused field by its DISPLAY LABEL, and attaches it to nothing** (probe 32).
+`qccore.required-field-missing` returns `The field 'Requirement Type' is required.` with
+**`problems: []`** — errors are per request, never per field (probe 29). `fieldBlamedBy`
+(`spa/src/detail/writeOutcome.ts`) matches the quoted label back to a column so the input can be
+marked; it is an explicit heuristic over prose and returns null rather than guessing. ⚠️ Match on the
+**label**, never the logical name — labels are per-project customization. ⚠️ It is a clean **400**,
+so the BFF's missing-required-field retry does **not** fire and must not: that retry is for probe 9's
+case, where metadata fails to *declare* a field and ALM answers an opaque **500**.
 
 ⚠️ **`runs` and `attachments` are not writable through the API, by design** — `POST runs` fails
 definitively (the only route is a status `PUT` on a test-instance that makes ALM synthesize a
