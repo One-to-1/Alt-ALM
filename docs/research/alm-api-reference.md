@@ -896,7 +896,7 @@ descriptor attribute set: `Name`/`name`, `PhysicalName`/`physicalName`, `Label`/
 `Filterable`/`filterable`, `Groupable`/`groupable`, `SupportsMultivalue`/`supportsMultivalue`,
 `Visible`/`visible`, `Searchable`/`searchable`, `VersionControlled`/`versionControlled`,
 `VisibleInWebUI`/`visibleInWebUI`, `Description`/`description`, `CanChangeRequired`/
-`canChangeRequired`, `List-Id` (if list-bound) `[docs-research]` (wave1-07 §1). UDFs: `user-NN`/
+`canChangeRequired`, `listId` (if list-bound) `[docs-research]` (wave1-07 §1). ⚠️ **CORRECTED 2026-08-20: this line said `List-Id`, which is what the doc research reported and what the server does NOT send.** The wire key is lowerCamel `listId`, verified against both the captured fixtures and the live server. The wrong casing is not harmless — an analysis keyed on `List-Id` reports **0 of 58** LookupList fields as list-bound when the true answer is **56 of 58**, i.e. "lookup dropdowns are impossible here" instead of "they work". UDFs: `user-NN`/
 `XX_USER_NN` naming, ≤99 per entity, memo UDFs capped at 5 (15 with `EXTENDED_MEMO_FIELDS=Y`)
 `[docs-research]` (wave1-07 §3). Lists via `used-lists` (39 on our project) / `lists` (43) — the 4-list
 delta is lists defined but not bound to any field (Activity Status id 255, VC Status id 82, Resource

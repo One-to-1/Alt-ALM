@@ -23,7 +23,7 @@ fetched at runtime and cached per project.
 | Never in product code | Fetch instead |
 |---|---|
 | Field lists / form layouts | `customization/entities/{e}/fields` via BFF metadata endpoint |
-| Dropdown values | the field's own `List-Id` → list values |
+| Dropdown values | the field's own `listId` → list values (⚠️ lowerCamel on the wire, not `List-Id`) |
 | User pickers | live project user list |
 | Tree root IDs | runtime discovery — `?query={parent-id[-1]}`, falling back to `{parent-id[0]}` ⚠️ |
 | Requirement types / test subtypes | `customization/entities/{e}/types` |
@@ -51,7 +51,7 @@ type**. One registry keyed on these 8 covers the entire surface — no per-entit
 | `Number` | numeric input | |
 | `Date` | date picker | wire format `yyyy-MM-dd` |
 | `DateTime` | date+time picker | wire format `yyyy-MM-dd HH:mm:ss`; timezone rule `UNVERIFIED` — send server-local |
-| `LookupList` | select, options from the field's `List-Id` | **`List-Id` 1 = the Y/N list** → render as a checkbox/toggle. This is the *only* boolean-ish control |
+| `LookupList` | select, options from the field's `listId` | **`listId` 1 = the Y/N list** → render as a checkbox/toggle. This is the *only* boolean-ish control |
 | `UsersList` | user picker from the live project user list | single-value always |
 | `Reference` | entity picker (tree or search) | the **only** type that is ever multivalue |
 

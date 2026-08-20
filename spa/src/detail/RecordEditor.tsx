@@ -33,11 +33,36 @@ interface Props {
  */
 export function RecordEditor({ project, collection, columns, row, onReload, onClose }: Props) {
   /**
-   * The fields worth offering: writable, not a memo, and not the server's own.
+   * The fields worth offering: writable, and of a type this form can honestly edit.
    *
    * `writable` here is `!virtual` and nothing more — see GridDto.Column. `required` and `editable`
    * are deliberately absent from the contract, so this form cannot accidentally grey out a field
    * ALM actually demands (probe 9).
+   *
+   * <h3>⚠️ Three kinds of "choose a value", not one</h3>
+   *
+   * A field that offers choices does so by one of three unrelated mechanisms, and only the first is
+   * implemented here:
+   *
+   * <ol>
+   *   <li><strong>LookupList + `listId`</strong> → `customization/used-lists`. 56 of the 58
+   *       LookupList fields in the model are bound this way. These become dropdowns.
+   *   <li><strong>Reference with `fieldRelationReferences`</strong> → a query against another
+   *       entity collection. Target Release points at `release`, Target Cycle at `release-cycle`,
+   *       and the stored value is an entity <em>id</em>, not a label.
+   *   <li><strong>Reference with NO references</strong> → `customization/entities/{e}/types`.
+   *       `type-id` (Requirement Type) is this: a subtype discriminator resolved by a third route
+   *       again.
+   * </ol>
+   *
+   * REFERENCE fields are therefore <strong>excluded</strong> rather than rendered. They were briefly
+   * shown as text inputs pre-filled with a raw id, which is worse than omitting them: it invites
+   * someone to type a number that silently re-points the record at a different release — or, for
+   * `type-id`, re-types the requirement itself. Offering no control is honest; offering a text box
+   * over an id is a trap. Resolving them is its own slice.
+   *
+   * Multi-value fields are excluded for the same reason and are, in this model, exactly the two
+   * Reference fields above — there are only two in the entire model.
    */
   const editable = useMemo(
     () =>
@@ -45,6 +70,7 @@ export function RecordEditor({ project, collection, columns, row, onReload, onCl
         (c) =>
           c.writable &&
           c.type !== 'MEMO' &&
+          c.type !== 'REFERENCE' &&
           c.name !== 'id' &&
           c.name !== 'ver-stamp' &&
           !c.multiValue,
@@ -265,7 +291,9 @@ export function RecordEditor({ project, collection, columns, row, onReload, onCl
       </dl>
 
       <p className="detail-note">
-        Memo fields are edited from their own tab and are not shown here.
+        Memo fields are edited from their own tab. Fields that point at another record — Target
+        Release, Requirement Type — are not editable here yet: their value is an id, and a text box
+        over an id is a trap rather than a feature.
         {expectedVersion === undefined &&
           ' This record reports no version, so a change saved by someone else since you opened it cannot be detected.'}
       </p>

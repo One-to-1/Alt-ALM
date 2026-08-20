@@ -575,7 +575,7 @@ to return 1 of the project's 2 instances. Re-seed with
 
 ## P2 status (started 2026-08-18; CRUD endpoints landed 2026-08-19)
 
-**335 BFF tests default, 378 with `-Pcontract`. 73 SPA tests.**
+**335 BFF tests default, 378 with `-Pcontract`. 74 SPA tests.**
 
 ✅ **The write core is in and verified live.** `bff/.../alm/write/`:
 
@@ -761,6 +761,38 @@ A wrong rejection here makes a field *unfillable* while blaming the user's input
 ⚠️ **A stored value the list no longer offers is KEPT**, shown as `(not in list)`. Without that, a
 list edited after the record was written would silently re-point the dropdown at its first option
 and save that value on the next Save — a value the user never chose.
+
+### ⚠️ "A field with choices" is THREE unrelated mechanisms, not one (2026-08-20)
+
+Raised by the user, verified against fixtures and the live server. The lookup slice above covers
+**only the first**:
+
+| Mechanism | How it resolves | Example | Status |
+|---|---|---|---|
+| `LookupList` + `listId` | `customization/used-lists` | `status` → list 309 | ✅ done |
+| `Reference` **with** `fieldRelationReferences` | query the referenced **entity collection**; the stored value is an **id** | `target-rel` → `release` via `requirementToReleaseConnection`; `target-rcyc` → `release-cycle` | ❌ not built |
+| `Reference` with an **empty** `references` array | `customization/entities/{e}/types` | `type-id` (Requirement Type) | ❌ not built |
+
+- **56 of 58** `LookupList` fields across the model carry a `listId`, so mechanism 1 genuinely
+  covers most of them. Requirement is **27 of 27**.
+- **Multi-value is exactly two fields in the entire model**, and both are mechanism 2:
+  `requirement.target-rel` and `.target-rcyc`.
+- ⚠️ `req-type` ("Old Type (obsolete)") is a **LookupList** and is unrelated to `type-id`
+  ("Requirement Type"), which is a **Reference**. Similar names, different mechanisms.
+- ⚠️ **`fieldRelationReferences` is not exposed by the BFF at all** — `FieldDescriptor` drops it — so
+  the SPA currently cannot tell what a Reference points at. That is the first thing mechanism 2
+  needs.
+
+**Fixed as a result:** `RecordEditor` was rendering single-value References as **text inputs
+pre-filled with a raw id**. For `type-id` that invites someone to type a number that silently
+re-types the requirement. References are now excluded like memos — offering no control is honest;
+offering a text box over an id is a trap.
+
+⚠️ **A documentation bug that cost a wrong conclusion:** `alm-api-reference.md` recorded the wire key
+as `List-Id`; the server sends lowerCamel **`listId`**. An analysis keyed on the documented spelling
+reports **0 of 58** fields as list-bound — "dropdowns are impossible here" — when the answer is 56.
+Corrected in the api reference and both skills. The doc's `[docs-research]` tag was the tell: that
+line was never probe-verified.
 
 **Next in P2:** wiring the SPA to these endpoints (edit forms, the comment box, optimistic-ish
 refresh around the `UNKNOWN` case), a lookup-list client so `LOOKUP_LIST` values can be validated

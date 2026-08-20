@@ -35,6 +35,8 @@ const COLUMNS: GridColumn[] = [
   column('priority'),
   column('status', { type: 'LOOKUP_LIST', listId: 194 }),
   column('unbound', { type: 'LOOKUP_LIST', listId: 0 }),
+  column('type-id', { type: 'REFERENCE' }),
+  column('target-rel', { type: 'REFERENCE', multiValue: true }),
   column('description', { type: 'MEMO' }),
   column('father-name', { writable: false }),
 ]
@@ -47,6 +49,8 @@ const ROW: GridRow = {
     priority: ['2'],
     status: ['Passed'],
     unbound: ['free text'],
+    'type-id': ['1'],
+    'target-rel': ['12'],
     description: ['<html><body>a memo</body></html>'],
     'father-name': ['Parent'],
     'ver-stamp': ['3'],
@@ -209,6 +213,18 @@ describe('the fields it offers', () => {
     // `writable` is `!virtual` and nothing else - a field ALM merely calls non-editable is still
     // offered, because probe 9 showed that flag cannot be trusted.
     expect(screen.queryByLabelText.call(screen, 'father-name')).toBeNull()
+  })
+
+  it('omits REFERENCE fields rather than offering a text box over a raw id', () => {
+    renderEditor()
+
+    // type-id is a single-value Reference whose stored value is a subtype id. Rendered as a text
+    // input it invites someone to type a number that silently re-types the requirement. Target
+    // Release is the multi-value kind, pointing at the `release` collection. Both need a resolver,
+    // and until there is one, offering no control is more honest than offering a trap.
+    expect(screen.queryByLabelText('type-id')).toBeNull()
+    expect(screen.queryByLabelText('target-rel')).toBeNull()
+    expect(screen.getByText(/point at another record/i)).toBeTruthy()
   })
 
   it('warns when the record carries no version to detect a conflict with', () => {

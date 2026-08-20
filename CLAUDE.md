@@ -158,7 +158,7 @@ finding in the project surfaced by product code under test rather than a hand-wr
   **bounded retry on 5xx reads** — separate from the 5xx-on-*write* verify-by-query rule (**Q46**).
 
 🟡 **P2 IN PROGRESS — the write core, the CRUD endpoints and the validation layer are in and
-verified live (2026-08-19). 335 BFF tests (378 with `-Pcontract`) + 73 SPA tests green. Records are editable in the SPA.**
+verified live (2026-08-19). 335 BFF tests (378 with `-Pcontract`) + 74 SPA tests green. Records are editable in the SPA.**
 `AlmWriteClient` is the single write path; `ApiIsReadOnlyTest` asserts writes *route through it*
 rather than that none exist, and now has real endpoints to guard. See `SESSION-STATE.md`.
 
@@ -174,6 +174,15 @@ limitation rather than our own rule.
 ⚠️ **An unresolved `UNKNOWN` write is served as HTTP 502, and that status describes the UPSTREAM, not
 the row.** The write may well have committed. `"outcome": "UNKNOWN"` in the body is the authority; a
 client that treats 502 as "failed, retry" will create duplicates.
+
+⚠️ **"A field with choices" is THREE mechanisms** (2026-08-20): `LookupList`+`listId` →
+`used-lists` (**56 of 58** fields, done); `Reference` with `fieldRelationReferences` → query that
+**entity collection**, value is an **id** (`target-rel`→`release`, `target-rcyc`→`release-cycle` —
+also the model's **only two multi-value fields**); `Reference` with **empty** references →
+`customization/entities/{e}/types` (`type-id`). Only the first is built. ⚠️ `req-type` (LookupList)
+and `type-id` (Reference) are different fields by different routes. ⚠️ The BFF does **not** expose
+`fieldRelationReferences`, so the SPA cannot resolve a Reference at all yet — References are
+excluded from the editor rather than shown as a text box over a raw id.
 
 ⚠️ **Lookup lists: `GET customization/used-lists` returns all 39 WITH items inline** (39 lists / 125
 items / 3 empty, live-verified 2026-08-20) — one request, no per-list fetch. Casing is mixed *within*
