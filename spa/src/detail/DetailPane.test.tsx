@@ -118,6 +118,7 @@ function mockApi({
     // Posting a comment is how a test reaches the reload path; the write itself is the
     // CommentBox's business and is pinned by its own suite.
     if (path.includes('/comments')) return ok({ outcome: 'COMMITTED', id: '7001', retried: false })
+    if (path.includes('/api/records/')) return ok({ outcome: 'COMMITTED', id: '7001', retried: false })
     if (path.includes('/api/tabs/')) return ok({ tabs: [] })
     if (path.includes('/api/history/')) return ok({ entries: [], partial: false })
     return ok({})
@@ -268,5 +269,64 @@ describe('memo rendering', () => {
     expect(body.closest('.detail-memo')?.innerHTML ?? '').not.toContain('<script')
     expect(body.closest('.detail-memo')?.innerHTML ?? '').not.toContain('onerror')
     expect((window as unknown as { pwned?: number }).pwned).toBeUndefined()
+  })
+})
+
+describe('the delete button', () => {
+  it('is offered when the project is writable and the host can act on it', async () => {
+    mockApi()
+    render(pane({ onDeleted: () => {} }))
+
+    await screen.findByText('First read')
+    expect(screen.getByRole('button', { name: 'Delete' })).not.toBeNull()
+  })
+
+  it('is absent without an onDeleted handler', async () => {
+    // ⚠️ Not merely tidy. A host with nowhere to route the result would go on rendering the grid
+    // row and the detail pane for a record that no longer exists in ALM — a delete that appears to
+    // have done nothing, followed later by a 404 nobody can explain.
+    mockApi()
+    render(pane())
+
+    await screen.findByText('First read')
+    expect(screen.queryByRole('button', { name: 'Delete' })).toBeNull()
+  })
+
+  it('is absent on a project that is not writable', async () => {
+    mockApi({ details: [detail('First read', false)] })
+    render(pane({ onDeleted: () => {} }))
+
+    await screen.findByText('First read')
+    expect(screen.queryByRole('button', { name: 'Delete' })).toBeNull()
+  })
+
+  it('confirms before deleting, and reports the id once it is gone', async () => {
+    mockApi()
+    const onDeleted = vi.fn()
+    render(pane({ onDeleted }))
+
+    await screen.findByText('First read')
+    await userEvent.click(screen.getByRole('button', { name: 'Delete' }))
+
+    // The confirmation replaces the field table; nothing has been written yet.
+    expect(screen.getByRole('alertdialog')).not.toBeNull()
+    expect(onDeleted).not.toHaveBeenCalled()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Delete' }))
+    await waitFor(() => expect(onDeleted).toHaveBeenCalledWith('7001'))
+  })
+
+  it('drops an open confirmation when the pane moves to another record', async () => {
+    mockApi()
+    const { rerender } = render(pane({ onDeleted: () => {} }))
+    await screen.findByText('First read')
+    await userEvent.click(screen.getByRole('button', { name: 'Delete' }))
+    expect(screen.getByRole('alertdialog')).not.toBeNull()
+
+    rerender(pane({ entityId: '7002', onDeleted: () => {} }))
+
+    // A dialog naming one record while the pane has moved to another is how the wrong row gets
+    // deleted by somebody who read the dialog before it moved.
+    expect(screen.queryByRole('alertdialog')).toBeNull()
   })
 })

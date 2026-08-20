@@ -32,6 +32,15 @@ interface Props {
    * fold, and a selection you cannot see reads as nothing having happened.
    */
   revealIds?: string[]
+  /**
+   * Bumped by the host to force a re-read of the whole tree — after a delete.
+   *
+   * ⚠️ It has to discard the cached children, not just re-fetch the root. The deleted node lives in
+   * some parent's cached child list, and a tree that kept it would keep drawing a row that is gone
+   * and would open a detail pane on a 404. The expansion state goes with it: which nodes were open
+   * is a claim about a hierarchy that has just changed shape.
+   */
+  reloadToken?: number
 }
 
 /** Children keyed by parent id; absent = not fetched, empty = fetched and childless. */
@@ -61,6 +70,7 @@ export function TreeGrid({
   visibleColumns,
   renderToolbar,
   revealIds,
+  reloadToken = 0,
 }: Props) {
   const [root, setRoot] = useState<TreeRow | null>(null)
   const [rootName, setRootName] = useState<string>('')
@@ -130,7 +140,7 @@ export function TreeGrid({
     return () => {
       cancelled = true
     }
-  }, [project, collection])
+  }, [project, collection, reloadToken])
 
   const loadLevel = useCallback(
     (parentIds: string[], visible: boolean) => {

@@ -21,6 +21,7 @@ import { RelatedRows } from './RelatedRows.tsx'
 import { HistoryPanel } from './HistoryPanel.tsx'
 import { RecordEditor } from './RecordEditor.tsx'
 import { CommentBox } from './CommentBox.tsx'
+import { DeleteRecord } from './DeleteRecord.tsx'
 import { DetailRail, type RailTab } from './DetailRail.tsx'
 import {
   Beaker,
@@ -55,6 +56,14 @@ interface Props {
     parentId: string,
     parentLabel: string,
   ) => void
+  /**
+   * The record is gone, or may be — clear the selection and re-read the list.
+   *
+   * Omitting it removes the Delete button entirely rather than leaving one that deletes a row the
+   * host would go on displaying. ⚠️ Also called for an UNKNOWN outcome, where the row may still be
+   * there: the host's job in both cases is the same, to stop trusting what is on screen.
+   */
+  onDeleted?: (id: string) => void
 }
 
 /**
@@ -148,7 +157,14 @@ function relatedIcon(tab: RelatedTab): React.ReactNode {
 
 type Status = 'idle' | 'loading' | 'ready' | 'missing' | 'error'
 
-export function DetailPane({ project, collection, entityId, onNavigate, onDrillIn }: Props) {
+export function DetailPane({
+  project,
+  collection,
+  entityId,
+  onNavigate,
+  onDrillIn,
+  onDeleted,
+}: Props) {
   const [data, setData] = useState<GridResponse | null>(null)
   const [status, setStatus] = useState<Status>('idle')
   const [error, setError] = useState<string | null>(null)
@@ -165,6 +181,7 @@ export function DetailPane({ project, collection, entityId, onNavigate, onDrillI
   const [historyStatus, setHistoryStatus] = useState<'loading' | 'ready' | 'error'>('loading')
   const [historyError, setHistoryError] = useState<string | null>(null)
   const [editing, setEditing] = useState(false)
+  const [confirmingDelete, setConfirmingDelete] = useState(false)
   /**
    * Which memo field is this entity's comment field, or null for "none, or not known yet".
    *
@@ -229,6 +246,9 @@ export function DetailPane({ project, collection, entityId, onNavigate, onDrillI
     // Arrowing to another record must not carry an open editor with it: the draft belongs to the
     // record it was typed against, and re-using it would save one record's values onto another.
     setEditing(false)
+    // Nor an open delete confirmation — a dialog naming one record while the pane has moved to
+    // another is how the wrong row gets deleted by someone who read the dialog before it moved.
+    setConfirmingDelete(false)
   }, [entityId, collection, project])
 
   /**
@@ -503,13 +523,24 @@ export function DetailPane({ project, collection, entityId, onNavigate, onDrillI
               Read only
             </span>
           )}
-          {data.writable && !editing && tab === DETAILS && (
+          {data.writable && !editing && !confirmingDelete && tab === DETAILS && (
             <button
               type="button"
               className="detail-edit"
               onClick={() => setEditing(true)}
             >
               Edit
+            </button>
+          )}
+          {/* Only offered where a host can act on the answer. Without `onDeleted` the row would
+              vanish from ALM while the grid and this pane went on displaying it. */}
+          {data.writable && onDeleted && !editing && !confirmingDelete && tab === DETAILS && (
+            <button
+              type="button"
+              className="detail-edit detail-delete"
+              onClick={() => setConfirmingDelete(true)}
+            >
+              Delete
             </button>
           )}
         </div>
@@ -530,7 +561,25 @@ export function DetailPane({ project, collection, entityId, onNavigate, onDrillI
         <DetailRail tabs={railTabs} active={tab} onSelect={setTab} />
 
         <div className="detail-body" role="tabpanel" aria-labelledby={`detail-tab-${tab}`}>
+        {tab === DETAILS && confirmingDelete && onDeleted && (
+          <DeleteRecord
+            // Remount per record for the same reason the editor does: a confirmation that outlived
+            // the row it names would delete whichever record happened to be open.
+            key={`delete/${collection}/${row.id}`}
+            project={project}
+            collection={collection}
+            id={row.id}
+            name={title}
+            onDeleted={() => {
+              setConfirmingDelete(false)
+              onDeleted(row.id)
+            }}
+            onCancel={() => setConfirmingDelete(false)}
+          />
+        )}
+
         {tab === DETAILS &&
+          !confirmingDelete &&
           (editing ? (
             <RecordEditor
               // Remount when the record changes so no draft can outlive the row it belongs to.

@@ -175,6 +175,14 @@ function App() {
 
   const [folder, setFolder] = useState<TreeNode | null>(null)
   const [selectedRowId, setSelectedRowId] = useState<string | null>(initialUrl.id)
+  /**
+   * Bumped when a record is deleted, to force the list to re-read.
+   *
+   * ⚠️ Also bumped for an UNKNOWN delete outcome, where the row may still be there. Both cases have
+   * the same requirement of the list: stop showing what it currently shows, because it is no longer
+   * evidence either way.
+   */
+  const [listReloadToken, setListReloadToken] = useState(0)
   /** A record to expand the tree down to. Set by a link, cleared once the tree has consumed it. */
   const [revealId, setRevealId] = useState<string | null>(null)
   const [revealIds, setRevealIds] = useState<string[]>([])
@@ -610,7 +618,10 @@ function App() {
           </label>
 
           {!activeProject.writable && (
-            <span className="badge badge-ro" title="Alt-ALM has no write path yet (P2)">
+            <span
+              className="badge badge-ro"
+              title="This project is not enrolled for writes in this deployment"
+            >
               Read only
             </span>
           )}
@@ -766,6 +777,7 @@ function App() {
             <TreeGrid
               project={selectedProjectKey}
               collection={treeCollection}
+              reloadToken={listReloadToken}
               selectedId={selectedRowId}
               onSelect={handleTreeSelect}
               onOpenInGrid={handleOpenInGrid}
@@ -793,6 +805,7 @@ function App() {
               project={selectedProjectKey}
               collection={collection}
               filters={filters}
+              reloadToken={listReloadToken}
               selectedId={selectedRowId}
               onSelectRow={handleSelectRow}
               onClearFilters={clearScope}
@@ -850,6 +863,13 @@ function App() {
             collection={collection}
             entityId={selectedRowId}
             onNavigate={revealRecord}
+            onDeleted={() => {
+              // Selection first: leaving it set would send the pane straight back to ALM for a
+              // record that is probably gone, and answer with "not found" where the user expects
+              // the result of their own delete.
+              setSelectedRowId(null)
+              setListReloadToken((n) => n + 1)
+            }}
             onDrillIn={(rowsCollection, table, parentId, parentLabel) => {
               // The rows' OWN collection, never the table's targetCollection — that names the far
               // end a row links to, and filtering it by this scope column would 404.

@@ -31,6 +31,15 @@ interface DataGridProps {
   onColumnsLoaded?: (columns: GridColumn[]) => void
   /** Shown in the empty state, so a filtered-to-nothing grid can offer the way out. */
   onClearFilters?: () => void
+  /**
+   * Bumped by the host to force a re-read — after a delete, where the grid's rows include one that
+   * may no longer exist.
+   *
+   * A counter rather than a boolean because the same request can be made twice running (delete a
+   * row, then delete another), and a boolean would make the second a no-op exactly when the list
+   * is least trustworthy.
+   */
+  reloadToken?: number
 }
 
 type LoadStatus = 'loading' | 'ready' | 'error'
@@ -45,6 +54,7 @@ export function DataGrid({
   renderToolbar,
   onColumnsLoaded,
   onClearFilters,
+  reloadToken = 0,
 }: DataGridProps) {
   const [start, setStart] = useState(1)
   const [sort, setSort] = useState(DEFAULT_SORT)
@@ -100,7 +110,7 @@ export function DataGrid({
     }
     // `filters` is listed for correctness; callers must memoize it (App does) or every render
     // would refetch. filterKey is kept so a value change re-runs even if identity is stable.
-  }, [project, collection, start, sort, desc, retryToken, filterKey, filters])
+  }, [project, collection, start, sort, desc, retryToken, reloadToken, filterKey, filters])
 
   const loadedColumns = data?.columns
   useEffect(() => {

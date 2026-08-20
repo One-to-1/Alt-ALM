@@ -1,0 +1,79 @@
+/* Sits in the detail body, in place of the field table — not as a floating modal.
+   A modal over the grid would hide the record being deleted at the moment the user is deciding
+   whether to delete it; here the pane's header still names it. */
+
+.delete-record {
+  padding: var(--space-4);
+}
+
+.delete-record-title {
+  margin: 0 0 var(--space-2);
+  font-size: var(--text-md);
+  font-weight: 600;
+  color: var(--text-h);
+}
+
+.delete-record-target {
+  margin: 0 0 var(--space-3);
+  color: var(--text-h);
+  word-break: break-word;
+}
+
+.delete-record-id {
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* The orphan warning. Given the danger treatment rather than a neutral note because it is the one
+   consequence ALM itself reports nothing about — see DeleteRecord.tsx. */
+.delete-record-orphans {
+  margin: 0 0 var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--danger);
+  border-radius: var(--radius-sm);
+  background: var(--danger-bg);
+  color: var(--text-h);
+  font-size: var(--text-sm);
+  line-height: 1.5;
+}
+
+.delete-record-note {
+  margin: 0 0 var(--space-3);
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
+
+.delete-record-actions {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.delete-record-actions button {
+  font: inherit;
+  padding: var(--space-1) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.delete-record-actions button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+/* Destructive, and coloured as such — but it is not the default action and does not read as one:
+   Cancel sits beside it with equal weight rather than being demoted to a link. */
+.delete-record-actions .delete-record-confirm {
+  border-color: var(--danger);
+  background: var(--danger);
+  /* Scoped under .delete-record-actions rather than reaching for !important: the base button rule
+     above is `.class element` and outranks a bare class on its own. */
+  color: #ffffff;
+}
+
+.delete-record-actions button:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 1px;
+}
