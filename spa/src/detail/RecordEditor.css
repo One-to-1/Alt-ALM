@@ -44,7 +44,11 @@
   margin: 8px 12px;
   padding: 8px 10px;
   border-radius: 4px;
-  border-left: 3px solid;
+  /* A full 1px rule in the tone colour, not a thick left tab. The tone still has to be readable at
+     a glance — `unknown` must not be mistaken for `error`, which is a safety property, not a
+     styling preference (see writeOutcome.ts) — and the border colour plus the tint carry that
+     without the stripe. A contained block also matches ALM's own message boxes better. */
+  border: 1px solid;
   font-size: 12px;
 }
 
