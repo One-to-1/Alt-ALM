@@ -218,13 +218,50 @@ describe('the fields it offers', () => {
     expect(screen.queryByLabelText.call(screen, 'father-name')).toBeNull()
   })
 
-  it('omits MULTI-VALUE fields, which need a control this form does not have', () => {
+  it('gives a MULTI-VALUE field a real multi-select, never a single-value dropdown', async () => {
+    // ⚠️ This assertion is the INVERSE of what it used to be, and the change is deliberate rather
+    // than a relaxation. The field was omitted entirely while the multi-value write grammar was
+    // unverified: a single-value control over one would have dropped the other values on save, and
+    // the alternative was guessing the wire shape. Probe 33 settled it against the live server —
+    // one `values` entry per value — so the control can now exist.
+    //
+    // What must NOT come back is a plain <select>: that is the silent-truncation bug wearing the
+    // right label.
+    CHOICES = {
+      'target-rel': [
+        { value: '12', label: 'Release 1' },
+        { value: '13', label: 'Release 2' },
+      ],
+    }
+    respondWith(200, writeBody())
     renderEditor()
 
-    // target-rel and target-rcyc are the only two multi-value fields in the model. Faking a
-    // multi-select with a single-value dropdown would silently drop the other values on save.
-    expect(screen.queryByLabelText('target-rel')).toBeNull()
-    expect(screen.getByText(/not supported in this form/i)).toBeTruthy()
+    const select = await findSelect('target-rel')
+    expect(select.multiple).toBe(true)
+    // The record's existing value stays selected; it is not reset by rendering the control.
+    expect(Array.from(select.selectedOptions, (o) => o.value)).toEqual(['12'])
+  })
+
+  it('sends every selected value of a multi-value field, as an array', async () => {
+    CHOICES = {
+      'target-rel': [
+        { value: '12', label: 'Release 1' },
+        { value: '13', label: 'Release 2' },
+      ],
+    }
+    respondWith(200, writeBody())
+    const fetchMock = globalThis.fetch as unknown as { mock: { calls: unknown[] } }
+    renderEditor()
+
+    const select = await findSelect('target-rel')
+    await userEvent.selectOptions(select, ['12', '13'])
+    await userEvent.click(screen.getByRole('button', { name: /Save/ }))
+
+    await waitFor(() => expect(fetchMock.mock.calls.length).toBeGreaterThan(0))
+    // An ARRAY, which is the spelling probe 33 verified. A joined string also happens to work on
+    // this server, but relying on that would break the moment a value contained a separator.
+    const fields = sentBody().fields as Record<string, unknown>
+    expect(fields['target-rel']).toEqual(['12', '13'])
   })
 
   it('resolves a SUBTYPE reference to a dropdown of names, storing the id', async () => {
@@ -253,8 +290,11 @@ describe('the fields it offers', () => {
     respondWith(200, writeBody())
     renderEditor()
 
-    await waitFor(() => expect(screen.getByText(/not editable here/i)).toBeTruthy())
+    await waitFor(() => expect(screen.getAllByText(/not editable here/i).length).toBeGreaterThan(0))
     expect(screen.queryByLabelText('type-id')).toBeNull()
+    // The same rule covers an unresolved MULTI-value reference: its value is a list of ids, so a
+    // text box over it is the same trap, only harder to undo.
+    expect(screen.queryByLabelText('target-rel')).toBeNull()
   })
 
   it('warns when the record carries no version to detect a conflict with', () => {

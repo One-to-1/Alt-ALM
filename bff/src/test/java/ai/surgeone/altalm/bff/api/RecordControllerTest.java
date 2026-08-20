@@ -106,8 +106,10 @@ class RecordControllerTest {
 
             // The version has to survive the hop. Dropping it would silently downgrade every edit
             // to last-writer-wins while the API still looked like it took a version.
+            // A single JSON string arrives as a one-element list: below the controller every field
+            // is a list, matching ALM's model, where `values` is an array on every field.
             verify(records).update(any(), eq("requirements"), eq("7001"),
-                    eq(Map.of("name", "new")), eq(Optional.of("3")));
+                    eq(Map.of("name", List.of("new"))), eq(Optional.of("3")));
         }
 
         @Test
@@ -369,4 +371,65 @@ class RecordControllerTest {
                     eq("7001"));
         }
     }
+
+    @Nested
+    @DisplayName("a field value is a string OR an array — the multi-value wire shape")
+    class FieldValueShapes {
+
+        @Test
+        @DisplayName("an array arrives as several values, in the order sent")
+        void arrayBecomesSeveralValues() throws Exception {
+            when(records.update(any(), eq("requirements"), eq("7001"), any(), any()))
+                    .thenReturn(committed("7001"));
+
+            mvc.perform(put("/api/records/requirements/7001")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("{\"fields\":{\"target-rel\":[\"1005\",\"1006\"]}}"))
+                    .andExpect(status().isOk());
+
+            // Value order is the caller's and is passed through. Field order is re-ranked by
+            // AlmEntityBody because ALM's is load-bearing; order WITHIN a field is not ours to sort.
+            verify(records).update(any(), eq("requirements"), eq("7001"),
+                    eq(Map.of("target-rel", List.of("1005", "1006"))), any());
+        }
+
+        @Test
+        @DisplayName("an empty array clears the field")
+        void emptyArrayClears() throws Exception {
+            when(records.update(any(), eq("requirements"), eq("7001"), any(), any()))
+                    .thenReturn(committed("7001"));
+
+            mvc.perform(put("/api/records/requirements/7001")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("{\"fields\":{\"target-rel\":[]}}"))
+                    .andExpect(status().isOk());
+
+            // Empty here, turned into the single empty value probe 33 verified further down —
+            // AlmEntityBody owns that translation so there is one place it happens.
+            verify(records).update(any(), eq("requirements"), eq("7001"),
+                    eq(Map.of("target-rel", List.of())), any());
+        }
+
+        @Test
+        @DisplayName("a NUMBER is refused rather than coerced to a string")
+        void numbersAreRefused() throws Exception {
+            // ⚠️ toString() would turn 1005 into "1005" and 1005.0 into "1005.0", and ALM answers
+            // the second with a message about the field rather than about the JSON — a long way
+            // from the cause. Refusing names the actual problem.
+            mvc.perform(put("/api/records/requirements/7001")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("{\"fields\":{\"target-rel\":[1005]}}"))
+                    .andExpect(status().isBadRequest());
+        }
+
+        @Test
+        @DisplayName("a nested object is refused too, naming the field")
+        void objectsAreRefused() throws Exception {
+            mvc.perform(put("/api/records/requirements/7001")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("{\"fields\":{\"name\":{\"value\":\"x\"}}}"))
+                    .andExpect(status().isBadRequest());
+        }
+    }
+
 }

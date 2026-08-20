@@ -15,6 +15,56 @@ import static org.assertj.core.api.Assertions.assertThat;
 class AlmWriteSafetyTest {
 
     @Nested
+    @DisplayName("multi-value fields, on the grammar probe 33 verified")
+    class MultiValue {
+
+        @Test
+        @DisplayName("emits one values entry per value — the spelling ALM accepts")
+        void repeatedEntries() {
+            // ⚠️ Probe 33 tested three candidate spellings against the live server and judged each
+            // on the READ-BACK, never the status. Repeated entries stored both values. A
+            // semicolon-joined string ALSO stored both — the two are indistinguishable in outcome —
+            // and this is the one sent deliberately: structure carrying the structure, with no
+            // string convention that breaks if a value ever contains a separator.
+            String json = AlmEntityBody.of("requirement")
+                    .setAll("target-rel", List.of("1005", "1006")).toJson();
+
+            assertThat(json).isEqualTo(
+                    "{\"Fields\":[{\"Name\":\"target-rel\",\"values\":["
+                            + "{\"value\":\"1005\"},{\"value\":\"1006\"}"
+                            + "]}],\"Type\":\"requirement\"}");
+        }
+
+        @Test
+        @DisplayName("a single value is the same shape as before — one entry, not a special case")
+        void singleValueUnchanged() {
+            // set() delegates to setAll(), so there is one serializer rather than two paths that
+            // could drift. This pins that the delegation did not change the single-value wire shape.
+            assertThat(AlmEntityBody.of("requirement").set("name", "x").toJson())
+                    .isEqualTo(AlmEntityBody.of("requirement").setAll("name", List.of("x")).toJson());
+        }
+
+        @Test
+        @DisplayName("clearing is one empty value, not an empty array")
+        void clearingIsAnEmptyValue() {
+            // Probe 33 verified the empty-string form empties the field. An empty `values` array is
+            // a shape nothing has tested, so it is never emitted.
+            assertThat(AlmEntityBody.of("requirement").setAll("target-rel", List.of()).toJson())
+                    .contains("\"values\":[{\"value\":\"\"}]");
+        }
+
+        @Test
+        @DisplayName("value order is preserved — it is the caller's, not ours to sort")
+        void orderWithinAFieldSurvives() {
+            // Field ORDER is re-ranked because ALM's is load-bearing. Value order inside one field
+            // is not ours to touch: it is what the user chose, and ALM stores it as sent.
+            assertThat(AlmEntityBody.of("requirement")
+                    .setAll("target-rel", List.of("1006", "1005")).toJson())
+                    .contains("{\"value\":\"1006\"},{\"value\":\"1005\"}");
+        }
+    }
+
+    @Nested
     @DisplayName("Fields-array order is load-bearing (Probe 4)")
     class FieldOrder {
 

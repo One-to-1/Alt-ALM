@@ -158,7 +158,7 @@ finding in the project surfaced by product code under test rather than a hand-wr
   **bounded retry on 5xx reads** — separate from the 5xx-on-*write* verify-by-query rule (**Q46**).
 
 🟡 **P2 IN PROGRESS — the write core, the CRUD endpoints and the validation layer are in and
-verified live (2026-08-19). 345 BFF tests (388 with `-Pcontract`) + 132 SPA tests green. **CRUD is
+verified live (2026-08-19). 358 BFF tests (401 with `-Pcontract`) + 133 SPA tests green. **CRUD is
 complete in the SPA (2026-08-20)** — read, create, edit, comment, delete — and the whole path is
 verified end to end against the live sandbox (probe 32), in the SPA's own request shapes.**
 `AlmWriteClient` is the single write path; `ApiIsReadOnlyTest` asserts writes *route through it*
@@ -187,8 +187,13 @@ requirement editor). **Branch on `choiceSource`, never on the field type** — `
 `target-rel` are both `REFERENCE` and resolve differently. ⚠️ `req-type` (LookupList) and `type-id`
 (Reference) are different fields by different routes. ⚠️ **The unresolved-fallback differs by
 mechanism**: a LOOKUP degrades to free text (value is a string), a REFERENCE gets **no control**
-(value is an **id**, and a text box over one invites re-pointing the record). Multi-value fields
-(the model's only two, both References) still have no control.
+(value is an **id**, and a text box over one invites re-pointing the record). ✅ **Multi-value fields are editable as of probe 33** — the model's only two, both References.
+The write is spelled as **one `values` entry per value**; a semicolon-joined string also works and is
+deliberately not used (it breaks the moment a value contains a separator), and a comma-joined one is
+refused outright. An **empty array clears** the field. ⚠️ `supportsMultivalue` is the **one** metadata
+flag `AlmWriteValidator` enforces, and the exception is earned: probe 33 checked it against
+behaviour, and ALM does *not* cleanly refuse a second value on a single-value field — it stores
+something, and which value survives is not a question to answer by experiment in production.
 
 ⚠️ **Lookup lists: `GET customization/used-lists` returns all 39 WITH items inline** (39 lists / 125
 items / 3 empty, live-verified 2026-08-20) — one request, no per-list fetch. Casing is mixed *within*

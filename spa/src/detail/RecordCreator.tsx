@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import type { Choice, GridColumn, WriteResult } from '../api/client.ts'
+import type { Choice, FieldValue, GridColumn, WriteResult } from '../api/client.ts'
 import { createRecord, fetchChoices } from '../api/client.ts'
 import { fieldBlamedBy, mayKeepEditing, outcomeMessage } from './writeOutcome.ts'
 import { FieldInput } from './FieldInput.tsx'
@@ -80,7 +80,7 @@ export function RecordCreator({
     return onForm.length > 0 ? onForm : all
   }, [columns])
 
-  const [draft, setDraft] = useState<Record<string, string>>({})
+  const [draft, setDraft] = useState<Record<string, string[]>>({})
   const [choices, setChoices] = useState<Record<string, Choice[]> | null>(null)
   const [saving, setSaving] = useState(false)
   const [result, setResult] = useState<WriteResult | null>(null)
@@ -125,9 +125,12 @@ export function RecordCreator({
     try {
       // Only fields the user actually filled. Sending the empty ones would write blanks over
       // whatever defaults ALM applies on create, and there is no way to tell the two apart later.
-      const filled: Record<string, string> = {}
-      for (const [name, value] of Object.entries(draft)) {
-        if (value !== '') filled[name] = value
+      const filled: Record<string, FieldValue> = {}
+      for (const [name, values] of Object.entries(draft)) {
+        const kept = values.filter((v) => v !== '')
+        if (kept.length === 0) continue
+        const column = fields.find((c) => c.name === name)
+        filled[name] = column?.multiValue ? kept : kept[0]
       }
       if (parentId) filled['parent-id'] = parentId
 
@@ -224,11 +227,11 @@ export function RecordCreator({
             <dd>
               <FieldInput
                 column={column}
-                value={draft[column.name] ?? ''}
+                values={draft[column.name] ?? []}
                 choices={choices}
                 disabled={locked}
                 problem={message?.fieldProblems[column.name]}
-                onChange={(value) => setDraft({ ...draft, [column.name]: value })}
+                onChange={(values) => setDraft({ ...draft, [column.name]: values })}
                 idPrefix="new"
               />
             </dd>

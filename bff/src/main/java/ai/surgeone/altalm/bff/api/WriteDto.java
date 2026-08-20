@@ -16,11 +16,14 @@ public final class WriteDto {
     /**
      * A create.
      *
-     * @param fields logical field name → value. Order here is irrelevant — {@code AlmEntityBody}
-     *               imposes the canonical one, because ALM's field order is load-bearing and a
-     *               caller's JSON object order is not something to depend on
+     * @param fields logical field name → value. A value is a <strong>string</strong>, or an
+     *               <strong>array of strings</strong> for one of the model's two multi-value fields
+     *               ({@code target-rel}, {@code target-rcyc} — probe 33). Order of the map itself is
+     *               irrelevant: {@code AlmEntityBody} imposes the canonical field order, because
+     *               ALM's is load-bearing and a caller's JSON object order is not something to
+     *               depend on. Order <em>within</em> an array is preserved and sent as-is
      */
-    public record CreateRequest(Map<String, String> fields) {
+    public record CreateRequest(Map<String, Object> fields) {
     }
 
     /**
@@ -33,7 +36,7 @@ public final class WriteDto {
      *                        overwriting a concurrent edit. See {@code AlmVersionGuard}: this detects
      *                        a conflict, it does not lock
      */
-    public record UpdateRequest(Map<String, String> fields, String expectedVersion) {
+    public record UpdateRequest(Map<String, Object> fields, String expectedVersion) {
     }
 
     /**

@@ -2044,6 +2044,52 @@ Three things in that, each worth keeping:
 accepts children - distinct from the `-1` sentinel, which is what `RecordCreator` refuses to post
 against (probe 27).
 
+## Probe 33 - the multi-value write grammar, and a 5xx that did not reproduce (2026-08-20)
+
+`scripts/probe/probe-multivalue.py`. Run because the last unbuilt piece of P2's editor - the model's
+only two multi-value fields, `target-rel` and `target-rcyc` - needed a fact nobody had: **how a
+multi-value write is spelled**. The read shape was known (one object per value in `values`), but a
+read shape is not a write shape, and guessing one would have been exactly the invention CLAUDE.md
+forbids.
+
+Three candidates, each judged **only on the read-back**. A 200 proves nothing here: probe 30
+destroyed a comment for a 200.
+
+| candidate | sent | status | stored | verdict |
+|---|---|---|---|---|
+| **A. repeated entries** | `[{"value":"1005"},{"value":"1006"}]` | 200 | `['1005','1006']` | **both stored** |
+| **B. semicolon-joined** | `[{"value":"1005;1006"}]` | 200 | `['1005','1006']` | **both stored** |
+| C. comma-joined | `[{"value":"1005,1006"}]` | **500** | `[]` | refused |
+
+**Both A and B work, and that is worth knowing rather than just picking one.** ALM splits a
+semicolon-joined string into separate values, so the two spellings are *indistinguishable in
+outcome*. **A is what Alt-ALM sends**: structure carrying structure, no string convention to get
+wrong, and nothing that breaks if a value ever contains a separator. ⚠️ But B working means the
+server treats `;` as a separator **inside a value** - so any future single-value write of a string
+that legitimately contains a semicolon is a hazard, and this probe did not test that case.
+
+Settled at the same time:
+
+- `target-rel` / `target-rcyc`: `supportsMultivalue=true`, `editable=true`, `required=false`, types
+  `Reference`, physical `RQ_TARGET_REL` / `RQ_TARGET_RCYC`. Metadata and behaviour agree here, which
+  is not something to assume (probe 9).
+- **Clearing works**: `values:[{"value":""}]` empties the field, read-back returns zero values.
+- A read returns **one entry per value**, never a joined string.
+
+### ⚠️ Not every 500 is opaque - and one of them did not reproduce
+
+C's refusal came back **500** with a genuinely useful title:
+`target-rel field should contain only numbers, given '1005,1006'`. That is worth recording against
+the habit of treating 5xx as uniformly meaningless: some carry a diagnosis, some carry
+`qccore.general-error` with `"Title":"General Error"` and nothing else.
+
+And the run before it produced the other kind. `POST release-folders` with `name` + `parent-id`
+returned **500 `qccore.general-error`, no title** - then **succeeded on the next run with an
+identical body**. The sweep confirmed the failed attempt committed nothing, which is the only reason
+that is knowable at all. This is a live reproduction of the intermittency behind Q40 and the P1
+grid's one-off 500, and it is the whole justification for the verify-by-query rule: had that create
+committed, id-tracked cleanup could not have reached it, because a 5xx returns no id.
+
 ## Open items for the next probe round
 
 1. ~~Map `SiteVersion 20.0 (20.00.0.143)` → marketing version~~ **DONE: ALM 26.1** (probe 3).

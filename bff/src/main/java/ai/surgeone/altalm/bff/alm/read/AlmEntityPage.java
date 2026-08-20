@@ -120,6 +120,19 @@ public record AlmEntityPage(List<AlmEntity> entities, int totalResults) {
          *         "field present but empty" here; see {@link #fields()} javadoc for why that
          *         distinction matters and where to find it when it does.
          */
+        /**
+         * Every value of a field, in server order; empty when the field is absent.
+         *
+         * <p>Distinct from {@link #first} for the two fields where it matters: {@code target-rel}
+         * and {@code target-rcyc} are the model's only multi-value fields, and reading just the
+         * first would silently drop the rest — which is how a multi-value write that landed only
+         * one value would verify as successful.
+         */
+        public List<String> all(String field) {
+            List<String> values = fields.get(field);
+            return values == null ? List.of() : values;
+        }
+
         public Optional<String> first(String field) {
             List<String> values = fields.get(field);
             if (values == null || values.isEmpty()) {

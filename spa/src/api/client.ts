@@ -877,11 +877,20 @@ function projectQuery(project: string): string {
   return `?project=${encodeURIComponent(project)}`
 }
 
+/**
+ * A field's value on the wire: a string, or an array of strings for a multi-value field.
+ *
+ * ⚠️ The model has exactly two multi-value fields, `target-rel` and `target-rcyc`, both References.
+ * The array spelling is what probe 33 verified ALM accepts — one entry per value. A plain string
+ * stays a plain string for every other field, so the common case reads as it always did.
+ */
+export type FieldValue = string | string[]
+
 /** Creates one record. `fields` is logical field name → value; order is irrelevant. */
 export function createRecord(
   project: string,
   collection: string,
-  fields: Record<string, string>,
+  fields: Record<string, FieldValue>,
 ): Promise<WriteResult> {
   return apiWrite(`/api/records/${encodeURIComponent(collection)}${projectQuery(project)}`, 'POST', {
     fields,
@@ -902,7 +911,7 @@ export function updateRecord(
   project: string,
   collection: string,
   id: string,
-  fields: Record<string, string>,
+  fields: Record<string, FieldValue>,
   expectedVersion?: string,
 ): Promise<WriteResult> {
   return apiWrite(

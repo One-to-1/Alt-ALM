@@ -123,7 +123,7 @@ public final class AlmWriteValidator {
      * @throws RejectedException with every problem found — deliberately not fail-fast, so a caller
      *                           fixing a form is not sent round the loop once per field
      */
-    public void check(AlmProjectRef project, String entity, Map<String, String> fields) {
+    public void check(AlmProjectRef project, String entity, Map<String, List<String>> fields) {
         List<Problem> problems = validate(project, entity, fields);
         if (!problems.isEmpty()) {
             throw new RejectedException(problems);
@@ -134,7 +134,8 @@ public final class AlmWriteValidator {
      * Every problem with this body, in field order. Empty means nothing here is knowably wrong —
      * which is not the same as "this write will succeed" (see the class javadoc).
      */
-    public List<Problem> validate(AlmProjectRef project, String entity, Map<String, String> fields) {
+    public List<Problem> validate(AlmProjectRef project, String entity,
+                                  Map<String, List<String>> fields) {
         List<Problem> problems = new ArrayList<>();
 
         if (fields == null || fields.isEmpty()) {
@@ -148,11 +149,13 @@ public final class AlmWriteValidator {
         // (a Folder requirement has no status), so validating a folder against the entity-level set
         // would wave through a field that record cannot hold. Falls back to the entity set when the
         // project has no subtypes, which is the common case — only `requirement` has any (probe 25).
-        Map<String, FieldDescriptor> known = describe(project, entity, fields.get("type-id"));
+        List<String> typeIds = fields.get("type-id");
+        Map<String, FieldDescriptor> known = describe(project, entity,
+                typeIds == null || typeIds.isEmpty() ? null : typeIds.get(0));
 
-        for (Map.Entry<String, String> entry : fields.entrySet()) {
+        for (Map.Entry<String, List<String>> entry : fields.entrySet()) {
             String name = entry.getKey();
-            String value = entry.getValue();
+            List<String> values = entry.getValue() == null ? List.of() : entry.getValue();
 
             if (SERVER_OWNED.contains(name)) {
                 problems.add(new Problem(name, "server-owned",
@@ -179,8 +182,22 @@ public final class AlmWriteValidator {
                 continue;
             }
 
-            problemWithValue(field, value).ifPresent(problems::add);
-            lookupProblem(project, field, value).ifPresent(problems::add);
+            // ⚠️ The ONE metadata flag this validator enforces, and the exception is earned.
+            // `required` and `editable` are deliberately ignored because probe 9 showed they do not
+            // describe what a write needs. `supportsMultivalue` is different: probe 33 checked it
+            // against actual behaviour on both fields that carry it. Letting a second value through
+            // on a single-value field does not produce a clean refusal — ALM stores something, and
+            // which value survives is not something this code should be discovering in production.
+            if (values.size() > 1 && !field.supportsMultivalue()) {
+                problems.add(new Problem(name, "not-multi-value",
+                        name + " holds one value; " + values.size() + " were sent"));
+                continue;
+            }
+
+            for (String each : values) {
+                problemWithValue(field, each).ifPresent(problems::add);
+                lookupProblem(project, field, each).ifPresent(problems::add);
+            }
         }
 
         return problems;

@@ -848,10 +848,44 @@ line was never probe-verified.
 
 **Next in P2:** ~~edit forms~~, ~~the comment box~~, ~~a lookup-list client~~, ~~create and delete
 affordances~~ — all landed. **CRUD is complete in the SPA and verified live end to end (probe 32).**
-Remaining: **multi-value editing** for the model's only two such fields (`target-rel`,
-`target-rcyc` — a multi-select is a different control, and faking one drops values on save), and
-**attachments**, which need the hand-built multipart body and are their own slice rather than a field
-on an existing one.
+~~multi-value editing~~ — done, see below. Remaining: **attachments**, which need the hand-built
+multipart body and are their own slice rather than a field on an existing one.
+
+### Multi-value fields are editable (2026-08-20) — after the probe that unblocked them
+
+They had been excluded from the editor with a note saying a multi-select was "a different control".
+That was only half the reason. The real blocker was that **nobody knew how a multi-value write was
+spelled** — the read shape was known, a read shape is not a write shape, and guessing one is the
+invention CLAUDE.md forbids. Probe 33 settled it, and the control followed in an afternoon.
+
+**One `values` entry per value.** A semicolon-joined string *also* works — ALM splits it, so the two
+are indistinguishable in outcome — and Alt-ALM sends the repeated-entry form deliberately: structure
+carrying the structure, nothing that breaks if a value ever contains a separator. Comma-joined is
+refused outright. An empty array clears the field.
+
+⚠️ **`supportsMultivalue` is the ONE metadata flag `AlmWriteValidator` enforces.** That is a
+deliberate exception to its own rule — `required` and `editable` are ignored because probe 9 showed
+they do not describe what a write needs — and it is earned two ways: probe 33 checked this flag
+against behaviour, and *not* enforcing it has no clean failure mode. ALM does not refuse a second
+value on a single-value field; it stores something, and which value survives is not a question to
+answer by experiment in production.
+
+**Both halves now model a field as a list**, not as a string with a multi-value special case:
+`AlmEntityBody` keeps `Map<String, List<String>>`, and the SPA's draft is `Record<string, string[]>`.
+ALM's own model is a list on every field — `values` is an array throughout — and making single-value
+the "real" shape is how a second, string-joined code path gets added later. ⚠️ The **wire** stays a
+plain string for ordinary fields: sending one-element arrays everywhere would work, but would make
+the API contract say "arrays everywhere" when the truth is "two fields".
+
+⚠️ `RecordService.valuesLanded` now compares **every** value when verifying an UNKNOWN write. A
+multi-value write that landed only its first value would otherwise verify as successful — precisely
+the corrupted outcome probe 33 was run to rule out.
+
+Verified end to end through the running BFF (`scripts/probe/probe-multivalue-e2e.py`): both values
+stored in order, a second value on a single-value field refused **422** by the validator before
+anything left the BFF, clearing works, and a numeric array element is refused **400** rather than
+coerced — `toString()` would turn `1005.0` into a value ALM rejects with a message about the field
+rather than about the JSON.
 
 ### Create and delete are in — and each refuses one thing on purpose (2026-08-20)
 

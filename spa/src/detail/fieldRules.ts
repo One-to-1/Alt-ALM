@@ -58,15 +58,14 @@ export function choicesFor(
  * `writable` is `!virtual` and nothing more — see GridDto.Column. `required` and `editable` are
  * deliberately absent from the contract so no form can grey out a field ALM actually demands
  * (probe 9). Memo fields are excluded because they are HTML documents and a text input would
- * flatten them; multi-value fields because a single-value control silently drops the other values.
+ * flatten them.
+ *
+ * Multi-value fields are INCLUDED as of probe 33, which established how a multi-value write is
+ * spelled. They were excluded while that was unknown — a single-value control over one would have
+ * silently dropped the other values on save, and guessing the wire shape was the alternative.
  */
 export function editableColumns(columns: GridColumn[]): GridColumn[] {
   return columns.filter(
-    (c) =>
-      c.writable &&
-      c.type !== 'MEMO' &&
-      c.name !== 'id' &&
-      c.name !== 'ver-stamp' &&
-      !c.multiValue,
+    (c) => c.writable && c.type !== 'MEMO' && c.name !== 'id' && c.name !== 'ver-stamp',
   )
 }

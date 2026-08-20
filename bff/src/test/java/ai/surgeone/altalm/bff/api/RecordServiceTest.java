@@ -128,10 +128,16 @@ class RecordServiceTest {
         return captor.getValue();
     }
 
-    private static Map<String, String> body(String... pairs) {
-        Map<String, String> m = new LinkedHashMap<>();
+    /**
+     * A write body, one value per field — the shape all but two fields in the model can hold.
+     *
+     * <p>Returns lists because ALM's own model is a list on every field, not only the multi-value
+     * ones. Cases that need more than one value build the map directly.
+     */
+    private static Map<String, List<String>> body(String... pairs) {
+        Map<String, List<String>> m = new LinkedHashMap<>();
         for (int i = 0; i < pairs.length; i += 2) {
-            m.put(pairs[i], pairs[i + 1]);
+            m.put(pairs[i], List.of(pairs[i + 1]));
         }
         return m;
     }

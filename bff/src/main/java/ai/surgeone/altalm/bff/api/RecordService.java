@@ -92,7 +92,7 @@ public class RecordService {
 
     /** Creates one record. */
     public WriteDto.WriteResponse create(AlmProjectRef project, String collection,
-                                         Map<String, String> fields) {
+                                         Map<String, List<String>> fields) {
         checkWritable(project);
         String entity = writableEntityOf(collection);
         validator.check(project, entity, fields);
@@ -101,7 +101,7 @@ public class RecordService {
 
         // The identifying question for a create: does a row with the name we sent exist now? Only
         // answerable when a name was sent and matches exactly one row — see the class javadoc.
-        String name = fields.get("name");
+        String name = firstOf(fields, "name");
         if (result.needsVerification() && name != null && !name.isBlank()) {
             result = writes.verify(result, () -> singleIdWhere(project, collection, "name", name));
         }
@@ -116,7 +116,7 @@ public class RecordService {
      *                        detection, not locking; see {@link AlmVersionGuard}
      */
     public WriteDto.WriteResponse update(AlmProjectRef project, String collection, String id,
-                                         Map<String, String> fields,
+                                         Map<String, List<String>> fields,
                                          Optional<String> expectedVersion) {
         checkWritable(project);
         String entity = writableEntityOf(collection);
@@ -181,12 +181,18 @@ public class RecordService {
 
     // ==========================================================================================
 
-    private static AlmEntityBody bodyOf(String entity, Map<String, String> fields) {
+    private static AlmEntityBody bodyOf(String entity, Map<String, List<String>> fields) {
         AlmEntityBody body = AlmEntityBody.of(entity);
         // Insertion order is irrelevant — AlmEntityBody re-ranks into the canonical order. Passing
         // the map through unchanged keeps that the single place the rule lives.
-        fields.forEach(body::set);
+        fields.forEach(body::setAll);
         return body;
+    }
+
+    /** A field's first value, or null when it has none. For the single-value questions below. */
+    private static String firstOf(Map<String, List<String>> fields, String name) {
+        List<String> values = fields.get(name);
+        return values == null || values.isEmpty() ? null : values.get(0);
     }
 
     /**
@@ -232,7 +238,7 @@ public class RecordService {
      *         rather than claiming a verification that never happened
      */
     private boolean valuesLanded(AlmProjectRef project, String collection, String entity, String id,
-                                 Map<String, String> sent) {
+                                 Map<String, List<String>> sent) {
         Map<String, FieldDescriptor> known = new LinkedHashMap<>();
         metadata.fields(project, entity).forEach(f -> known.put(f.name(), f));
 
@@ -251,8 +257,12 @@ public class RecordService {
             return false;
         }
         for (String name : comparable) {
-            String expected = sent.get(name) == null ? "" : sent.get(name).trim();
-            String actual = found.get().first(name).orElse("").trim();
+            // ⚠️ Compares EVERY value, not just the first. A multi-value write that landed only its
+            // first value would otherwise verify as successful — which is precisely the corrupted
+            // outcome probe 33 was run to rule out, and the one worth catching if it ever appears.
+            List<String> expected = (sent.get(name) == null ? List.<String>of() : sent.get(name))
+                    .stream().map(v -> v == null ? "" : v.trim()).toList();
+            List<String> actual = found.get().all(name).stream().map(String::trim).toList();
             if (!expected.equals(actual)) {
                 return false;
             }

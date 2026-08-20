@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import type { Choice, GridColumn, GridRow, WriteResult } from '../api/client.ts'
+import type { Choice, FieldValue, GridColumn, GridRow, WriteResult } from '../api/client.ts'
 import { fetchChoices, updateRecord } from '../api/client.ts'
 import { fieldBlamedBy, mayKeepEditing, outcomeMessage } from './writeOutcome.ts'
 import { FieldInput } from './FieldInput.tsx'
@@ -48,15 +48,22 @@ export function RecordEditor({ project, collection, columns, row, onReload, onCl
    */
   const editable = useMemo(() => editableColumns(columns), [columns])
 
+  /**
+   * The record's current values, one list per field.
+   *
+   * ⚠️ The whole list, not `[0]`. Taking only the first would silently truncate the model's two
+   * multi-value fields to one value, and then saving them back would delete the rest — which is
+   * exactly why they were not editable at all until probe 33 settled the write grammar.
+   */
   const initial = useMemo(() => {
-    const values: Record<string, string> = {}
+    const values: Record<string, string[]> = {}
     for (const column of editable) {
-      values[column.name] = row.values[column.name]?.[0] ?? ''
+      values[column.name] = row.values[column.name] ?? []
     }
     return values
   }, [editable, row])
 
-  const [draft, setDraft] = useState<Record<string, string>>(initial)
+  const [draft, setDraft] = useState<Record<string, string[]>>(initial)
   /**
    * The project's lookup lists, or null while loading / if they could not be read.
    *
@@ -108,7 +115,7 @@ export function RecordEditor({ project, collection, columns, row, onReload, onCl
     if (!blamed || base.fieldProblems[blamed]) return base
     return { ...base, fieldProblems: { ...base.fieldProblems, [blamed]: result.detail } }
   }, [base, result, editable])
-  const changed = Object.keys(draft).filter((name) => draft[name] !== initial[name])
+  const changed = Object.keys(draft).filter((name) => !sameValues(draft[name], initial[name]))
 
   /**
    * True once an outcome has arrived that must not be re-sent — an unknown one.
@@ -129,9 +136,13 @@ export function RecordEditor({ project, collection, columns, row, onReload, onCl
     setSaving(true)
     setResult(null)
     try {
-      const fields: Record<string, string> = {}
+      const fields: Record<string, FieldValue> = {}
       for (const name of changed) {
-        fields[name] = draft[name]
+        const column = editable.find((c) => c.name === name)
+        // An array only for the fields that are actually multi-value. Sending a one-element array
+        // for every field would work — the BFF normalises both — but it would make the wire
+        // contract say "arrays everywhere" when the truth is "two fields".
+        fields[name] = column?.multiValue ? draft[name] : (draft[name][0] ?? '')
       }
       setResult(await updateRecord(project, collection, row.id, fields, expectedVersion))
     } catch (error) {
@@ -206,11 +217,11 @@ export function RecordEditor({ project, collection, columns, row, onReload, onCl
             <dd>
               <FieldInput
                 column={column}
-                value={draft[column.name] ?? ''}
+                values={draft[column.name] ?? []}
                 choices={choices}
                 disabled={locked}
                 problem={message?.fieldProblems[column.name]}
-                onChange={(value) => setDraft({ ...draft, [column.name]: value })}
+                onChange={(values) => setDraft({ ...draft, [column.name]: values })}
                 idPrefix="edit"
               />
             </dd>
@@ -219,8 +230,7 @@ export function RecordEditor({ project, collection, columns, row, onReload, onCl
       </dl>
 
       <p className="detail-note">
-        Memo fields are edited from their own tab. Multi-value fields — Target Release, Target
-        Cycle — need a multi-select and are not supported in this form yet.
+        Memo fields are edited from their own tab.
         {expectedVersion === undefined &&
           ' This record reports no version, so a change saved by someone else since you opened it cannot be detected.'}
       </p>
@@ -244,4 +254,9 @@ export function RecordEditor({ project, collection, columns, row, onReload, onCl
       </div>
     </form>
   )
+}
+
+/** Order matters for a multi-value field: ALM stores it as sent, so a reorder is a real change. */
+function sameValues(a: string[] = [], b: string[] = []): boolean {
+  return a.length === b.length && a.every((v, i) => v === b[i])
 }

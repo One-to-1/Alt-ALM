@@ -18,6 +18,9 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
@@ -167,10 +170,52 @@ public class RecordController {
         return ResponseEntity.status(onCommitted).body(response);
     }
 
-    private static Map<String, String> fieldsOf(Map<String, String> fields) {
+    /**
+     * Normalises the request's field map into the one shape everything below it uses.
+     *
+     * <p>A JSON value arrives as a string or as an array of strings — see {@code CreateRequest} —
+     * and this is the single place that difference is resolved. Below here every field is a list,
+     * matching ALM's own model, where {@code values} is an array on <em>every</em> field rather than
+     * only on the multi-value ones.
+     *
+     * <p>⚠️ A non-string element is refused rather than coerced. {@code toString()} on a number
+     * would quietly turn {@code 1005} into {@code "1005"} and {@code 1005.0} into {@code "1005.0"},
+     * and the second is a value ALM rejects with a message about the field rather than about the
+     * JSON — a long way from the cause.
+     */
+    private static Map<String, List<String>> fieldsOf(Map<String, Object> fields) {
         // A null body member and an empty one mean the same thing to the validator, which has a
         // clearer message for it than a NullPointerException here would.
-        return fields == null ? Map.of() : fields;
+        if (fields == null) {
+            return Map.of();
+        }
+        Map<String, List<String>> normalised = new LinkedHashMap<>();
+        fields.forEach((name, value) -> normalised.put(name, valuesOf(name, value)));
+        return normalised;
+    }
+
+    private static List<String> valuesOf(String name, Object value) {
+        if (value == null) {
+            return List.of("");
+        }
+        if (value instanceof String s) {
+            return List.of(s);
+        }
+        if (value instanceof List<?> list) {
+            List<String> values = new ArrayList<>(list.size());
+            for (Object element : list) {
+                if (element != null && !(element instanceof String)) {
+                    throw new IllegalArgumentException(
+                            "field '" + name + "': every value must be a string, got "
+                                    + element.getClass().getSimpleName());
+                }
+                values.add(element == null ? "" : (String) element);
+            }
+            return values;
+        }
+        throw new IllegalArgumentException(
+                "field '" + name + "': value must be a string or an array of strings, got "
+                        + value.getClass().getSimpleName());
     }
 
     /** Parses {@code DOMAIN/PROJECT}, defaulting to the credentialed project. */

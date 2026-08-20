@@ -59,7 +59,9 @@ class AlmWriteValidatorTest {
                 field("type-id", AlmFieldType.NUMBER),
                 virtual("father-name", AlmFieldType.STRING),
                 readOnlyButRequiredOnCreate("ref-count", AlmFieldType.NUMBER),
-                requiredPerMetadata("req-type", AlmFieldType.LOOKUP_LIST)));
+                requiredPerMetadata("req-type", AlmFieldType.LOOKUP_LIST),
+                multiValue("target-rel", "release"),
+                multiValueNumbers("estimates")));
     }
 
     private static FieldDescriptor field(String name, AlmFieldType type) {
@@ -90,19 +92,61 @@ class AlmWriteValidatorTest {
                 false, true, true, false, false, true, true, false, listId, 0);
     }
 
+    /**
+     * One of the model's two multi-value fields — both References, both on requirements.
+     *
+     * <p>`supportsMultivalue` is the sixth flag. It is set here rather than on a convenience helper
+     * because it is the one flag the validator acts on, and probe 33 confirmed it matches behaviour.
+     */
+    private static FieldDescriptor multiValue(String name, String referencedEntity) {
+        return new FieldDescriptor(name, name.toUpperCase().replace('-', '_'),
+                AlmFieldType.REFERENCE, name,
+                false, true, true, false, true, true, true, false, 0, 0, referencedEntity);
+    }
+
+    /**
+     * A multi-value field of a type the validator actually value-checks.
+     *
+     * <p>⚠️ <strong>Synthetic — no such field exists in this project.</strong> The model's only two
+     * multi-value fields are both References, and References carry ids the validator does not
+     * constrain, so the per-value loop cannot be exercised with a real field shape. The rule is
+     * still worth having and worth testing: it is what stops a bad value riding in behind a good
+     * one, and a project that customises a multi-value Number would hit it immediately.
+     */
+    private static FieldDescriptor multiValueNumbers(String name) {
+        return new FieldDescriptor(name, name.toUpperCase().replace('-', '_'),
+                AlmFieldType.NUMBER, name,
+                false, true, true, false, true, true, true, false, 0, 0, "");
+    }
+
     private static FieldDescriptor requiredPerMetadata(String name, AlmFieldType type) {
         return new FieldDescriptor(name, name.toUpperCase().replace('-', '_'), type, name,
                 true, true, true, false, false, true, true, false, 0, 0);
     }
 
-    private List<AlmWriteValidator.Problem> validate(Map<String, String> body) {
+    /**
+     * Every case below states its body as one value per field, which is what all but two fields in
+     * the model can hold. The lists are built here so the cases stay readable; {@link #validateMulti}
+     * is the way in for the multi-value ones.
+     */
+    private List<AlmWriteValidator.Problem> validate(Map<String, List<String>> body) {
         return validator.validate(PROJECT, "requirement", body);
     }
 
-    private static Map<String, String> body(String... pairs) {
-        Map<String, String> m = new LinkedHashMap<>();
+    private List<AlmWriteValidator.Problem> validateMulti(String field, String... values) {
+        return validator.validate(PROJECT, "requirement", Map.of(field, List.of(values)));
+    }
+
+    /**
+     * A write body, one value per field — the shape all but two fields in the model can hold.
+     *
+     * <p>Returns lists because ALM's own model is a list on every field, not only the multi-value
+     * ones. Cases that need more than one value build the map directly.
+     */
+    private static Map<String, List<String>> body(String... pairs) {
+        Map<String, List<String>> m = new LinkedHashMap<>();
         for (int i = 0; i < pairs.length; i += 2) {
-            m.put(pairs[i], pairs[i + 1]);
+            m.put(pairs[i], List.of(pairs[i + 1]));
         }
         return m;
     }
@@ -383,4 +427,58 @@ class AlmWriteValidatorTest {
             assertThat(validate(body("name", "Still valid", "type-id", "99"))).isEmpty();
         }
     }
+
+    @Nested
+    @DisplayName("multi-value: the one metadata flag this validator DOES enforce")
+    class MultiValue {
+
+        @Test
+        @DisplayName("several values are accepted on a field that supports them")
+        void multiValueFieldTakesSeveral() {
+            // target-rel is one of exactly two multi-value fields in the whole model, and probe 33
+            // confirmed the flag against actual behaviour rather than trusting it.
+            assertThat(validateMulti("target-rel", "1005", "1006")).isEmpty();
+        }
+
+        @Test
+        @DisplayName("a second value on a single-value field is refused")
+        void singleValueFieldRefusesSeveral() {
+            // ⚠️ The deliberate exception to this validator's rule of not enforcing metadata flags.
+            // `required` and `editable` are ignored because probe 9 showed they do not describe what
+            // a write needs. `supportsMultivalue` is different: it was checked against behaviour.
+            //
+            // The reason to enforce it is that NOT enforcing has no clean failure. ALM does not
+            // refuse a second value on a single-value field — it stores something, and which value
+            // survives is not a question this code should answer by experiment in production.
+            assertThat(codes(validateMulti("name", "first", "second")))
+                    .containsExactly("not-multi-value");
+        }
+
+        @Test
+        @DisplayName("one value is fine on a single-value field, obviously")
+        void oneValueIsAlwaysFine() {
+            assertThat(validateMulti("name", "only")).isEmpty();
+        }
+
+        @Test
+        @DisplayName("every value is checked, not just the first")
+        void allValuesAreValidated() {
+            // A field whose first value is fine and whose second is not must still be caught —
+            // otherwise a bad value rides in behind a good one.
+            //
+            // ⚠️ `estimates` is synthetic (see its factory): the real multi-value fields are
+            // References, whose ids this validator does not constrain, so no real field can
+            // exercise this loop. The rule is kept because it is correct, not because it currently
+            // fires.
+            assertThat(codes(validateMulti("estimates", "12", "twelve")))
+                    .containsExactly("not-a-number");
+        }
+
+        @Test
+        @DisplayName("clearing a multi-value field validates nothing")
+        void clearingIsFine() {
+            assertThat(validateMulti("target-rel", "")).isEmpty();
+        }
+    }
+
 }

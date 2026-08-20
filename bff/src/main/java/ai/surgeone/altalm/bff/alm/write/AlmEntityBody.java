@@ -42,7 +42,15 @@ public final class AlmEntityBody {
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
     private final String entityType;
-    private final Map<String, String> fields = new LinkedHashMap<>();
+    /**
+     * Field name → its values.
+     *
+     * <p>A list because ALM's own model is a list: {@code values} is an array on every field, not
+     * just on the multi-value ones. Storing a bare string here and expanding it at serialization
+     * time would make the single-value case the "real" one and multi-value a special case, which is
+     * backwards — and it is how a second, string-joined code path gets added later.
+     */
+    private final Map<String, List<String>> fields = new LinkedHashMap<>();
 
     private AlmEntityBody(String entityType) {
         if (entityType == null || entityType.isBlank()) {
@@ -64,10 +72,38 @@ public final class AlmEntityBody {
      * {@link AlmWriteRetry} order-safe.
      */
     public AlmEntityBody set(String logicalName, String value) {
+        return setAll(logicalName, List.of(value == null ? "" : value));
+    }
+
+    /**
+     * Sets every value of a multi-value field.
+     *
+     * <p><strong>Probe 33 settled the spelling</strong>, which was UNVERIFIED until it was run: ALM
+     * accepts one {@code {"value": …}} object per value and stores them separately. It also accepts
+     * a single semicolon-joined string and splits it — the two are indistinguishable in outcome —
+     * but this sends the repeated-entry form deliberately. Structure carries the structure, there is
+     * no string convention to get wrong, and nothing breaks if a value ever contains a separator.
+     * (A comma-joined string is refused outright: {@code 500 … should contain only numbers}.)
+     *
+     * <p>⚠️ Only the model's two Reference fields — {@code target-rel} and {@code target-rcyc} —
+     * support this. {@link AlmWriteValidator} refuses more than one value on any other field rather
+     * than letting ALM decide, because this is the rare case where metadata's
+     * {@code supportsMultivalue} is <em>reliable</em>: probe 33 confirmed it against behaviour.
+     *
+     * <p>An empty list clears the field, which probe 33 also verified: ALM accepts a single empty
+     * value and the read-back returns nothing.
+     */
+    public AlmEntityBody setAll(String logicalName, List<String> values) {
         if (logicalName == null || logicalName.isBlank()) {
             throw new IllegalArgumentException("field name is required");
         }
-        fields.put(logicalName, value == null ? "" : value);
+        List<String> cleaned = new ArrayList<>();
+        for (String v : values == null ? List.<String>of() : values) {
+            cleaned.add(v == null ? "" : v);
+        }
+        // Clearing is spelled as one empty value, not as an empty array: an empty `values` array is
+        // a shape nothing has tested, and probe 33 verified the empty-string form works.
+        fields.put(logicalName, cleaned.isEmpty() ? List.of("") : List.copyOf(cleaned));
         return this;
     }
 
@@ -107,7 +143,10 @@ public final class AlmEntityBody {
         for (String name : orderedFieldNames()) {
             ObjectNode field = array.addObject();
             field.put("Name", name);
-            field.putArray("values").addObject().put("value", fields.get(name));
+            ArrayNode values = field.putArray("values");
+            for (String value : fields.get(name)) {
+                values.addObject().put("value", value);
+            }
         }
         root.put("Type", entityType);
         // Jackson 3 throws unchecked JacksonException; a tree we just built cannot fail to

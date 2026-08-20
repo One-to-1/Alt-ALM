@@ -82,7 +82,10 @@ function button(name: string | RegExp): HTMLButtonElement {
 /** The create POST specifically — the form also reads /api/choices on mount. */
 function createBody(fetchMock: ReturnType<typeof respondWith>) {
   const call = fetchMock.mock.calls.find((c) => (c[1] as RequestInit | undefined)?.method === 'POST')
-  return JSON.parse(String((call?.[1] as RequestInit).body)) as { fields: Record<string, string> }
+  if (!call) throw new Error('no create request was sent')
+  return JSON.parse(String((call[1] as RequestInit).body)) as {
+    fields: Record<string, string | string[]>
+  }
 }
 
 afterEach(() => {
