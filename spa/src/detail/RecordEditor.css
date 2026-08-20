@@ -78,3 +78,12 @@
   border-color: var(--accent);
   background: color-mix(in srgb, var(--accent) 8%, transparent);
 }
+
+/* A field whose choices could not be resolved. Deliberately NOT an input: its value is a record id,
+   and a text box over an id invites typing a number that silently re-points the record. */
+.record-editor-unresolved {
+  display: inline-block;
+  padding: 2px 0;
+  color: var(--text-dim, #6b7280);
+  font-style: italic;
+}

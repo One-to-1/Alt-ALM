@@ -233,6 +233,28 @@ public class GridController {
     }
 
     /**
+     * The values one field permits — whichever of the three mechanisms supplies them.
+     *
+     * <p>Whole collection in one response: a requirement has 27 lookup fields plus 3 references, so
+     * a per-field route would cost 30 requests to open one editor.
+     *
+     * <p>The SPA asks this and renders the answer; it does not need to know whether the values came
+     * from a lookup list, a query against another entity collection, or the subtype endpoint. That
+     * branching lives in {@link GridService#choices} because getting it wrong is invisible:
+     * {@code type-id} looks exactly like a lookup and is resolved a completely different way.
+     *
+     * <p>⚠️ A field with no choices is <strong>absent from the map</strong>, and that covers both
+     * "no choices exist" and "they could not be read". Both mean <em>do not constrain this field</em>
+     * — rendering an empty dropdown for either would make it impossible to fill.
+     */
+    @GetMapping("/choices/{collection}")
+    public Map<String, List<Map<String, String>>> choices(
+            @PathVariable String collection,
+            @RequestParam(required = false) String project) {
+        return grids.choices(resolve(project), collection);
+    }
+
+    /**
      * Every lookup list in this project, by id.
      *
      * <p>All of them in one response because that is how ALM serves them — the upstream collection

@@ -68,9 +68,36 @@ public final class AlmMetadataParser {
                     f.path("active").asBoolean(false),
                     f.path("visibleInWebUI").asBoolean(false),
                     f.path("groupable").asBoolean(false),
+                    // ⚠️ The server sends lowerCamel `listId`; `List-Id` is what the API reference
+                    // documented and is NOT what arrives. The fallback covers both, but the second
+                    // is the live one — an analysis keyed on the documented spelling concludes
+                    // "no field is list-bound" when 56 of 58 are.
                     f.path("List-Id").asInt(f.path("listId").asInt(0)),
-                    f.path("size").asInt(0)));
+                    f.path("size").asInt(0),
+                    referencedEntityOf(f)));
         }
         return List.copyOf(out);
+    }
+
+    /**
+     * What a {@code Reference} field points at, from {@code fieldRelationReferences}.
+     *
+     * <p>⚠️ <strong>An empty answer is meaningful.</strong> {@code target-rel} carries
+     * {@code references[0].referencedEntityType = "release"}, while {@code type-id} carries an empty
+     * {@code references} array — and that absence is what identifies it as the subtype
+     * discriminator rather than a broken payload. Returning "" for both a non-Reference field and a
+     * reference-less one is deliberate; {@link FieldDescriptor#choiceSource()} is where the
+     * distinction is drawn, using the field's type alongside this.
+     *
+     * <p>Only the first reference is taken. Every Reference field observed names exactly one target,
+     * and a multi-target field would be a shape no probe has seen — better to use the first than to
+     * invent a merge rule for a case that may not exist.
+     */
+    private static String referencedEntityOf(JsonNode field) {
+        JsonNode references = field.path("fieldRelationReferences").path("references");
+        if (!references.isArray() || references.isEmpty()) {
+            return "";
+        }
+        return references.path(0).path("referencedEntityType").asString("");
     }
 }

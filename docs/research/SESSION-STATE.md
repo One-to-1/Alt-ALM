@@ -575,7 +575,7 @@ to return 1 of the project's 2 instances. Re-seed with
 
 ## P2 status (started 2026-08-18; CRUD endpoints landed 2026-08-19)
 
-**335 BFF tests default, 378 with `-Pcontract`. 74 SPA tests.**
+**345 BFF tests default, 388 with `-Pcontract`. 76 SPA tests.**
 
 ✅ **The write core is in and verified live.** `bff/.../alm/write/`:
 
@@ -770,8 +770,8 @@ Raised by the user, verified against fixtures and the live server. The lookup sl
 | Mechanism | How it resolves | Example | Status |
 |---|---|---|---|
 | `LookupList` + `listId` | `customization/used-lists` | `status` → list 309 | ✅ done |
-| `Reference` **with** `fieldRelationReferences` | query the referenced **entity collection**; the stored value is an **id** | `target-rel` → `release` via `requirementToReleaseConnection`; `target-rcyc` → `release-cycle` | ❌ not built |
-| `Reference` with an **empty** `references` array | `customization/entities/{e}/types` | `type-id` (Requirement Type) | ❌ not built |
+| `Reference` **with** `fieldRelationReferences` | query the referenced **entity collection**; the stored value is an **id** | `target-rel` → `release` via `requirementToReleaseConnection`; `target-rcyc` → `release-cycle` | ✅ done |
+| `Reference` with an **empty** `references` array | `customization/entities/{e}/types` | `type-id` (Requirement Type) | ✅ done |
 
 - **56 of 58** `LookupList` fields across the model carry a `listId`, so mechanism 1 genuinely
   covers most of them. Requirement is **27 of 27**.
@@ -783,8 +783,38 @@ Raised by the user, verified against fixtures and the live server. The lookup sl
   the SPA currently cannot tell what a Reference points at. That is the first thing mechanism 2
   needs.
 
-**Fixed as a result:** `RecordEditor` was rendering single-value References as **text inputs
-pre-filled with a raw id**. For `type-id` that invites someone to type a number that silently
+✅ **All three now resolve, through ONE endpoint** (2026-08-20): `GET /api/choices/{collection}`
+returns `{field: [{value,label}]}` for every field that offers anything. Verified live —
+**27 fields**, with `status` → 7 (value==label, a literal), `type-id` → 8 (`value:'0'`,
+`label:'Undefined'` — **id stored, name shown**), `req-type` → 2.
+
+- **`FieldDescriptor.choiceSource()`** is the single decision point: `LIST` / `ENTITY` / `SUBTYPE` /
+  `NONE`. ⚠️ **The UI branches on this and never on the field type** — `type-id` and `target-rel`
+  are both `REFERENCE` and resolve completely differently, so the type alone cannot tell them apart.
+- **Collection-level, not per-field.** A requirement has 27 lookup fields plus 3 references; a
+  per-field route would cost 30 requests to open one editor. Lists and subtypes are cached; entity
+  reads are memoized per request, so two fields on one target cost one query.
+- **Reference dropdowns are capped at 200** — deliberately far below the server's 2,000. A select
+  with 2,000 options is not a control; hitting the cap means "build a search field", not "raise the
+  number".
+- ⚠️ **The ENTITY route could not be verified in the sandbox**, which has **0 releases** — and "no
+  rows" is indistinguishable from "my query is broken". Verified instead against an enrolled project
+  that has releases: 3 choices, numeric-id values, non-empty labels. Counts and shapes only; no
+  third-party data was read into the repo or logs.
+
+⚠️ **The fallback differs by MECHANISM, and one rule for all three was wrong** — caught by the
+component tests after I applied a single rule. An unresolved **LOOKUP** degrades to a **text box**
+(its value is a literal string, so "let ALM decide" applies). An unresolved **REFERENCE** gets **no
+control at all** (its value is an **id**, and a text box pre-filled with one invites typing a number
+that silently re-points the record). Not constraining is right for a string and a trap for an
+identifier.
+
+**Still not editable:** the two multi-value fields (`target-rel`, `target-rcyc`). A multi-select is a
+different control, and faking one with a single-value dropdown would silently drop the other values
+on save.
+
+**Earlier fix, superseded:** `RecordEditor` had been rendering single-value References as **text
+inputs pre-filled with a raw id**. For `type-id` that invites someone to type a number that silently
 re-types the requirement. References are now excluded like memos — offering no control is honest;
 offering a text box over an id is a trap.
 

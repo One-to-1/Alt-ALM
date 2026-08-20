@@ -13,6 +13,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 /**
  * Turns an ALM collection read into the SPA's grid contract.
@@ -224,6 +225,109 @@ public class GridService {
                 "values", list.values())));
         return out;
     }
+
+    /**
+     * The values a field permits, whichever of the three mechanisms supplies them.
+     *
+     * <p><strong>The point of this method is that the caller does not have to know which one.</strong>
+     * "A field with choices" is three unrelated routes — a bound lookup list, a reference to another
+     * entity collection, or the subtype endpoint — and a UI that had to branch on them would get it
+     * wrong for {@code type-id}, which looks like a lookup and is not.
+     *
+     * <p>⚠️ Returns an <strong>empty list</strong> for a field with no choices AND for one whose
+     * choices cannot be read. The caller cannot distinguish them, deliberately: both mean "do not
+     * constrain this field", and a UI that rendered an empty dropdown for the second would make the
+     * field impossible to fill.
+     *
+     * @return {@code [{value, label}]} — {@code value} is what a write must send, which for an
+     *         entity reference is an <strong>id</strong> and not the label beside it
+     */
+    public Map<String, List<Map<String, String>>> choices(AlmProjectRef project, String collection) {
+        String entity = entityOf(collection);
+        Map<String, List<Map<String, String>>> out = new LinkedHashMap<>();
+        // Referenced-entity reads memoized for this request: two fields pointing at the same
+        // collection cost one query, not two. Request-scoped rather than cached longer, because
+        // these are ROWS - a release added a moment ago should appear in the next editor opened.
+        Map<String, List<Map<String, String>>> byReferencedEntity = new LinkedHashMap<>();
+        // Resolved per COLLECTION rather than per field, and that is not a micro-optimisation: a
+        // requirement has 27 lookup fields plus 3 references, so a per-field endpoint would mean 30
+        // requests to open one editor. Lists and subtypes are cached after the first upstream call,
+        // and the entity queries are one per distinct referenced entity (two, here) rather than one
+        // per field.
+        for (FieldDescriptor f : metadata.fields(project, entity)) {
+            if (f.choiceSource() == FieldDescriptor.ChoiceSource.NONE) {
+                continue;
+            }
+            List<Map<String, String>> choices = f.choiceSource() == FieldDescriptor.ChoiceSource.ENTITY
+                    ? byReferencedEntity.computeIfAbsent(f.referencedEntity(),
+                            e -> entityChoices(project, e))
+                    : choicesFor(project, entity, f);
+            // An empty result is omitted rather than sent as []. Both mean "do not constrain", and
+            // omitting keeps the payload to the fields that actually offer something.
+            if (!choices.isEmpty()) {
+                out.put(f.name(), choices);
+            }
+        }
+        return out;
+    }
+
+    private List<Map<String, String>> choicesFor(AlmProjectRef project, String entity,
+                                                 FieldDescriptor descriptor) {
+        return switch (descriptor.choiceSource()) {
+            case LIST -> metadata.list(project, descriptor.listId())
+                    .map(l -> l.values().stream()
+                            .map(v -> Map.of("value", v, "label", v))
+                            .toList())
+                    .orElseGet(List::of);
+            case SUBTYPE -> metadata.types(project, entity).stream()
+                    .map(t -> Map.of("value", t.id(), "label", t.name()))
+                    .toList();
+            // Reached only if a caller bypasses the memoization above; kept so this method stays
+            // correct on its own terms rather than depending on its one call site.
+            case ENTITY -> entityChoices(project, descriptor.referencedEntity());
+            case NONE -> List.of();
+        };
+    }
+
+
+    /**
+     * Rows of a referenced collection, as id/name pairs.
+     *
+     * <p>⚠️ Capped, and the cap is reported by being silent about it rather than by truncating
+     * invisibly — see the note below. A release list is small; this is not a general entity browser
+     * and must not become one.
+     */
+    private List<Map<String, String>> entityChoices(AlmProjectRef project, String referencedEntity) {
+        Optional<String> referencedCollection = AlmCollections.moduleOf(referencedEntity);
+        if (referencedCollection.isEmpty()) {
+            // The reference points at something this build cannot read — a component, say. Empty
+            // means "no constraint", which is the honest answer rather than a half-populated list.
+            return List.of();
+        }
+        try {
+            return entities.page(project, referencedCollection.get(),
+                            AlmQuery.none().fields("id", "name").pageSize(CHOICE_CAP).orderBy("name"))
+                    .entities().stream()
+                    .map(e -> Map.of(
+                            "value", e.id().orElse(""),
+                            "label", e.first("name").orElse(e.id().orElse(""))))
+                    .filter(m -> !m.get("value").isEmpty())
+                    .toList();
+        } catch (RuntimeException e) {
+            // Same rule as everywhere else in this feature: a read that failed constrains nothing.
+            return List.of();
+        }
+    }
+
+    /**
+     * How many rows a reference dropdown will offer.
+     *
+     * <p>Not 2,000 (the server maximum): a select with two thousand options is not a control anyone
+     * can use, and a project with more releases than this needs a search field rather than a longer
+     * list. Deliberately small enough that hitting it means "build the better control", not "raise
+     * the number".
+     */
+    private static final int CHOICE_CAP = 200;
 
     private static String entityOf(String collection) {
         return AlmCollections.entityOf(collection);

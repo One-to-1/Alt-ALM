@@ -26,6 +26,7 @@ function column(name: string, over: Partial<GridColumn> = {}): GridColumn {
     riskGroup: false,
     groupable: false,
     writable: true,
+    choiceSource: 'NONE',
     ...over,
   }
 }
@@ -33,10 +34,12 @@ function column(name: string, over: Partial<GridColumn> = {}): GridColumn {
 const COLUMNS: GridColumn[] = [
   column('name'),
   column('priority'),
-  column('status', { type: 'LOOKUP_LIST', listId: 194 }),
+  column('status', { type: 'LOOKUP_LIST', listId: 194, choiceSource: 'LIST' }),
   column('unbound', { type: 'LOOKUP_LIST', listId: 0 }),
-  column('type-id', { type: 'REFERENCE' }),
-  column('target-rel', { type: 'REFERENCE', multiValue: true }),
+  // A Reference resolved by the subtype endpoint...
+  column('type-id', { type: 'REFERENCE', choiceSource: 'SUBTYPE' }),
+  // ...and one resolved by querying another collection. Same type, different route.
+  column('target-rel', { type: 'REFERENCE', multiValue: true, choiceSource: 'ENTITY' }),
   column('description', { type: 'MEMO' }),
   column('father-name', { writable: false }),
 ]
@@ -66,8 +69,8 @@ function respondWith(status: number, body: unknown) {
       // The editor loads lookup lists on mount. Answering that separately keeps every existing
       // case unchanged while letting the lookup tests supply real choices.
       Promise.resolve(
-        String(url).includes('/api/lists')
-          ? { ok: true, status: 200, json: async () => LISTS }
+        String(url).includes('/api/choices')
+          ? { ok: true, status: 200, json: async () => CHOICES }
           : { ok: status >= 200 && status < 300, status, json: async () => body },
       ),
     ),
@@ -75,7 +78,7 @@ function respondWith(status: number, body: unknown) {
 }
 
 /** Empty by default, so the existing cases keep rendering text inputs. */
-let LISTS: Record<string, { name: string; values: string[] }> = {}
+let CHOICES: Record<string, { value: string; label: string }[]> = {}
 
 function writeBody(over: Record<string, unknown> = {}) {
   return {
@@ -120,7 +123,7 @@ async function findSelect(label: string): Promise<HTMLSelectElement> {
 }
 
 afterEach(() => {
-  LISTS = {}
+  CHOICES = {}
   cleanup()
   vi.unstubAllGlobals()
   vi.restoreAllMocks()
@@ -215,16 +218,43 @@ describe('the fields it offers', () => {
     expect(screen.queryByLabelText.call(screen, 'father-name')).toBeNull()
   })
 
-  it('omits REFERENCE fields rather than offering a text box over a raw id', () => {
+  it('omits MULTI-VALUE fields, which need a control this form does not have', () => {
     renderEditor()
 
-    // type-id is a single-value Reference whose stored value is a subtype id. Rendered as a text
-    // input it invites someone to type a number that silently re-types the requirement. Target
-    // Release is the multi-value kind, pointing at the `release` collection. Both need a resolver,
-    // and until there is one, offering no control is more honest than offering a trap.
-    expect(screen.queryByLabelText('type-id')).toBeNull()
+    // target-rel and target-rcyc are the only two multi-value fields in the model. Faking a
+    // multi-select with a single-value dropdown would silently drop the other values on save.
     expect(screen.queryByLabelText('target-rel')).toBeNull()
-    expect(screen.getByText(/point at another record/i)).toBeTruthy()
+    expect(screen.getByText(/not supported in this form/i)).toBeTruthy()
+  })
+
+  it('resolves a SUBTYPE reference to a dropdown of names, storing the id', async () => {
+    // type-id is a Reference that resolves through the subtype endpoint, not a lookup list. The
+    // user picks "Folder"; what is stored is "1".
+    CHOICES = {
+      'type-id': [
+        { value: '1', label: 'Folder' },
+        { value: '3', label: 'Functional' },
+      ],
+    }
+    respondWith(200, writeBody())
+    renderEditor()
+
+    const select = await findSelect('type-id')
+    expect(Array.from(select.options).map((o) => o.textContent)).toContain('Folder')
+    expect(Array.from(select.options).map((o) => o.value)).toContain('1')
+  })
+
+  it('gives an UNRESOLVED reference no control at all - never a text box over an id', async () => {
+    // ⚠️ The fallback differs by mechanism, and this is the half that is easy to get wrong. An
+    // unresolved LOOKUP degrades to free text, because its value is a literal string. An
+    // unresolved REFERENCE must not: its value is an id, and a text box pre-filled with one
+    // invites typing a number that silently re-points the record.
+    CHOICES = {}
+    respondWith(200, writeBody())
+    renderEditor()
+
+    await waitFor(() => expect(screen.getByText(/not editable here/i)).toBeTruthy())
+    expect(screen.queryByLabelText('type-id')).toBeNull()
   })
 
   it('warns when the record carries no version to detect a conflict with', () => {
@@ -237,7 +267,9 @@ describe('the fields it offers', () => {
 
 describe('lookup fields become dropdowns, and every "cannot tell" stays a text box', () => {
   it('offers the values this project defines for a bound field', async () => {
-    LISTS = { '194': { name: 'Status', values: ['Not Covered', 'Passed', 'Failed'] } }
+    CHOICES = {
+      status: ['Not Covered', 'Passed', 'Failed'].map((v) => ({ value: v, label: v })),
+    }
     respondWith(200, writeBody())
     renderEditor()
 
@@ -257,7 +289,7 @@ describe('lookup fields become dropdowns, and every "cannot tell" stays a text b
   it('keeps a stored value the list no longer offers, rather than silently re-pointing', async () => {
     // A list edited after this record was written. Without this, the select would fall back to its
     // first option and save THAT on the next Save - a value the user never chose.
-    LISTS = { '194': { name: 'Status', values: ['Not Covered', 'Failed'] } }
+    CHOICES = { status: ['Not Covered', 'Failed'].map((v) => ({ value: v, label: v })) }
     respondWith(200, writeBody())
     renderEditor()
 
@@ -270,7 +302,7 @@ describe('lookup fields become dropdowns, and every "cannot tell" stays a text b
     vi.stubGlobal(
       'fetch',
       vi.fn().mockImplementation((url: string) =>
-        String(url).includes('/api/lists')
+        String(url).includes('/api/choices')
           ? Promise.reject(new TypeError('down'))
           : Promise.resolve({ ok: true, status: 200, json: async () => writeBody() }),
       ),
@@ -282,9 +314,9 @@ describe('lookup fields become dropdowns, and every "cannot tell" stays a text b
     await waitFor(() => expect((screen.getByLabelText('status') as HTMLElement).tagName).toBe('INPUT'))
   })
 
-  it('falls back to a text box for an EMPTY list', async () => {
-    // Three of the sandbox's 39 lists have no items.
-    LISTS = { '194': { name: 'Status', values: [] } }
+  it('falls back to a text box when a field is absent from the choices map', async () => {
+    // Absent covers both "no choices exist" and "could not be read" - both mean do not constrain.
+    CHOICES = {}
     respondWith(200, writeBody())
     renderEditor()
 
@@ -292,7 +324,7 @@ describe('lookup fields become dropdowns, and every "cannot tell" stays a text b
   })
 
   it('leaves an UNBOUND list field as a text box', async () => {
-    LISTS = { '194': { name: 'Status', values: ['Passed'] } }
+    CHOICES = { status: [{ value: 'Passed', label: 'Passed' }] }
     respondWith(200, writeBody())
     renderEditor()
 

@@ -43,6 +43,10 @@ public final class AlmMetadataCatalog {
      */
     private final Map<AlmProjectRef, CompletableFuture<Map<Integer, AlmList>>> lists =
             new ConcurrentHashMap<>();
+
+    /** Subtypes, keyed by project+entity — the one metadata read that is scoped to both. */
+    private final Map<String, CompletableFuture<List<AlmEntityType>>> typeCache =
+            new ConcurrentHashMap<>();
     private final AlmMetadataClient client;
     private final AlmAccessPolicy policy;
 
@@ -86,6 +90,29 @@ public final class AlmMetadataCatalog {
      */
     public List<AlmRelation> relations(AlmProjectRef project, String entity) {
         return cacheFor(project).relations(entity);
+    }
+
+    /**
+     * An entity's subtypes, cached per project+entity.
+     *
+     * <p>⚠️ Returns <strong>empty</strong> on failure rather than throwing — same rule as
+     * {@link #lists}: a choice list that cannot be read must degrade to "no constraint", never to
+     * an error. {@code defect}'s types endpoint 500s, and this is what keeps that from surfacing as
+     * a broken detail pane.
+     */
+    public List<AlmEntityType> types(AlmProjectRef project, String entity) {
+        policy.checkRead(project);
+        String key = project.domain() + "/" + project.project() + "#" + entity;
+        CompletableFuture<List<AlmEntityType>> pending = typeCache.computeIfAbsent(key,
+                k -> CompletableFuture.supplyAsync(() -> client.fetchTypes(project, entity),
+                        Runnable::run));
+        try {
+            return pending.join();
+        } catch (RuntimeException e) {
+            typeCache.remove(key, pending);
+            log.debug("no subtypes for {} - the field will offer no choices", entity, e);
+            return List.of();
+        }
     }
 
     /**
@@ -148,6 +175,8 @@ public final class AlmMetadataCatalog {
         // list-of-values expects the new items — leaving them cached would make the lever look
         // broken for the one change most likely to prompt pulling it.
         lists.remove(project);
+        typeCache.keySet().removeIf(
+                k -> k.startsWith(project.domain() + "/" + project.project() + "#"));
     }
 
     /** Projects with metadata currently cached. */

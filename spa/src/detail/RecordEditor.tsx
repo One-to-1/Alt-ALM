@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
-import type { GridColumn, GridRow, LookupList, WriteResult } from '../api/client.ts'
-import { fetchLists, updateRecord } from '../api/client.ts'
+import type { Choice, GridColumn, GridRow, WriteResult } from '../api/client.ts'
+import { fetchChoices, updateRecord } from '../api/client.ts'
 import { mayKeepEditing, outcomeMessage } from './writeOutcome.ts'
 import './RecordEditor.css'
 
@@ -55,14 +55,15 @@ export function RecordEditor({ project, collection, columns, row, onReload, onCl
    *       again.
    * </ol>
    *
-   * REFERENCE fields are therefore <strong>excluded</strong> rather than rendered. They were briefly
-   * shown as text inputs pre-filled with a raw id, which is worse than omitting them: it invites
-   * someone to type a number that silently re-points the record at a different release — or, for
-   * `type-id`, re-types the requirement itself. Offering no control is honest; offering a text box
-   * over an id is a trap. Resolving them is its own slice.
+   * All three now resolve, through the BFF's single `/api/choices` route — which is why this form
+   * branches on `choiceSource` and never on the field's type. A Reference whose choices did NOT
+   * arrive still renders no control rather than a text box: a text box pre-filled with a raw id
+   * invites someone to type a number that silently re-points the record at a different release, or
+   * re-types the requirement itself.
    *
-   * Multi-value fields are excluded for the same reason and are, in this model, exactly the two
-   * Reference fields above — there are only two in the entire model.
+   * Multi-value fields remain excluded — exactly the two Reference fields above, the only two in
+   * the model. A multi-select is a different control, and faking one with a single-value dropdown
+   * would silently drop the other values on save.
    */
   const editable = useMemo(
     () =>
@@ -70,7 +71,6 @@ export function RecordEditor({ project, collection, columns, row, onReload, onCl
         (c) =>
           c.writable &&
           c.type !== 'MEMO' &&
-          c.type !== 'REFERENCE' &&
           c.name !== 'id' &&
           c.name !== 'ver-stamp' &&
           !c.multiValue,
@@ -94,23 +94,23 @@ export function RecordEditor({ project, collection, columns, row, onReload, onCl
    * falls back to a text input rather than to an empty dropdown the user cannot satisfy. Same rule
    * the BFF validator follows — when the evidence is absent, do not constrain.
    */
-  const [lists, setLists] = useState<Record<string, LookupList> | null>(null)
+  const [choices, setChoices] = useState<Record<string, Choice[]> | null>(null)
 
   useEffect(() => {
     let cancelled = false
-    fetchLists(project)
+    fetchChoices(project, collection)
       .then((loaded) => {
-        if (!cancelled) setLists(loaded)
+        if (!cancelled) setChoices(loaded)
       })
       .catch(() => {
-        // Degrade to text inputs. Blocking the edit because a dropdown could not be populated
-        // would be a worse trade than letting ALM reject an unusual value.
-        if (!cancelled) setLists(null)
+        // Degrade to text inputs. Blocking the edit because a dropdown could not be populated is a
+        // worse trade than letting ALM reject an unusual value.
+        if (!cancelled) setChoices(null)
       })
     return () => {
       cancelled = true
     }
-  }, [project])
+  }, [project, collection])
   const [saving, setSaving] = useState(false)
   const [result, setResult] = useState<WriteResult | null>(null)
 
@@ -145,9 +145,22 @@ export function RecordEditor({ project, collection, columns, row, onReload, onCl
    * last one matters — three of the sandbox's 39 lists are empty, and rendering an empty dropdown
    * would make the field impossible to fill rather than merely unconstrained.
    */
-  function choicesFor(column: GridColumn): string[] | null {
-    if (column.type !== 'LOOKUP_LIST' || column.listId === 0 || lists === null) return null
-    const values = lists[String(column.listId)]?.values
+  /**
+   * Whether this field's value is a record ID rather than a literal.
+   *
+   * The distinction that decides the fallback: an id typed by hand is a wrong pointer, a string
+   * typed by hand is just a value ALM can reject.
+   */
+  function pointsAtARecord(column: GridColumn): boolean {
+    return column.choiceSource === 'ENTITY' || column.choiceSource === 'SUBTYPE'
+  }
+
+  function choicesFor(column: GridColumn): Choice[] | null {
+    // ⚠️ Branches on choiceSource, never on type. `type-id` and `target-rel` are both REFERENCE and
+    // resolve by completely different routes; the BFF has already done that resolution, so all
+    // this needs to know is whether an answer arrived.
+    if (column.choiceSource === 'NONE' || choices === null) return null
+    const values = choices[column.name]
     return values && values.length > 0 ? values : null
   }
 
@@ -236,7 +249,20 @@ export function RecordEditor({ project, collection, columns, row, onReload, onCl
                 <label htmlFor={`edit-${column.name}`}>{column.label || column.name}</label>
               </dt>
               <dd>
-                {choicesFor(column) ? (
+                {!choicesFor(column) && pointsAtARecord(column) ? (
+                  // ⚠️ The fallback differs by MECHANISM, and one rule for all three was wrong.
+                  //
+                  // An unresolved LOOKUP falls through to a text box: its value is a literal
+                  // string, so typing one is legitimate and "let ALM decide" applies.
+                  //
+                  // An unresolved REFERENCE gets no control at all: its value is an ID. A text box
+                  // pre-filled with a raw id invites someone to type a number that silently
+                  // re-points the record at a different release, or re-types the requirement. Not
+                  // constraining is right for a string and a trap for an identifier.
+                  <span className="record-editor-unresolved">
+                    {(draft[column.name] || '—') + ' (not editable here)'}
+                  </span>
+                ) : choicesFor(column) ? (
                   <select
                     id={`edit-${column.name}`}
                     className={problem ? 'has-problem' : undefined}
@@ -255,14 +281,14 @@ export function RecordEditor({ project, collection, columns, row, onReload, onCl
                         edited after this record was written would otherwise silently re-point the
                         dropdown at the first option and save that on the next Save. */}
                     {draft[column.name] &&
-                      !choicesFor(column)?.includes(draft[column.name]) && (
+                      !choicesFor(column)?.some((c) => c.value === draft[column.name]) && (
                         <option value={draft[column.name]}>
                           {draft[column.name]} (not in list)
                         </option>
                       )}
                     {choicesFor(column)?.map((choice) => (
-                      <option key={choice} value={choice}>
-                        {choice}
+                      <option key={choice.value} value={choice.value}>
+                        {choice.label}
                       </option>
                     ))}
                   </select>
@@ -291,9 +317,8 @@ export function RecordEditor({ project, collection, columns, row, onReload, onCl
       </dl>
 
       <p className="detail-note">
-        Memo fields are edited from their own tab. Fields that point at another record — Target
-        Release, Requirement Type — are not editable here yet: their value is an id, and a text box
-        over an id is a trap rather than a feature.
+        Memo fields are edited from their own tab. Multi-value fields — Target Release, Target
+        Cycle — need a multi-select and are not supported in this form yet.
         {expectedVersion === undefined &&
           ' This record reports no version, so a change saved by someone else since you opened it cannot be detected.'}
       </p>

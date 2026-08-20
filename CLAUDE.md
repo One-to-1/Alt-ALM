@@ -158,7 +158,7 @@ finding in the project surfaced by product code under test rather than a hand-wr
   **bounded retry on 5xx reads** — separate from the 5xx-on-*write* verify-by-query rule (**Q46**).
 
 🟡 **P2 IN PROGRESS — the write core, the CRUD endpoints and the validation layer are in and
-verified live (2026-08-19). 335 BFF tests (378 with `-Pcontract`) + 74 SPA tests green. Records are editable in the SPA.**
+verified live (2026-08-19). 345 BFF tests (388 with `-Pcontract`) + 76 SPA tests green. Records are editable in the SPA.**
 `AlmWriteClient` is the single write path; `ApiIsReadOnlyTest` asserts writes *route through it*
 rather than that none exist, and now has real endpoints to guard. See `SESSION-STATE.md`.
 
@@ -179,10 +179,14 @@ client that treats 502 as "failed, retry" will create duplicates.
 `used-lists` (**56 of 58** fields, done); `Reference` with `fieldRelationReferences` → query that
 **entity collection**, value is an **id** (`target-rel`→`release`, `target-rcyc`→`release-cycle` —
 also the model's **only two multi-value fields**); `Reference` with **empty** references →
-`customization/entities/{e}/types` (`type-id`). Only the first is built. ⚠️ `req-type` (LookupList)
-and `type-id` (Reference) are different fields by different routes. ⚠️ The BFF does **not** expose
-`fieldRelationReferences`, so the SPA cannot resolve a Reference at all yet — References are
-excluded from the editor rather than shown as a text box over a raw id.
+`customization/entities/{e}/types` (`type-id`). All three resolve through **one** endpoint,
+`GET /api/choices/{collection}` (collection-level: per-field would cost 30 requests to open one
+requirement editor). **Branch on `choiceSource`, never on the field type** — `type-id` and
+`target-rel` are both `REFERENCE` and resolve differently. ⚠️ `req-type` (LookupList) and `type-id`
+(Reference) are different fields by different routes. ⚠️ **The unresolved-fallback differs by
+mechanism**: a LOOKUP degrades to free text (value is a string), a REFERENCE gets **no control**
+(value is an **id**, and a text box over one invites re-pointing the record). Multi-value fields
+(the model's only two, both References) still have no control.
 
 ⚠️ **Lookup lists: `GET customization/used-lists` returns all 39 WITH items inline** (39 lists / 125
 items / 3 empty, live-verified 2026-08-20) — one request, no per-list fetch. Casing is mixed *within*

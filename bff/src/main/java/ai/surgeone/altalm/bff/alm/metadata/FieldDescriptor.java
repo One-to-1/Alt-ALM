@@ -29,6 +29,12 @@ package ai.surgeone.altalm.bff.alm.metadata;
  * @param listId        for {@link AlmFieldType#LOOKUP_LIST}, the bound list; 0 when unbound.
  *                      <strong>Instance-specific — never hardcode</strong> (ADR 0005).
  * @param size          declared size; {@code -1} means unlimited (memo fields)
+ * @param referencedEntity for a {@link AlmFieldType#REFERENCE}, the entity its values point at —
+ *                      taken from {@code fieldRelationReferences.references[0].referencedEntityType}
+ *                      ({@code target-rel} → {@code release}). ⚠️ <strong>Empty is meaningful, not
+ *                      missing</strong>: a Reference with no references is the subtype
+ *                      discriminator {@code type-id}, resolved a different way entirely. See
+ *                      {@link #choiceSource()}
  */
 public record FieldDescriptor(
         String name,
@@ -44,12 +50,69 @@ public record FieldDescriptor(
         boolean visibleInWebUI,
         boolean groupable,
         int listId,
-        int size) {
+        int size,
+        String referencedEntity) {
+
+    /**
+     * The 14-argument form, for the many call sites that predate reference resolution.
+     *
+     * <p>Kept rather than churning every construction site: a field with no reference is the
+     * overwhelming majority (3 of 58+ fields on requirement are References), and an empty string
+     * is exactly what the parser produces for one.
+     */
+    public FieldDescriptor(String name, String physicalName, AlmFieldType type, String label,
+                           boolean required, boolean editable, boolean system, boolean virtual,
+                           boolean supportsMultivalue, boolean active, boolean visibleInWebUI,
+                           boolean groupable, int listId, int size) {
+        this(name, physicalName, type, label, required, editable, system, virtual,
+                supportsMultivalue, active, visibleInWebUI, groupable, listId, size, "");
+    }
 
     public FieldDescriptor {
         if (name == null || name.isBlank()) {
             throw new IllegalArgumentException("field name is required");
         }
+        referencedEntity = referencedEntity == null ? "" : referencedEntity;
+    }
+
+    /**
+     * How a field's permitted values are discovered. ⚠️ <strong>Three unrelated mechanisms wear the
+     * name "lookup"</strong>, and conflating them produces a control that cannot work.
+     */
+    public enum ChoiceSource {
+        /** {@code LookupList} bound to a {@code listId} → {@code customization/used-lists}. */
+        LIST,
+        /**
+         * {@code Reference} naming another entity → query <em>that collection</em>. The stored value
+         * is an entity <strong>id</strong>, not a label, e.g. {@code target-rel} → {@code release}.
+         */
+        ENTITY,
+        /**
+         * {@code Reference} naming nothing → {@code customization/entities/{e}/types}. This is the
+         * subtype discriminator ({@code type-id}), and it is a third route again.
+         */
+        SUBTYPE,
+        /** Free text, a date, a number — nothing to choose from. */
+        NONE
+    }
+
+    /**
+     * Which of the three mechanisms, if any, supplies this field's values.
+     *
+     * <p>⚠️ Note {@code req-type} ("Old Type (obsolete)") is a {@link AlmFieldType#LOOKUP_LIST} and
+     * resolves via {@link ChoiceSource#LIST}, while {@code type-id} ("Requirement Type") is a
+     * {@link AlmFieldType#REFERENCE} and resolves via {@link ChoiceSource#SUBTYPE}. Similar names,
+     * different routes.
+     */
+    public ChoiceSource choiceSource() {
+        if (type == AlmFieldType.LOOKUP_LIST) {
+            // listId 0 means list-typed but bound to nothing — there is no set to offer.
+            return listId > 0 ? ChoiceSource.LIST : ChoiceSource.NONE;
+        }
+        if (type == AlmFieldType.REFERENCE) {
+            return referencedEntity.isBlank() ? ChoiceSource.SUBTYPE : ChoiceSource.ENTITY;
+        }
+        return ChoiceSource.NONE;
     }
 
     /** True for a user-defined field. UDFs are named {@code user-NN} with physical {@code XX_USER_NN}. */

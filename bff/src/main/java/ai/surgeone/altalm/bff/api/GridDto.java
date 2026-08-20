@@ -40,6 +40,13 @@ public final class GridDto {
      *                      create fails without it, so a client that trusted them would grey out a
      *                      field ALM demands. Withholding them is cheaper than documenting, in
      *                      every consumer, why they must be ignored
+     * @param choiceSource  which of the three mechanisms supplies this field's values —
+     *                      {@code LIST}, {@code ENTITY}, {@code SUBTYPE} or {@code NONE}. ⚠️ The UI
+     *                      branches on <strong>this</strong>, never on {@code type}: {@code type-id}
+     *                      is a {@code REFERENCE} that resolves via the subtype endpoint while
+     *                      {@code target-rel} is a {@code REFERENCE} that resolves by querying the
+     *                      {@code release} collection, and the field type alone cannot tell them
+     *                      apart. Anything but {@code NONE} means "ask {@code /api/choices}"
      * @param groupable     ALM's own Groupable flag — whether {@code groups/{field}} will aggregate
      *                      on it. The Group-by control offers exactly these fields, so a project
      *                      that made a field ungroupable stops seeing it offered, rather than
@@ -47,7 +54,7 @@ public final class GridDto {
      */
     public record Column(String name, String label, String type, int listId, boolean multiValue,
                          boolean onDetailsForm, boolean riskGroup, boolean groupable,
-                         boolean writable) {
+                         boolean writable, String choiceSource) {
 
         /**
          * The one mapping from field metadata to a column, shared by the grid and the tree-grid —
@@ -57,7 +64,7 @@ public final class GridDto {
         public static Column of(ai.surgeone.altalm.bff.alm.metadata.FieldDescriptor f) {
             return new Column(f.name(), f.label(), f.type().name(), f.listId(),
                     f.supportsMultivalue(), f.onDetailsForm(), f.inRiskAnalysisGroup(),
-                    f.groupable(), !f.virtual());
+                    f.groupable(), !f.virtual(), f.choiceSource().name());
         }
     }
 

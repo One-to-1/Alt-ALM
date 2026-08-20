@@ -54,6 +54,15 @@ export interface GridColumn {
    * server requires, so the flags are withheld rather than shipped with a warning nobody reads.
    */
   writable: boolean
+  /**
+   * Which mechanism supplies this field's values: `LIST`, `ENTITY`, `SUBTYPE` or `NONE`.
+   *
+   * ⚠️ **Branch on this, never on `type`.** "A field with choices" is three unrelated routes and the
+   * field type cannot tell them apart: `type-id` and `target-rel` are both `REFERENCE`, but the
+   * first resolves through the subtype endpoint and the second by querying the `release`
+   * collection. Anything but `NONE` means the field has choices — fetch them with `fetchChoices`.
+   */
+  choiceSource: 'LIST' | 'ENTITY' | 'SUBTYPE' | 'NONE'
 }
 
 export interface GridRow {
@@ -608,6 +617,31 @@ export function fetchModules(): Promise<ModuleRail> {
   return apiGet<ModuleRail>('/api/modules')
 }
 
+/** One permitted value. `value` is what a write sends — for a reference that is an **id**. */
+export interface Choice {
+  value: string
+  label: string
+}
+
+/**
+ * Every field's permitted values for a collection, in one request.
+ *
+ * Keyed by field name. ⚠️ A field with no choices is **absent from the map**, covering both "there
+ * are none" and "they could not be read" — both mean *do not constrain this field*. Rendering an
+ * empty dropdown for either makes the field impossible to fill.
+ *
+ * One call rather than one per field: a requirement has 27 lookup fields plus 3 references, so
+ * per-field fetching would cost 30 requests to open one editor.
+ */
+export function fetchChoices(
+  project: string,
+  collection: string,
+): Promise<Record<string, Choice[]>> {
+  return apiGet<Record<string, Choice[]>>(
+    `/api/choices/${encodeURIComponent(collection)}?project=${encodeURIComponent(project)}`,
+  )
+}
+
 /** One lookup list: a display name and the values ALM permits. */
 export interface LookupList {
   name: string
@@ -624,6 +658,12 @@ export interface LookupList {
  * A list with an EMPTY `values` is a real answer, not a missing one: three of the sandbox's 39 have
  * no items, and a field bound to one permits nothing. Treat empty as "no choices", never as
  * "unbound, so free text".
+ */
+/**
+ * ⚠️ Not used by the record editor — that uses {@link fetchChoices}, which covers all three
+ * mechanisms. This stays for bulk work (rendering lookup labels across a whole grid) where one
+ * request beats one per field. Do not resolve an editor's dropdown from here: two code paths for
+ * the same values is how they drift apart.
  */
 export function fetchLists(project: string): Promise<Record<string, LookupList>> {
   return apiGet<Record<string, LookupList>>(`/api/lists?project=${encodeURIComponent(project)}`)

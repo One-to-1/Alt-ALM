@@ -86,6 +86,17 @@ public final class AlmMetadataClient {
                 getCustomization(project, entity, "types/" + typeId + "/fields"));
     }
 
+    /**
+     * An entity's subtypes.
+     *
+     * <p>⚠️ Callers must gate this: {@code defect}'s types endpoint returns HTTP 500 and a failed
+     * metadata load is deliberately not cached, so an unconditional call fires a failing request
+     * every time a defect is opened.
+     */
+    public List<AlmEntityType> fetchTypes(AlmProjectRef project, String entity) {
+        return AlmEntityTypeParser.parse(getCustomization(project, entity, "types"));
+    }
+
     public List<AlmRelation> fetchRelations(AlmProjectRef project, String entity) {
         return AlmRelationParser.parseRelations(getCustomization(project, entity, "relations/"));
     }
