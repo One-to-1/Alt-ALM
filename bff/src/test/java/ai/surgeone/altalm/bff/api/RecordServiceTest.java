@@ -10,7 +10,7 @@ import ai.surgeone.altalm.bff.alm.read.AlmProjectRef;
 import ai.surgeone.altalm.bff.alm.read.AlmQuery;
 import ai.surgeone.altalm.bff.alm.write.AlmCommentWriter;
 import ai.surgeone.altalm.bff.alm.write.AlmEntityBody;
-import ai.surgeone.altalm.bff.alm.write.AlmVersionGuard;
+import ai.surgeone.altalm.bff.alm.write.AlmStaleWriteGuard;
 import ai.surgeone.altalm.bff.alm.write.AlmWriteClient;
 import ai.surgeone.altalm.bff.alm.write.AlmWriteResult;
 import ai.surgeone.altalm.bff.alm.write.AlmWriteValidator;
@@ -258,7 +258,7 @@ class RecordServiceTest {
             serverHas(Map.of("id", "7001", "name", "renamed", "priority", "2"));
 
             service.update(SANDBOX, "requirements", "7001",
-                    body("name", "renamed", "priority", "2"), Optional.empty());
+                    body("name", "renamed", "priority", "2"), Map.of());
 
             assertThat(capturedFinder().get()).contains("7001");
         }
@@ -268,8 +268,7 @@ class RecordServiceTest {
         void updateWithDifferentValues() {
             serverHas(Map.of("id", "7001", "name", "the old name"));
 
-            service.update(SANDBOX, "requirements", "7001", body("name", "renamed"),
-                    Optional.empty());
+            service.update(SANDBOX, "requirements", "7001", body("name", "renamed"), Map.of());
 
             assertThat(capturedFinder().get()).isEmpty();
         }
@@ -283,7 +282,7 @@ class RecordServiceTest {
             serverHas(Map.of("id", "7001", "description", "<html><body>text</body></html>"));
 
             service.update(SANDBOX, "requirements", "7001",
-                    body("description", "<p>text</p>"), Optional.empty());
+                    body("description", "<p>text</p>"), Map.of());
 
             assertThat(capturedFinder().get()).isEmpty();
         }
@@ -307,36 +306,66 @@ class RecordServiceTest {
     class Versioning {
 
         @Test
-        @DisplayName("a ver-stamp that moved refuses the update, and nothing is sent")
-        void staleVersionRefuses() {
-            serverHas(Map.of("id", "7001", "ver-stamp", "9"));
+        @DisplayName("a field whose value moved refuses the update, and nothing is sent")
+        void staleValueRefuses() {
+            serverHas(Map.of("id", "7001", "name", "somebody else got here first"));
 
             assertThatThrownBy(() -> service.update(SANDBOX, "requirements", "7001",
-                    body("name", "renamed"), Optional.of("3")))
-                    .isInstanceOf(AlmVersionGuard.ConflictException.class);
+                    body("name", "renamed"), body("name", "the name I loaded")))
+                    .isInstanceOf(AlmStaleWriteGuard.ConflictException.class)
+                    .hasMessageContaining("name");
 
             verify(writes, never()).update(any(), any(), any(), any());
         }
 
         @Test
-        @DisplayName("a matching ver-stamp proceeds")
-        void currentVersionProceeds() {
-            serverHas(Map.of("id", "7001", "ver-stamp", "9"));
+        @DisplayName("a field still holding what the caller read proceeds")
+        void currentValueProceeds() {
+            serverHas(Map.of("id", "7001", "name", "the name I loaded"));
 
             service.update(SANDBOX, "requirements", "7001", body("name", "renamed"),
-                    Optional.of("9"));
+                    body("name", "the name I loaded"));
 
             verify(writes).update(eq(SANDBOX), eq("requirements"), eq("7001"), any());
         }
 
         @Test
-        @DisplayName("no expected version skips the read entirely - it is an explicit choice")
-        void absentVersionSkipsTheCheck() {
-            service.update(SANDBOX, "requirements", "7001", body("name", "renamed"),
-                    Optional.empty());
+        @DisplayName("no baseline skips the read entirely - it is an explicit choice")
+        void absentBaselineSkipsTheCheck() {
+            service.update(SANDBOX, "requirements", "7001", body("name", "renamed"), Map.of());
 
             verify(writes).update(eq(SANDBOX), eq("requirements"), eq("7001"), any());
             verify(reads, never()).page(any(), any(), any(AlmQuery.class));
+        }
+
+        @Test
+        @DisplayName("a baseline for a field the write does not touch is ignored, not enforced")
+        void baselineForAnUnwrittenFieldIsIgnored() {
+            // ⚠️ The regression probe 34 found, in miniature. A caller may reasonably send back
+            // everything its form displayed; guarding a field this write will not replace refuses
+            // saves where nothing the user is changing has moved at all.
+            serverHas(Map.of("id", "7001", "name", "the name I loaded",
+                    "description", "<html><body>changed by somebody else</body></html>"));
+
+            service.update(SANDBOX, "requirements", "7001", body("name", "renamed"),
+                    body("name", "the name I loaded",
+                            "description", "<html><body>what I loaded</body></html>"));
+
+            verify(writes).update(eq(SANDBOX), eq("requirements"), eq("7001"), any());
+        }
+
+        @Test
+        @DisplayName("an empty field the caller read as empty is not a conflict")
+        void emptyAgainstAbsentIsNotAConflict() {
+            // ⚠️ ALM returns no `values` entry for an empty field rather than one empty string,
+            // so a caller whose baseline is "" is describing the same state. Reading those as
+            // different would make the first edit of any blank field impossible.
+            serverHas(Map.of("id", "7001", "name", "unchanged"));
+
+            service.update(SANDBOX, "requirements", "7001", body("description", "<p>first</p>"),
+                    body("description", ""));
+
+            verify(writes).update(eq(SANDBOX), eq("requirements"), eq("7001"), any());
         }
     }
 

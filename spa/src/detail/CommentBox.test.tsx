@@ -27,7 +27,7 @@ const PROPS = {
   collection: 'requirements',
   entityId: '7001',
   label: 'Comments',
-  expectedVersion: '3',
+  expectedThread: '<html><body>an earlier note</body></html>',
   onPosted: () => {},
 }
 
@@ -88,9 +88,12 @@ describe('posting', () => {
     expect(JSON.parse(String(init.body))).toMatchObject({
       comment: 'Looks fine to me',
       // ⚠️ Sent so a comment added since this record was read is DETECTED. It is not a lock —
-      // ALM accepts a stale stamp — but without it a concurrent comment is silently swallowed by
+      // ALM accepts a stale write — but without it a concurrent comment is silently swallowed by
       // the merge, which is the whole failure this route exists to avoid.
-      expectedVersion: '3',
+      //
+      // ⚠️ The THREAD, not a ver-stamp: a stamp also moves when someone files a child under
+      // the record, which refused comments with nothing to conflict with (probe 34).
+      expectedThread: '<html><body>an earlier note</body></html>',
     })
   })
 
@@ -285,17 +288,26 @@ describe('the author name', () => {
   })
 })
 
-describe('the version note', () => {
-  it('says so when the record carries no version to check against', () => {
+describe('the baseline note', () => {
+  it('says so when the existing thread could not be read', () => {
     respondWith(200, COMMITTED)
-    render(<CommentBox {...PROPS} expectedVersion={undefined} />)
+    render(<CommentBox {...PROPS} expectedThread={undefined} />)
 
-    // Silence here would be the misleading option: without a stamp the merge can swallow somebody
+    // Silence here would be the misleading option: with no baseline the merge can swallow somebody
     // else's comment and nothing will have noticed.
     expect(screen.getByText(/cannot be detected/)).not.toBeNull()
   })
 
-  it('stays quiet when there is a version', () => {
+  it('stays quiet for a record whose thread is empty but WAS read', () => {
+    // An empty string is a baseline. Treating it as "no baseline" would put the warning on every
+    // record that has not been commented on yet, which is most of them.
+    respondWith(200, COMMITTED)
+    render(<CommentBox {...PROPS} expectedThread="" />)
+
+    expect(screen.queryByText(/cannot be detected/)).toBeNull()
+  })
+
+  it('stays quiet when there is a baseline', () => {
     respondWith(200, COMMITTED)
     render(<CommentBox {...PROPS} />)
 

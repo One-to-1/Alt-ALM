@@ -92,13 +92,18 @@ export function RecordEditor({ project, collection, columns, row, onReload, onCl
   const [result, setResult] = useState<WriteResult | null>(null)
 
   /**
-   * The `ver-stamp` this edit is based on.
+   * What this edit is based on: the loaded values of the fields it changes.
    *
-   * ⚠️ Sending it buys conflict *detection*, not locking — ALM accepts a stale stamp and lets the
-   * write land, so the server cannot be asked to refuse. Omitting it would mean silently
-   * overwriting whoever saved in between, so it is always sent when the record carries one.
+   * ⚠️ Sending it buys conflict *detection*, not locking — ALM accepts a stale write and lets it
+   * land, so the server cannot be asked to refuse. Omitting it would mean silently overwriting
+   * whoever saved in between.
+   *
+   * ⚠️ It used to send `ver-stamp`, and that refused saves that were fine: filing a child under a
+   * record moves that record's stamp with nothing on it changing (probe 34), so opening a
+   * requirement and having anyone add a sub-requirement made the next save fail with "someone else
+   * changed this record". `initial` is the same map the draft started from, so the baseline is
+   * exactly what the user was shown. Built in `save`, over the changed fields only.
    */
-  const expectedVersion = row.values['ver-stamp']?.[0]
 
   const base = result ? outcomeMessage(result) : null
 
@@ -144,7 +149,14 @@ export function RecordEditor({ project, collection, columns, row, onReload, onCl
         // contract say "arrays everywhere" when the truth is "two fields".
         fields[name] = column?.multiValue ? draft[name] : (draft[name][0] ?? '')
       }
-      setResult(await updateRecord(project, collection, row.id, fields, expectedVersion))
+      // Baselines for the changed fields only — the BFF ignores the rest, but sending the whole
+      // form would put every memo on the record into the request body for nothing.
+      const expectedValues: Record<string, FieldValue> = {}
+      for (const name of changed) {
+        const column = editable.find((c) => c.name === name)
+        expectedValues[name] = column?.multiValue ? initial[name] : (initial[name][0] ?? '')
+      }
+      setResult(await updateRecord(project, collection, row.id, fields, expectedValues))
     } catch (error) {
       // A thrown error here is a transport or access failure, never an outcome. The write client
       // turns every outcome - including "nobody knows" - into a value, so anything that reaches
@@ -230,9 +242,8 @@ export function RecordEditor({ project, collection, columns, row, onReload, onCl
       </dl>
 
       <p className="detail-note">
-        Memo fields are edited from their own tab.
-        {expectedVersion === undefined &&
-          ' This record reports no version, so a change saved by someone else since you opened it cannot be detected.'}
+        Memo fields are edited from their own tab. A change saved by someone else since this record
+        was opened is detected on the fields being changed, and only on those.
       </p>
 
       <div className="record-editor-actions">

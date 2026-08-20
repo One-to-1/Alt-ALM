@@ -32,11 +32,16 @@ public final class WriteDto {
      * @param fields          the fields to change. ⚠️ Absent fields are left alone, but a field that
      *                        <em>is</em> present is replaced outright — including memo fields, which
      *                        is how a naive comment write erases history (probe 30)
-     * @param expectedVersion the {@code ver-stamp} the caller's view was built on, or null to accept
-     *                        overwriting a concurrent edit. See {@code AlmVersionGuard}: this detects
-     *                        a conflict, it does not lock
+     * @param expectedValues what the caller's view showed for the fields it is changing, in the
+     *                        same shape as {@code fields}. Null or empty accepts overwriting a
+     *                        concurrent edit. ⚠️ <strong>Not a {@code ver-stamp}.</strong> A stamp
+     *                        also moves when someone files a child under this record, so guarding on
+     *                        one refused saves where no field differed (probe 34). Baselines for
+     *                        fields absent from {@code fields} are ignored rather than refused —
+     *                        sending everything the form displayed is a reasonable client. See
+     *                        {@code AlmStaleWriteGuard}: this detects a conflict, it does not lock
      */
-    public record UpdateRequest(Map<String, Object> fields, String expectedVersion) {
+    public record UpdateRequest(Map<String, Object> fields, Map<String, Object> expectedValues) {
     }
 
     /**
@@ -46,8 +51,13 @@ public final class WriteDto {
      * path would <em>replace</em> the field and destroy every earlier comment with a 200 response;
      * this request routes to the read-modify-write path instead. The distinction is in the API shape
      * rather than in a caller's memory.
+     *
+     * @param expectedThread the comment field's value as the caller's view rendered it, or null to
+     *                       accept appending onto a thread that has moved. The concurrency baseline
+     *                       for a comment is the thread itself: it is the only thing a comment write
+     *                       can destroy, and it is what the caller was looking at
      */
-    public record CommentRequest(String comment, String author, String expectedVersion) {
+    public record CommentRequest(String comment, String author, String expectedThread) {
     }
 
     /** One validation problem, as the SPA sees it. */

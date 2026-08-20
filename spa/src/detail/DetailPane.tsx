@@ -617,7 +617,13 @@ export function DetailPane({
                 collection={collection}
                 entityId={entityId}
                 label={activeMemo.label || activeMemo.name}
-                expectedVersion={row.values['ver-stamp']?.[0]}
+                /* The thread as rendered above the box, which is the only thing a comment write
+                   can destroy. ⚠️ Undefined when the field was not read at all — distinct from
+                   read-and-empty, which is the ordinary state of a record with no comments yet.
+                   Collapsing the two would make the first comment on any record conflict. */
+                expectedThread={
+                  activeMemo.name in row.values ? (row.values[activeMemo.name]?.[0] ?? '') : undefined
+                }
                 onPosted={() => setReloadToken((n) => n + 1)}
               />
             )}

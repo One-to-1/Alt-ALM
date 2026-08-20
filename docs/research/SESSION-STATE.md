@@ -1403,12 +1403,22 @@ layout-thrashing, which is technically right. It is also a deliberate documented
 must *push* sibling content — which a transform cannot do. Keep as designed, or go transform-based
 and accept that pinned mode stops pushing?
 
-**3. Attachments — the one that needs a decision before it is built.** Probe 35 established the read
-grammar, so the plumbing is cheap. The user asked for "click an attachment, open it in a new tab".
-⚠️ Alt-ALM is one deployable on one origin (ADR 0001), so anything served inline is served from the
-SPA's own origin: fine for an image or a PDF, stored XSS for an uploaded `.html`/`.svg`. Proposed
-shape — allowlist of safe types gets `Content-Disposition: inline` + `nosniff` and opens in a tab,
-everything else force-downloads, and the UI says which it will do before you click.
+**3. Attachments — ✅ DECIDED 2026-08-20 (user): every attachment downloads. No inline, no
+allowlist, no split.** The proposed shape was an allowlist of safe types served
+`Content-Disposition: inline` in a new tab with everything else force-downloading. The user rejected
+the split on KISS grounds — *"separating their implementation is going to confuse people"* — and it
+is the better call for a second reason: Alt-ALM is one deployable on one origin (ADR 0001), so an
+inline attachment is served **from the SPA's own origin**, and an uploaded `.html`/`.svg` served that
+way is stored XSS running with the app's session. One rule means there is no allowlist to get wrong,
+no `nosniff` to forget, and nothing for a crafted `Content-Type` to slip past.
+
+*What that fixes in the implementation:* `Content-Disposition: attachment` with a sanitized filename
+on every response, `X-Content-Type-Options: nosniff`, and **never echo ALM's `Content-Type`
+unfiltered** — serve `application/octet-stream` regardless (ALM's real mime type is still worth
+returning as *data* for an icon or a label, just not as the response header). The UI is a plain
+download link; no per-type branching anywhere. ⚠️ Read the bytes with
+`Accept: application/octet-stream` — `*/*` and `application/json` both return entity **metadata**
+with HTTP 200, and asking for the file's actual type (`image/png`) is **406** (probe 35).
 
 
 ## ⚠️ Standing lesson — read before writing any "X is impossible"

@@ -214,7 +214,9 @@ describe('the ordinary outcomes', () => {
   it('reads a version conflict as an outcome the caller must handle', async () => {
     respondWith(409, { error: 'version-conflict', detail: 'the record changed since it was read' })
 
-    const result = await updateRecord(PROJECT, 'requirements', '7001', { name: 'x' }, '3')
+    const result = await updateRecord(PROJECT, 'requirements', '7001', { name: 'x' }, {
+      name: 'what I loaded',
+    })
 
     // A union member rather than a throw: editing a record someone else touched is a normal
     // Tuesday, and a throw is the kind of thing a caller forgets to catch.
@@ -230,7 +232,7 @@ describe('the ordinary outcomes', () => {
 })
 
 describe('the requests it sends', () => {
-  it('sends the expected version on an update', async () => {
+  it('sends the caller\'s baseline values on an update', async () => {
     respondWith(200, {
       outcome: 'COMMITTED',
       id: '7001',
@@ -241,16 +243,16 @@ describe('the requests it sends', () => {
       problems: [],
     })
 
-    await updateRecord(PROJECT, 'requirements', '7001', { name: 'new' }, '3')
+    await updateRecord(PROJECT, 'requirements', '7001', { name: 'new' }, { name: 'old' })
 
     const [url, init] = lastCall()
     expect(url).toContain('/api/records/requirements/7001')
     expect(init.method).toBe('PUT')
     // Dropping this would silently downgrade every edit to last-writer-wins while the API still
-    // looked like it took a version.
+    // looked like it took a baseline.
     expect(JSON.parse(String(init.body))).toEqual({
       fields: { name: 'new' },
-      expectedVersion: '3',
+      expectedValues: { name: 'old' },
     })
   })
 

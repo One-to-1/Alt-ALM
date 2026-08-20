@@ -3,7 +3,7 @@ package ai.surgeone.altalm.bff.api;
 import ai.surgeone.altalm.bff.alm.read.AlmAccessPolicy;
 import ai.surgeone.altalm.bff.alm.read.AlmProjectRef;
 import ai.surgeone.altalm.bff.alm.session.AlmCredentials;
-import ai.surgeone.altalm.bff.alm.write.AlmVersionGuard;
+import ai.surgeone.altalm.bff.alm.write.AlmStaleWriteGuard;
 import ai.surgeone.altalm.bff.alm.write.AlmWriteValidator;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -44,7 +44,7 @@ import java.util.Optional;
  *   <li>{@code 422} — refused by {@link AlmWriteValidator} before anything left the BFF. The body
  *       carries every problem, not the first one.
  *   <li>{@code 400} — ALM refused it. The body carries ALM's own error id.
- *   <li>{@code 409} — the record changed since the caller read it ({@link AlmVersionGuard}).
+ *   <li>{@code 409} — the record changed since the caller read it ({@link AlmStaleWriteGuard}).
  *   <li>{@code 502} — <strong>the outcome is unknown</strong>. ALM returned a server error and a
  *       follow-up query could not establish whether the row exists. ⚠️ The status describes what the
  *       upstream did, <em>not</em> what happened to the row: the write may well have committed. The
@@ -91,7 +91,7 @@ public class RecordController {
                                                          @RequestParam(required = false) String project,
                                                          @RequestBody WriteDto.UpdateRequest request) {
         WriteDto.WriteResponse response = records.update(resolve(project), collection, id,
-                fieldsOf(request.fields()), Optional.ofNullable(request.expectedVersion()));
+                fieldsOf(request.fields()), fieldsOf(request.expectedValues()));
         return respond(response, HttpStatus.OK);
     }
 
@@ -135,7 +135,7 @@ public class RecordController {
                 ? "Alt-ALM"
                 : request.author();
         WriteDto.WriteResponse response = records.comment(resolve(project), collection, id, author,
-                request.comment(), Optional.ofNullable(request.expectedVersion()));
+                request.comment(), Optional.ofNullable(request.expectedThread()));
         return respond(response, HttpStatus.OK);
     }
 
@@ -245,9 +245,13 @@ public class RecordController {
      * <p>⚠️ A 409 here means the conflict was <em>detected</em>, not that concurrent writes are
      * prevented. ALM has no optimistic locking (probe 31) and a write landing between the check and
      * the request is still lost.
+     *
+     * <p>⚠️ The detail names the <em>field</em> that moved, which is the point of the check being
+     * value-based: "someone else changed this record" was previously raised for a stamp that moved
+     * because a child was filed underneath, with nothing on the record differing (probe 34).
      */
-    @ExceptionHandler(AlmVersionGuard.ConflictException.class)
-    public ResponseEntity<Map<String, String>> conflict(AlmVersionGuard.ConflictException e) {
+    @ExceptionHandler(AlmStaleWriteGuard.ConflictException.class)
+    public ResponseEntity<Map<String, String>> conflict(AlmStaleWriteGuard.ConflictException e) {
         return ResponseEntity.status(HttpStatus.CONFLICT)
                 .body(Map.of("error", "version-conflict", "detail", e.getMessage()));
     }

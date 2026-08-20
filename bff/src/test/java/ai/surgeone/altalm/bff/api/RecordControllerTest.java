@@ -3,7 +3,7 @@ package ai.surgeone.altalm.bff.api;
 import ai.surgeone.altalm.bff.alm.read.AlmAccessPolicy;
 import ai.surgeone.altalm.bff.alm.read.AlmProjectRef;
 import ai.surgeone.altalm.bff.alm.session.AlmCredentials;
-import ai.surgeone.altalm.bff.alm.write.AlmVersionGuard;
+import ai.surgeone.altalm.bff.alm.write.AlmStaleWriteGuard;
 import ai.surgeone.altalm.bff.alm.write.AlmWriteValidator;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -94,27 +94,28 @@ class RecordControllerTest {
         }
 
         @Test
-        @DisplayName("an update is 200 and forwards the expected version")
+        @DisplayName("an update is 200 and forwards the caller's baseline values")
         void updateIs200() throws Exception {
             when(records.update(any(), eq("requirements"), eq("7001"), any(), any()))
                     .thenReturn(committed("7001"));
 
             mvc.perform(put("/api/records/requirements/7001")
                             .contentType(MediaType.APPLICATION_JSON)
-                            .content("{\"fields\":{\"name\":\"new\"},\"expectedVersion\":\"3\"}"))
+                            .content("{\"fields\":{\"name\":\"new\"},"
+                                    + "\"expectedValues\":{\"name\":\"old\"}}"))
                     .andExpect(status().isOk());
 
-            // The version has to survive the hop. Dropping it would silently downgrade every edit
-            // to last-writer-wins while the API still looked like it took a version.
+            // The baseline has to survive the hop. Dropping it would silently downgrade every edit
+            // to last-writer-wins while the API still looked like it took one.
             // A single JSON string arrives as a one-element list: below the controller every field
             // is a list, matching ALM's model, where `values` is an array on every field.
             verify(records).update(any(), eq("requirements"), eq("7001"),
-                    eq(Map.of("name", List.of("new"))), eq(Optional.of("3")));
+                    eq(Map.of("name", List.of("new"))), eq(Map.of("name", List.of("old"))));
         }
 
         @Test
-        @DisplayName("an omitted expectedVersion arrives as empty, not as a null that reads as one")
-        void absentVersionIsEmpty() throws Exception {
+        @DisplayName("omitted expectedValues arrive as an empty map, not a null that reads as one")
+        void absentBaselineIsEmpty() throws Exception {
             when(records.update(any(), any(), any(), any(), any())).thenReturn(committed("7001"));
 
             mvc.perform(put("/api/records/requirements/7001")
@@ -122,7 +123,7 @@ class RecordControllerTest {
                             .content("{\"fields\":{\"name\":\"new\"}}"))
                     .andExpect(status().isOk());
 
-            verify(records).update(any(), any(), any(), any(), eq(Optional.empty()));
+            verify(records).update(any(), any(), any(), any(), eq(Map.of()));
         }
 
         @Test
@@ -221,11 +222,12 @@ class RecordControllerTest {
         @DisplayName("a version conflict is 409, distinct from both refusal kinds")
         void conflictIs409() throws Exception {
             when(records.update(any(), any(), any(), any(), any()))
-                    .thenThrow(new AlmVersionGuard.ConflictException("the record changed since read"));
+                    .thenThrow(new AlmStaleWriteGuard.ConflictException("'name' changed since this record was read"));
 
             mvc.perform(put("/api/records/requirements/7001")
                             .contentType(MediaType.APPLICATION_JSON)
-                            .content("{\"fields\":{\"name\":\"new\"},\"expectedVersion\":\"3\"}"))
+                            .content("{\"fields\":{\"name\":\"new\"},"
+                                    + "\"expectedValues\":{\"name\":\"old\"}}"))
                     .andExpect(status().isConflict())
                     .andExpect(jsonPath("$.error").value("version-conflict"));
         }

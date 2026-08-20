@@ -10,12 +10,13 @@ import ai.surgeone.altalm.bff.alm.read.AlmProjectRef;
 import ai.surgeone.altalm.bff.alm.read.AlmQuery;
 import ai.surgeone.altalm.bff.alm.write.AlmCommentWriter;
 import ai.surgeone.altalm.bff.alm.write.AlmEntityBody;
-import ai.surgeone.altalm.bff.alm.write.AlmVersionGuard;
+import ai.surgeone.altalm.bff.alm.write.AlmStaleWriteGuard;
 import ai.surgeone.altalm.bff.alm.write.AlmWriteClient;
 import ai.surgeone.altalm.bff.alm.write.AlmWriteResult;
 import ai.surgeone.altalm.bff.alm.write.AlmWriteValidator;
 import org.springframework.stereotype.Service;
 
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -111,19 +112,31 @@ public class RecordService {
     /**
      * Updates one record.
      *
-     * @param expectedVersion the {@code ver-stamp} the caller read, or empty to accept overwriting a
-     *                        concurrent edit. Checked against a read taken immediately beforehand —
-     *                        detection, not locking; see {@link AlmVersionGuard}
+     * @param expectedValues the values the caller's view was built on, for the fields it is
+     *                       changing. Empty accepts overwriting a concurrent edit. ⚠️ Narrowed here
+     *                       to {@code fields}' own keys before the check: a caller may legitimately
+     *                       send a baseline for everything it displayed, and guarding a field this
+     *                       write does not touch is exactly the false conflict probe 34 found.
+     *                       Detection, not locking — see {@link AlmStaleWriteGuard}
      */
     public WriteDto.WriteResponse update(AlmProjectRef project, String collection, String id,
                                          Map<String, List<String>> fields,
-                                         Optional<String> expectedVersion) {
+                                         Map<String, List<String>> expectedValues) {
         checkWritable(project);
         String entity = writableEntityOf(collection);
         validator.check(project, entity, fields);
 
-        if (expectedVersion.filter(v -> !v.isBlank()).isPresent()) {
-            AlmVersionGuard.check(expectedVersion, currentVersionOf(project, collection, id));
+        Map<String, List<String>> guarded = new LinkedHashMap<>();
+        if (expectedValues != null) {
+            expectedValues.forEach((name, values) -> {
+                if (fields.containsKey(name)) {
+                    guarded.put(name, values);
+                }
+            });
+        }
+        if (!guarded.isEmpty()) {
+            AlmStaleWriteGuard.check(guarded, currentValuesOf(project, collection, id,
+                    List.copyOf(guarded.keySet())));
         }
 
         AlmWriteResult result = writes.update(project, collection, id, bodyOf(entity, fields));
@@ -166,11 +179,11 @@ public class RecordService {
      */
     public WriteDto.WriteResponse comment(AlmProjectRef project, String collection, String id,
                                           String author, String comment,
-                                          Optional<String> expectedVersion) {
+                                          Optional<String> expectedThread) {
         checkWritable(project);
         String entity = writableEntityOf(collection);
         AlmWriteResult result = comments.addComment(project, collection, entity, id, author, comment,
-                expectedVersion);
+                expectedThread);
         return WriteDto.WriteResponse.of(result, detailFor(result, "comment"));
     }
 
@@ -214,11 +227,28 @@ public class RecordService {
         return AlmCollections.entityOf(collection);
     }
 
-    private String currentVersionOf(AlmProjectRef project, String collection, String id) {
-        return row(project, collection, id, List.of("id", "ver-stamp"))
-                .flatMap(r -> r.first("ver-stamp"))
+    /**
+     * What the record holds right now, for the fields a write is about to replace.
+     *
+     * <p>⚠️ A row that is gone is an {@code IllegalArgumentException}, not an empty map. Reading a
+     * deletion as "every field is empty" would let a guarded write sail through against a record
+     * that no longer exists, and ALM's answer to that write is a 500 the caller cannot interpret.
+     */
+    private Map<String, List<String>> currentValuesOf(AlmProjectRef project, String collection,
+                                                      String id, List<String> fields) {
+        List<String> requested = new ArrayList<>();
+        requested.add("id");
+        fields.forEach(f -> {
+            if (!requested.contains(f)) {
+                requested.add(f);
+            }
+        });
+        AlmEntityPage.AlmEntity found = row(project, collection, id, requested)
                 .orElseThrow(() -> new IllegalArgumentException(
                         "no " + collection + " row with id " + id + " — it may have been deleted"));
+        Map<String, List<String>> values = new LinkedHashMap<>();
+        fields.forEach(f -> values.put(f, found.all(f)));
+        return values;
     }
 
     private boolean rowExists(AlmProjectRef project, String collection, String id) {

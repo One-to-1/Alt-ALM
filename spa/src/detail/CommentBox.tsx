@@ -16,7 +16,7 @@ interface Props {
   /** The comment field's own label, so the box says "Comments" or whatever this project calls it. */
   label: string
   /** The `ver-stamp` the displayed record was read at, or undefined when it carries none. */
-  expectedVersion?: string
+  expectedThread?: string
   /** Re-read the record, so the newly-posted comment actually appears above the box. */
   onPosted: () => void
 }
@@ -55,7 +55,7 @@ export function CommentBox({
   collection,
   entityId,
   label,
-  expectedVersion,
+  expectedThread,
   onPosted,
 }: Props) {
   const [text, setText] = useState('')
@@ -95,7 +95,7 @@ export function CommentBox({
         entityId,
         comment,
         author.trim() || undefined,
-        expectedVersion,
+        expectedThread,
       )
       setResult(outcome)
       if (outcome.kind === 'committed') {
@@ -213,8 +213,8 @@ export function CommentBox({
 
           <p className="comment-box-note">
             Added to the end of the existing comments — nothing already there is edited or removed.
-            {expectedVersion === undefined &&
-              ' This record reports no version, so a comment added by someone else since you opened it cannot be detected.'}
+            {expectedThread === undefined &&
+              ' The existing comments could not be read, so one added by someone else since this record was opened cannot be detected.'}
           </p>
         </>
       )}

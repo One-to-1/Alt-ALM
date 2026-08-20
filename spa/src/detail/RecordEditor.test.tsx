@@ -184,7 +184,7 @@ describe('only what changed is sent', () => {
     expect(sentBody().fields).toEqual({ name: 'Edited' })
   })
 
-  it('sends the ver-stamp the edit was based on', async () => {
+  it('sends the loaded values the edit was based on, for the changed fields only', async () => {
     respondWith(200, writeBody())
     const user = userEvent.setup()
     renderEditor()
@@ -194,7 +194,10 @@ describe('only what changed is sent', () => {
     await user.click(screen.getByRole('button', { name: /save/i }))
 
     await waitFor(() => expect(globalThis.fetch).toHaveBeenCalled())
-    expect(sentBody().expectedVersion).toBe('3')
+    // ⚠️ `name` is deliberately absent. It was not changed, so it is not being replaced, so
+    // guarding it would refuse saves over an edit this one cannot lose — the shape that made
+    // "someone else changed this record" appear when a child was filed underneath (probe 34).
+    expect(sentBody().expectedValues).toEqual({ priority: '2' })
   })
 
   it('cannot be saved when nothing was typed', () => {
@@ -297,11 +300,22 @@ describe('the fields it offers', () => {
     expect(screen.queryByLabelText('target-rel')).toBeNull()
   })
 
-  it('warns when the record carries no version to detect a conflict with', () => {
+  it('still detects a conflict on a record that carries no ver-stamp', async () => {
+    // ⚠️ There used to be a warning here saying a conflict could not be detected without a stamp.
+    // The baseline is the field values now, which the record has whether or not it reports a
+    // version — so the warning would be false, and the guard genuinely still works.
     const noStamp: GridRow = { ...ROW, values: { ...ROW.values, 'ver-stamp': [] } }
+    respondWith(200, writeBody())
+    const user = userEvent.setup()
     renderEditor({ row: noStamp })
 
-    expect(screen.getByText(/cannot be detected/i)).toBeTruthy()
+    await user.clear(screen.getByLabelText('priority'))
+    await user.type(screen.getByLabelText('priority'), '4')
+    await user.click(screen.getByRole('button', { name: /save/i }))
+
+    await waitFor(() => expect(globalThis.fetch).toHaveBeenCalled())
+    expect(sentBody().expectedValues).toEqual({ priority: '2' })
+    expect(screen.queryByText(/cannot be detected/i)).toBeNull()
   })
 })
 

@@ -92,10 +92,11 @@ class AlmCommentWriterTest {
         @Test
         @DisplayName("an existing comment is still there after a new one is added")
         void existingCommentSurvives() {
-            rowHas("<html><body>\nEARLIER comment by someone else.\n</body></html>", "3");
+            String thread = "<html><body>\nEARLIER comment by someone else.\n</body></html>";
+            rowHas(thread, "3");
 
             writer.addComment(PROJECT, "requirements", "requirement", "7",
-                    "Alice", "My new comment.", Optional.of("3"));
+                    "Alice", "My new comment.", Optional.of(thread));
 
             String sent = written();
             // If this ever fails, the comment box has become a comment DELETER - which is exactly
@@ -150,39 +151,54 @@ class AlmCommentWriterTest {
     class ConflictDetection {
 
         @Test
-        @DisplayName("a ver-stamp that moved since the caller read it raises a conflict")
-        void staleVersionIsRefused() {
+        @DisplayName("a thread that moved since the caller read it raises a conflict")
+        void staleThreadIsRefused() {
             rowHas("<html><body>someone else already wrote here</body></html>", "9");
 
             assertThatThrownBy(() -> writer.addComment(PROJECT, "requirements", "requirement", "7",
-                    "Alice", "mine", Optional.of("3")))
-                    .isInstanceOf(AlmVersionGuard.ConflictException.class)
-                    .hasMessageContaining("ver-stamp 3")
-                    .hasMessageContaining("found 9");
+                    "Alice", "mine", Optional.of("<html><body>what I was shown</body></html>")))
+                    .isInstanceOf(AlmStaleWriteGuard.ConflictException.class)
+                    .hasMessageContaining("comments");
 
             verify(writes, never()).update(any(), any(), any(), any());
         }
 
         @Test
-        @DisplayName("a matching ver-stamp proceeds")
-        void currentVersionProceeds() {
-            rowHas("<html><body>x</body></html>", "9");
+        @DisplayName("a thread still holding what the caller was shown proceeds")
+        void currentThreadProceeds() {
+            // ⚠️ The row's ver-stamp is deliberately NOT the one a caller would have read.
+            // Probe 34: filing a child under a record moves that record's stamp with no field on it
+            // changing, and the old stamp-based guard refused perfectly good comments for it.
+            String thread = "<html><body>x</body></html>";
+            rowHas(thread, "9");
 
             writer.addComment(PROJECT, "requirements", "requirement", "7",
-                    "Alice", "mine", Optional.of("9"));
+                    "Alice", "mine", Optional.of(thread));
 
             verify(writes).update(any(), eq("requirements"), eq("7"), any());
         }
 
         @Test
-        @DisplayName("no expected version means 'I accept overwriting', and is allowed explicitly")
-        void absentVersionSkipsTheCheck() {
+        @DisplayName("no baseline means 'I accept overwriting', and is allowed explicitly")
+        void absentBaselineSkipsTheCheck() {
             // Spelled as an Optional at the call site rather than a nullable string so the choice
             // is visible to a reader. It is a decision, not a default.
             rowHas("<html><body>x</body></html>", "9");
 
             writer.addComment(PROJECT, "requirements", "requirement", "7",
                     "Alice", "mine", Optional.empty());
+
+            verify(writes).update(any(), eq("requirements"), eq("7"), any());
+        }
+
+        @Test
+        @DisplayName("a caller shown an empty thread is not in conflict with an empty field")
+        void emptyThreadAgainstEmptyFieldIsNotAConflict() {
+            // The first comment on a record: ALM returns no `values` entry, the caller rendered "".
+            rowHas(null, "1");
+
+            writer.addComment(PROJECT, "requirements", "requirement", "7",
+                    "Alice", "the first ever comment", Optional.of(""));
 
             verify(writes).update(any(), eq("requirements"), eq("7"), any());
         }

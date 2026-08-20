@@ -904,20 +904,23 @@ export function createRecord(
  * For a comment field that means every earlier comment is destroyed — use {@link addComment}, which
  * exists precisely because this function would do that and report success.
  *
- * @param expectedVersion the `ver-stamp` the edit was based on. Omitting it is "I accept
- *   overwriting a concurrent edit", not "there is no concurrency".
+ * @param expectedValues what this edit was based on, for the fields it is changing. Omitting it
+ *   is "I accept overwriting a concurrent edit", not "there is no concurrency".
+ *   ⚠️ NOT a `ver-stamp`. A stamp also moves when someone files a child under the record, so
+ *   guarding on one refused saves where no field the user touched had changed (probe 34). Baselines
+ *   for fields absent from `fields` are ignored by the BFF rather than refused.
  */
 export function updateRecord(
   project: string,
   collection: string,
   id: string,
   fields: Record<string, FieldValue>,
-  expectedVersion?: string,
+  expectedValues?: Record<string, FieldValue>,
 ): Promise<WriteResult> {
   return apiWrite(
     `/api/records/${encodeURIComponent(collection)}/${encodeURIComponent(id)}${projectQuery(project)}`,
     'PUT',
-    { fields, expectedVersion: expectedVersion ?? null },
+    { fields, expectedValues: expectedValues ?? null },
   )
 }
 
@@ -933,19 +936,25 @@ export function deleteRecord(
   )
 }
 
-/** Adds a comment, preserving the ones already there. The merge happens server-side. */
+/**
+ * Adds a comment, preserving the ones already there. The merge happens server-side.
+ *
+ * @param expectedThread the comment field's value as this view rendered it. The concurrency
+ *   baseline for a comment is the thread itself: it is the only thing a comment write can destroy,
+ *   and it is what the reader was looking at.
+ */
 export function addComment(
   project: string,
   collection: string,
   id: string,
   comment: string,
   author?: string,
-  expectedVersion?: string,
+  expectedThread?: string,
 ): Promise<WriteResult> {
   return apiWrite(
     `/api/records/${encodeURIComponent(collection)}/${encodeURIComponent(id)}/comments${projectQuery(project)}`,
     'POST',
-    { comment, author: author ?? null, expectedVersion: expectedVersion ?? null },
+    { comment, author: author ?? null, expectedThread: expectedThread ?? null },
   )
 }
 

@@ -8,6 +8,7 @@ import ai.surgeone.altalm.bff.alm.read.AlmQuery;
 
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 /**
@@ -73,28 +74,31 @@ public final class AlmCommentWriter {
     /**
      * Appends a comment, preserving everything already in the field.
      *
-     * @param expectedVersion the {@code ver-stamp} the caller's view was built on, or empty to skip
-     *                        the check. ⚠️ Passing empty is "I accept overwriting a concurrent
-     *                        edit", not "there is no concurrency" — it is spelled as an explicit
-     *                        {@link Optional} so that choice is visible at the call site
-     * @throws AlmVersionGuard.ConflictException if the record moved on since {@code expectedVersion}
+     * @param expectedThread the comment field's value as the caller's view rendered it, or empty to
+     *                       skip the check. ⚠️ Passing empty is "I accept overwriting a
+     *                       concurrent edit", not "there is no concurrency" — it is spelled as an
+     *                       explicit {@link Optional} so that choice is visible at the call site.
+     *                       ⚠️ This is the <em>thread</em>, not a {@code ver-stamp}: a stamp also
+     *                       moves when someone files a child under this record, which refused
+     *                       perfectly good comments (probe 34)
+     * @throws AlmStaleWriteGuard.ConflictException if a comment landed since the caller read the field
      */
     public AlmWriteResult addComment(AlmProjectRef project, String collection, String entity,
                                      String id, String author, String comment,
-                                     Optional<String> expectedVersion) {
+                                     Optional<String> expectedThread) {
         if (comment == null || comment.isBlank()) {
             throw new IllegalArgumentException("an empty comment would rewrite the field for nothing");
         }
         String field = commentFieldOf(project, entity).orElseThrow(() ->
                 new IllegalArgumentException(entity + " has no comment field in this project"));
 
-        // One read for both the current value and the current version. Two reads would open a race
-        // between them and make the check guard a value it did not fetch.
+        // The same read supplies both the value to merge into and the value to guard against. Two
+        // reads would open a race between them and make the check guard a value it did not fetch.
         AlmEntityPage.AlmEntity row = readRow(project, collection, id, field);
         String existing = row.first(field).orElse("");
-        String version = row.first("ver-stamp").orElse("");
 
-        AlmVersionGuard.check(expectedVersion, version);
+        expectedThread.ifPresent(seen -> AlmStaleWriteGuard.check(
+                Map.of(field, List.of(seen)), Map.of(field, List.of(existing))));
 
         String merged = AlmCommentBanner.append(existing, author, comment, LocalDate.now());
 

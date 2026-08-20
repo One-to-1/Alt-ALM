@@ -13,7 +13,7 @@ import ai.surgeone.altalm.bff.alm.session.AlmCredentials;
 import ai.surgeone.altalm.bff.alm.session.AlmSessionPool;
 import ai.surgeone.altalm.bff.alm.write.AlmCommentWriter;
 import ai.surgeone.altalm.bff.alm.write.AlmMetadataFieldResolver;
-import ai.surgeone.altalm.bff.alm.write.AlmVersionGuard;
+import ai.surgeone.altalm.bff.alm.write.AlmStaleWriteGuard;
 import ai.surgeone.altalm.bff.alm.write.AlmWriteClient;
 import ai.surgeone.altalm.bff.alm.write.AlmWriteValidator;
 import ai.surgeone.altalm.bff.api.RecordService;
@@ -146,19 +146,30 @@ class RecordServiceContractTest {
                 .toList();
     }
 
-    private static Map<String, String> body(String... pairs) {
-        Map<String, String> m = new LinkedHashMap<>();
+    /**
+     * ⚠️ Returns the <em>list</em> shape, because that is what the service takes. It used to
+     * return {@code Map<String, String>} and this file stopped compiling when multi-value support
+     * landed - which nobody saw, because Maven's incremental compilation had no reason to rebuild a
+     * test whose own source had not changed. A green run over stale class files.
+     */
+    private static Map<String, List<String>> body(String... pairs) {
+        Map<String, List<String>> m = new LinkedHashMap<>();
         for (int i = 0; i < pairs.length; i += 2) {
-            m.put(pairs[i], pairs[i + 1]);
+            m.put(pairs[i], List.of(pairs[i + 1]));
         }
         return m;
     }
 
-    /** Creates a tracked record through the service under test. */
+    /** Creates a tracked record under the shared parent. */
     private static String create(String suffix) {
+        return create(suffix, parentId);
+    }
+
+    /** Creates a tracked record through the service under test, under a named parent. */
+    private static String create(String suffix, String under) {
         WriteDto.WriteResponse response = service.create(sandbox, "requirements", body(
                 "name", RUN_PREFIX + "-" + suffix,
-                "parent-id", parentId,
+                "parent-id", under,
                 "type-id", typeId));
 
         // Tracked before asserting: a failed assertion still leaves a row to sweep.
@@ -194,7 +205,7 @@ class RecordServiceContractTest {
 
         WriteDto.WriteResponse response = service.update(sandbox, "requirements", id,
                 body("description", "<html><body>set by the record service</body></html>"),
-                Optional.empty());
+                Map.of());
 
         assertThat(response.outcome()).isEqualTo("COMMITTED");
         assertThat(fieldOf(id, "description")).get().asString().contains("set by the record service");
@@ -240,7 +251,7 @@ class RecordServiceContractTest {
         // accept this write and silently collapse the newline to a space (probe 27) - a 200 with
         // the paragraphs gone. The validator is the only thing that notices.
         assertThatThrownBy(() -> service.update(sandbox, "requirements", parentId,
-                body("description", "para one" + (char) 10 + "para two"), Optional.empty()))
+                body("description", "para one" + (char) 10 + "para two"), Map.of()))
                 .isInstanceOf(AlmWriteValidator.RejectedException.class)
                 .satisfies(e -> assertThat(((AlmWriteValidator.RejectedException) e).problems())
                         .singleElement()
@@ -248,35 +259,57 @@ class RecordServiceContractTest {
     }
 
     @Test
-    @DisplayName("the SERVER moves ver-stamp on a write, and the next stale write is refused")
-    void conflictIsDetectedAgainstAServerMovedStamp() {
+    @DisplayName("a second writer working from a stale field value is refused")
+    void conflictIsDetectedAgainstAServerMovedValue() {
         String id = create("conflict");
 
-        String before = fieldOf(id, "ver-stamp").orElseThrow();
+        // The baseline both writers loaded: the description as it stands before either saves.
+        Map<String, List<String>> asLoaded = Map.of("description",
+                fieldOf(id, "description").map(List::of).orElse(List.of()));
 
-        // A write with the CURRENT stamp must proceed - otherwise the next assertion would pass for
-        // the trivial reason that this guard refuses everything.
+        // The first writer's save must proceed - otherwise the next assertion would pass for the
+        // trivial reason that this guard refuses everything.
         WriteDto.WriteResponse ok = service.update(sandbox, "requirements", id,
-                body("description", "<html><body>first writer</body></html>"),
-                Optional.of(before));
+                body("description", "<html><body>first writer</body></html>"), asLoaded);
         assertThat(ok.outcome()).isEqualTo("COMMITTED");
 
-        String after = fieldOf(id, "ver-stamp").orElseThrow();
-        assertThat(after)
-                .as("ALM increments ver-stamp on a write (probe 31) - if it did not, this suite's "
-                        + "conflict detection would be checking a constant")
-                .isNotEqualTo(before);
-
-        // Now write as a second user whose page was loaded before that landed.
+        // The second writer's page was loaded before that landed, so its baseline is now stale.
         assertThatThrownBy(() -> service.update(sandbox, "requirements", id,
-                body("description", "<html><body>would have clobbered</body></html>"),
-                Optional.of(before)))
-                .isInstanceOf(AlmVersionGuard.ConflictException.class);
+                body("description", "<html><body>would have clobbered</body></html>"), asLoaded))
+                .isInstanceOf(AlmStaleWriteGuard.ConflictException.class)
+                .hasMessageContaining("description");
 
         // ⚠️ And the point that must not be lost: the refusal came from US, not from ALM. Probe 31
-        // established the server accepts a stale stamp and lets the write land. Passing the stale
-        // stamp straight to ALM would have overwritten "first writer" with a 200.
+        // established the server accepts a stale write and lets it land. Sending this straight to
+        // ALM would have overwritten "first writer" with a 200.
         assertThat(fieldOf(id, "description")).get().asString().contains("first writer");
+    }
+
+    @Test
+    @DisplayName("filing a CHILD moves the parent's ver-stamp and does NOT block the parent's save")
+    void aChildCreateDoesNotBlockTheParentsSave() {
+        String id = create("parent-of-child");
+
+        Map<String, List<String>> asLoaded = Map.of("description",
+                fieldOf(id, "description").map(List::of).orElse(List.of()));
+        String stampBefore = fieldOf(id, "ver-stamp").orElseThrow();
+
+        // Someone files a record underneath the one we have open.
+        String childId = create("child-of-parent", id);
+        assertThat(childId).isNotBlank();
+
+        // ⚠️ This is the whole reason the guard stopped looking at ver-stamp (probe 34). If this
+        // assertion ever fails, ALM changed and the stamp-based guard was fine after all.
+        assertThat(fieldOf(id, "ver-stamp").orElseThrow())
+                .as("creating a child moves the PARENT's ver-stamp")
+                .isNotEqualTo(stampBefore);
+
+        // No field on the parent differs, so the parent's own save must go through. The stamp-based
+        // guard refused exactly this, naming a conflict that did not exist.
+        WriteDto.WriteResponse response = service.update(sandbox, "requirements", id,
+                body("description", "<html><body>saved after a child appeared</body></html>"),
+                asLoaded);
+        assertThat(response.outcome()).isEqualTo("COMMITTED");
     }
 
     @Test
@@ -285,7 +318,10 @@ class RecordServiceContractTest {
         String id = create("comment");
 
         service.comment(sandbox, "requirements", id, "Contract Test", "FIRST note.", Optional.empty());
-        service.comment(sandbox, "requirements", id, "Contract Test", "SECOND note.", Optional.empty());
+        // The second comment guards on the thread the first one produced - the shape the SPA sends,
+        // and the one that refuses if anybody else commented in between.
+        service.comment(sandbox, "requirements", id, "Contract Test", "SECOND note.",
+                fieldOf(id, "comments"));
 
         String stored = fieldOf(id, "comments").orElse("");
         assertThat(stored).contains("FIRST note.").contains("SECOND note.");
