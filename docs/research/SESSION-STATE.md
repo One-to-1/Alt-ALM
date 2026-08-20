@@ -846,10 +846,63 @@ reports **0 of 58** fields as list-bound — "dropdowns are impossible here" —
 Corrected in the api reference and both skills. The doc's `[docs-research]` tag was the tell: that
 line was never probe-verified.
 
-**Next in P2:** wiring the SPA to these endpoints (edit forms, the comment box, optimistic-ish
-refresh around the `UNKNOWN` case), a lookup-list client so `LOOKUP_LIST` values can be validated
-rather than passed through, and attachments — which need the hand-built multipart body, so they are
-their own slice rather than a field on an existing one.
+**Next in P2:** ~~edit forms~~, ~~the comment box~~, ~~a lookup-list client~~ — all three landed;
+see below. Remaining: **create and delete affordances** in the SPA (both endpoints exist and are
+tested, nothing in the UI reaches them), **multi-value editing** for the model's only two such fields
+(`target-rel`, `target-rcyc` — a multi-select is a different control), and **attachments**, which
+need the hand-built multipart body and are their own slice rather than a field on an existing one.
+
+### The comment box is in — and it is write-only on purpose (2026-08-20)
+
+`spa/src/detail/CommentBox.tsx`, under the comment field's own memo tab, gated on `data.writable`.
+**101 SPA tests** (was 76); BFF unchanged, since the route and its live contract coverage already
+existed.
+
+**The shape is the whole design.** The box holds the *new* comment and never the thread. The
+existing comments stay above it, read-only, rendered by `MemoBody`. That is not a layout preference:
+a memo PUT replaces the field (probe 30), so a textarea pre-filled with the current comments is one
+careless save away from deleting every one of them and getting HTTP 200 for it. The merge stays in
+the BFF (`AlmCommentWriter`), so this component never sees the field's current value at all.
+
+⚠️ **Which field takes comments is discovered, never assumed** — `GET .../comment-field`, per entity
+and not tracking the physical column. A 404 means the entity has none, which is a legitimate answer:
+the pane degrades to a read-only memo. Guessing would offer the box over a *description*.
+
+⚠️ **`mayWriteAgain` joins `mayKeepEditing` rather than replacing it**, and the test asserting they
+*disagree* is the one that stops a later merge. `mayKeepEditing` asks whether the user's draft
+survives — false for `COMMITTED`, so an editor closes. `mayWriteAgain` asks whether a write button
+may be on screen — true for `COMMITTED`, because a comment box is used again immediately. They also
+differ on `CONFLICT`. Collapsing them into one predicate silently breaks one caller in whichever
+direction the merge goes: a box that vanishes after every successful comment, or a Save button that
+outlives a write nobody is sure about.
+
+Only `unknown` locks the box, and its banner carries an extra sentence the generic wording cannot:
+the generic text warns about **a duplicate record**, but a comment is a read-modify-write over one
+memo field, so what is uncertain is **the state of the entire thread**. A user told "you might get a
+duplicate" would reasonably conclude the worst case is tidy.
+
+**The author name is a claim, and is labelled as one.** Every write leaves under one service-account
+key (ADR 0004) and REST bypasses the workflow scripts that would stamp a name, so the typed name goes
+into the comment's *text* and nowhere ALM treats as an identity. Blank sends `null`, and the BFF
+substitutes `Alt-ALM` rather than borrowing the service account's name. Remembered in `localStorage`
+only on a committed write.
+
+### ⚠️ "Reload the record" was a no-op, and that is P1 code the comment box exposed
+
+`reloadToken` drove the related-tab marks but was **not in the record fetch's dependencies**. So the
+single action offered after an `unknown` write outcome — the one the whole banner design funnels the
+user into — re-read nothing. The pane went on displaying pre-write values underneath a banner telling
+the user to go and look at what ALM actually stored. Nothing on screen said otherwise.
+
+Fixed, along with the history fetch (a write adds an audit entry). A same-record reload now **keeps
+the values on screen** rather than flashing the skeleton: the pane is *out of date*, not empty, and
+blanking it discards the banner that asked for the reload. Moving to a **different** record still
+shows the skeleton — one record's fields under another's header is the worse lie.
+
+**`DetailPane` gets its first tests** (`DetailPane.test.tsx`), and both regressions were verified to
+fail them before the fixes were restored. They cover the three things composition gets wrong
+invisibly: reload really re-reads, the box appears on the comment field and no other memo, and memo
+values reach the sanitiser — the last closing a gap named twice in earlier sessions.
 
 ### P2's phase-start probe is done, and it found a data-loss trap
 

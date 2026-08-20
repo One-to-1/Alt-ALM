@@ -158,7 +158,8 @@ finding in the project surfaced by product code under test rather than a hand-wr
   **bounded retry on 5xx reads** — separate from the 5xx-on-*write* verify-by-query rule (**Q46**).
 
 🟡 **P2 IN PROGRESS — the write core, the CRUD endpoints and the validation layer are in and
-verified live (2026-08-19). 345 BFF tests (388 with `-Pcontract`) + 76 SPA tests green. Records are editable in the SPA.**
+verified live (2026-08-19). 345 BFF tests (388 with `-Pcontract`) + 101 SPA tests green. Records are
+editable in the SPA, and comments can be added without destroying the ones already there (2026-08-20).**
 `AlmWriteClient` is the single write path; `ApiIsReadOnlyTest` asserts writes *route through it*
 rather than that none exist, and now has real endpoints to guard. See `SESSION-STATE.md`.
 
@@ -195,7 +196,11 @@ unreadable list, an unknown list, an **empty** list, and `listId == 0` all valid
 render free text — a wrong rejection makes a field unfillable and blames the user for it.
 
 ⚠️ **In the SPA, an `unknown` write outcome must never offer "Retry"** (`spa/src/detail/
-writeOutcome.ts`). An ALM 5xx may have committed the row, so the obvious red-banner-plus-Retry
+writeOutcome.ts`). ⚠️ **That module exports TWO predicates and they are not interchangeable**:
+`mayKeepEditing` asks whether the user's draft survives (false for `COMMITTED` — an editor closes);
+`mayWriteAgain` asks whether a write button may be on screen (true for `COMMITTED` — a comment box is
+used again immediately). They disagree on `COMMITTED` and `CONFLICT`, a test pins the disagreement,
+and merging them silently breaks one caller in whichever direction the merge went. An ALM 5xx may have committed the row, so the obvious red-banner-plus-Retry
 design creates duplicates for precisely the writes that worked. It gets its own tone, one action
 (reload), and the editor closes. Likewise the write client returns a **union, not an ok/throw**, and
 treats a dropped connection as *not* retryable — unlike every read.
@@ -310,6 +315,8 @@ every conflict**; probes 1–15), [alm-api-reference.md](docs/research/alm-api-r
   immediately before a PUT and refuse on a change — which narrows the lost-update race without
   closing it. Never describe that as safe.
 - ⚠️ **A memo PUT REPLACES the field — a comment write destroys every earlier comment** (probe 30).
+The SPA's answer is a **write-only** `CommentBox`: it holds the new comment and never the thread, so
+the shape that would delete the history cannot be typed into. The thread renders above it, read-only.
   There is no server-side append and no banner, user, or timestamp added by ALM (workflow bypass).
   The obvious comment UI deletes the record's whole history and answers **HTTP 200**. Comment writes
   must be **read-modify-write in the BFF**. The field name differs per entity and does not track the
