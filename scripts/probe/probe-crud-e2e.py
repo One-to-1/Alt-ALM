@@ -9,8 +9,9 @@ Safety, per the live-probe skill:
   - Writes go to the BFF's DEFAULT project only. No `project` parameter is ever sent, so no project
     name appears in this script, its output, or the process list. The default is the sandbox.
   - Every created record carries an ALTALM-E2E-<timestamp> name prefix.
-  - Cleanup runs in a finally block, reverse creation order, followed by a prefix sweep — the sweep
-    is not redundancy, it is the only cleanup that covers a 5xx that committed.
+  - ⚠️ Records are KEPT (user, 2026-08-20). A before/after diff attributes the run instead, which
+    covers a 5xx that committed better than a name-prefix sweep ever did — such a row returns no id
+    and need not carry our prefix at all.
 """
 
 import json
@@ -18,9 +19,13 @@ import time
 import urllib.error
 import urllib.request
 
+import probe_state
+
 BASE = "http://localhost:8080"
 STAMP = time.strftime("%Y%m%d-%H%M%S")
 PREFIX = f"ALTALM-E2E-{STAMP}"
+
+WATCHED = ('requirements', 'tests', 'test-folders', 'defects')
 
 created = []
 failures = []
@@ -47,6 +52,9 @@ def check(label, condition, detail=""):
     if not condition:
         failures.append(label)
 
+
+before = probe_state.snapshot_bff(call, WATCHED)
+print("before: " + ", ".join(f"{c}={len(before[c])}" for c in WATCHED))
 
 try:
     # ---- the parent. The root is a real row; -1 is a sentinel that 500s on a create. ----
@@ -132,26 +140,21 @@ try:
         check("a stale ver-stamp is refused with 409", status == 409, f"HTTP {status}")
 
 finally:
-    print("\ncleanup")
-    for collection, rid in reversed(created):
-        status, _ = call("DELETE", f"/api/records/{collection}/{rid}")
-        print(f"  DELETE {collection}/{rid}: HTTP {status}")
+    # ⚠️ Records are KEPT (user, 2026-08-20). What replaced delete-and-sweep is a before/after
+    # diff, which attributes this run BETTER than the sweep could: the sweep only matched names,
+    # and a 5xx create that commits returns no id AND is not guaranteed to carry our prefix.
+    print("\nwhat this run changed")
+    after = probe_state.snapshot_bff(call, WATCHED)
+    report = probe_state.diff_bff(before, after)
+    probe_state.print_diff(report, before, after)
 
-    # The prefix sweep. Not redundancy: an UNKNOWN create returns no id, so id-tracked cleanup
-    # cannot reach a row a 5xx committed.
-    print("\norphan sweep")
-    total_orphans = 0
-    for collection in ("requirements", "tests", "test-folders", "defects"):
-        status, grid = call(
-            "GET",
-            f"/api/grid/{collection}?pageSize=50&start=1&filter=name:ALTALM-*",
-        )
-        rows = grid.get("rows", []) if status == 200 else []
-        total_orphans += len(rows)
-        for r in rows:
-            d, _ = call("DELETE", f"/api/records/{collection}/{r['id']}")
-            print(f"  swept {collection}/{r['id']}: HTTP {d}")
-        print(f"  {collection}: HTTP {status}, {len(rows)} matching ALTALM-*")
+    # One requirement, created and then written to. It is `added`, not `modified`: a row that did
+    # not exist in `before` cannot also be reported as having moved.
+    surprises = probe_state.expect(report, {'requirements': {'added': 1}})
+    for line in surprises:
+        print(f"  UNEXPECTED: {line}")
+        failures.append("unexpected change: " + line)
 
-    print(f"\n{'ALL CHECKS PASSED' if not failures else 'FAILURES: ' + ', '.join(failures)}")
-    print(f"orphans found by sweep: {total_orphans} (0 is the expected result)")
+    print(f"  kept for reuse: {[c + chr(47) + i for c, i in created]}")
+    print("\n" + ("ALL CHECKS PASSED" if not failures
+                        else "FAILURES: " + ", ".join(failures)))

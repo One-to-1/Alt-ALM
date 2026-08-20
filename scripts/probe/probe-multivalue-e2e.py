@@ -4,15 +4,20 @@ Probe 33 established the grammar directly against ALM. This checks the other sea
 JSON array survives the BFF's normalisation, the validator's new multi-value rule, and
 AlmEntityBody's serialisation, and arrives as two stored values.
 
-Default project only (no `project` parameter anywhere). ALTALM-E2E-* names, cleanup in finally.
+Default project only (no `project` parameter anywhere). ALTALM-E2E-* names.
+⚠️ Records are KEPT (user, 2026-08-20); a before/after diff attributes the run instead.
 """
 import json
 import time
 import urllib.error
 import urllib.request
 
+import probe_state
+
 BASE = "http://localhost:8080"
 PREFIX = "ALTALM-E2E-" + time.strftime("%Y%m%d-%H%M%S")
+
+WATCHED = ('requirements', 'releases', 'release-cycles', 'release-folders')
 
 created = []
 failures = []
@@ -44,6 +49,9 @@ def values_of(detail_body, field):
     row = (detail_body.get("rows") or [{}])[0]
     return row.get("values", {}).get(field, []) or []
 
+
+before = probe_state.snapshot_bff(call, WATCHED)
+print("before: " + ", ".join(f"{c}={len(before[c])}" for c in WATCHED))
 
 try:
     # ---- targets: two releases under the release root ---------------------------------------
@@ -118,21 +126,20 @@ try:
             check("a non-string element is refused, not coerced", st == 400, f"HTTP {st}")
 
 finally:
-    print("\ncleanup")
-    for collection, rid in reversed(created):
-        st, _ = call("DELETE", f"/api/records/{collection}/{rid}")
-        print(f"  DELETE {collection}/{rid}: HTTP {st}")
+    # ⚠️ Records are KEPT (user, 2026-08-20). What replaced delete-and-sweep is a before/after
+    # diff, which attributes this run BETTER than the sweep could: the sweep only matched names,
+    # and a 5xx create that commits returns no id AND is not guaranteed to carry our prefix.
+    print("\nwhat this run changed")
+    after = probe_state.snapshot_bff(call, WATCHED)
+    report = probe_state.diff_bff(before, after)
+    probe_state.print_diff(report, before, after)
 
-    print("\norphan sweep")
-    total = 0
-    for collection in ("requirements", "releases", "release-cycles", "release-folders"):
-        st, grid = call("GET", f"/api/grid/{collection}?pageSize=50&start=1&filter=name:ALTALM-*")
-        rows = grid.get("rows", []) if st == 200 else []
-        total += len(rows)
-        for r in rows:
-            d, _ = call("DELETE", f"/api/records/{collection}/{r['id']}")
-            print(f"  swept {collection}/{r['id']}: HTTP {d}")
-        print(f"  {collection}: {len(rows)} matching")
+    # two releases and one requirement are kept; the requirement's PARENT is modified because creating a child moves it (probe 34)
+    surprises = probe_state.expect(report, {'releases': {'added': 2}, 'requirements': {'added': 1}})
+    for line in surprises:
+        print(f"  UNEXPECTED: {line}")
+        failures.append("unexpected change: " + line)
 
-    print(f"\n{'ALL CHECKS PASSED' if not failures else 'FAILURES: ' + ', '.join(failures)}")
-    print(f"orphans found: {total} (0 expected)")
+    print(f"  kept for reuse: {[c + chr(47) + i for c, i in created]}")
+    print("\n" + ("ALL CHECKS PASSED" if not failures
+                        else "FAILURES: " + ", ".join(failures)))

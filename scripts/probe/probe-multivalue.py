@@ -29,7 +29,12 @@ Also settled here, because the control needs it:
   - does a read return one entry per value, or one joined string?
   - can a multi-value field be CLEARED, and how?
 
-WRITES. Sandbox only. ALTALM-PROBE-<timestamp> names, cleanup in `finally`, orphan sweep.
+WRITES. Sandbox only. ALTALM-PROBE-<timestamp> names.
+
+⚠️ Records are KEPT, not deleted (user, 2026-08-20). The run snapshots the sandbox before and after
+and reports the delta, which attributes what it created BETTER than the old prefix sweep did: a 5xx
+create that commits returns no id, so id-tracked cleanup could never reach it, while a diff sees it.
+The two releases this builds are exactly the reusable targets the old rule kept throwing away.
 Printed output is ASCII-only - a UnicodeEncodeError on a cp1252 console aborts mid-run.
 
     python scripts/probe/probe-multivalue.py
@@ -43,13 +48,19 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
+import probe_state
+
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 SECRETS = ROOT / 'Secrets' / 'ALM_API_credentials.json'
 
 PREFIX = 'ALTALM-PROBE-' + datetime.datetime.now().strftime('%Y%m%d-%H%M%S')
 
 MASK = []
-created = []   # (collection, id), deleted in reverse
+created = []   # (collection, id) - reported at the end, no longer deleted
+
+# Snapshotted before and after, so the run accounts for every row that appeared or moved - not only
+# the ones it remembered creating.
+WATCHED = ('requirements', 'releases', 'release-cycles', 'release-folders')
 
 
 def mask(s):
@@ -117,6 +128,8 @@ def main():
 
     proj = f"{base}/rest/domains/{c['domain']}/projects/{c['project']}"
     print(f'SANDBOX. prefix {PREFIX}\n')
+    before = probe_state.snapshot(call, proj, WATCHED)
+    print('   before: ' + ', '.join(f'{c}={len(before[c])}' for c in WATCHED))
 
     def post(collection, fields, entity_type):
         body = json.dumps({'Fields': [{'Name': n, 'values': [{'value': v}]}
@@ -276,23 +289,32 @@ def main():
             print('   REST alone until one does - record this as the blocker, do not guess a shape.')
 
     finally:
-        print('\n-- cleanup')
-        for collection, rid in reversed(created):
-            st, _ = call('DELETE', f'{proj}/{collection}/{rid}')
-            print(f'   DELETE {collection}/{rid}: HTTP {st}')
+        print('\n-- what this run changed')
+        after = probe_state.snapshot(call, proj, WATCHED)
+        report = probe_state.diff(before, after)
+        probe_state.print_diff(report, before, after, mask)
 
-        print('\n-- orphan sweep')
-        total = 0
-        for collection in ('requirements', 'releases', 'release-cycles', 'release-folders'):
-            q = urllib.parse.quote('{name[ALTALM-PROBE*]}')
-            st, t = call('GET', f'{proj}/{collection}?query={q}&fields=id,name&page-size=50')
-            rows = (json.loads(t).get('entities') or []) if st == 200 else []
-            total += len(rows)
-            for r in rows:
-                d, _ = call('DELETE', f'{proj}/{collection}/{first_value(r, "id")}')
-                print(f'   swept {collection}/{first_value(r, "id")}: HTTP {d}')
-            print(f'   {collection}: {len(rows)} matching')
-        print(f'   orphans found: {total} (0 is the expected result)')
+        # ⚠️ The safety net that replaced the sweep. A printed diff nobody reads is not a check, so
+        # "did I touch anything I did not mean to?" is an assertion rather than an invitation.
+        # A row created during this run is `added`, never `modified` - it was not in `before` to move.
+        surprises = probe_state.expect(report, {
+            'release-folders': {'added': 1},
+            'releases': {'added': 2},
+            # ⚠️ The root requirement is `modified`, and that is ALM's doing, not this probe's:
+            # creating a child moves the PARENT's ver-stamp (probe 34, found by this very diff).
+            # Listed explicitly rather than waved through, so if it ever stops happening — or starts
+            # happening somewhere else — the run says so.
+            'requirements': {'added': 1, 'modified': 1},
+        })
+        if surprises:
+            print('\n   *** UNEXPECTED CHANGES - this run did something it did not intend:')
+            for line in surprises:
+                print(f'       {line}')
+        else:
+            print('\n   every change is accounted for by this probe')
+
+        print(f'\n   kept for reuse: {[f"{c}/{i}" for c, i in created]}')
+
 
         # Logout is two calls and both need XSRF; the status varies and the outcome does not.
         call('DELETE', base + '/rest/site-session')

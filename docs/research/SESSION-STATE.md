@@ -851,6 +851,50 @@ affordances~~ — all landed. **CRUD is complete in the SPA and verified live en
 ~~multi-value editing~~ — done, see below. Remaining: **attachments**, which need the hand-built
 multipart body and are their own slice rather than a field on an existing one.
 
+### ⚠️ Probes no longer delete what they create (user, 2026-08-20)
+
+The rule was: create with an `ALTALM-PROBE-*` prefix, delete everything in a `finally`, sweep by
+prefix, assert zero orphans. The user asked why — **snapshot the state, do the work, snapshot again,
+compare** gives you the same knowledge without destroying reusable data. It does, and it gives more.
+
+**What deletion was actually buying, and what replaced it:**
+
+| wanted | old mechanism | now |
+|---|---|---|
+| attribute what a run created | name-prefix sweep | before/after diff |
+| predictable starting state | empty the project | assert on the **delta**, not on counts |
+| catch a 5xx that silently committed | sweep, if the row carried the prefix | diff, **unconditionally** |
+
+That last row is the improvement, not a tie. A 5xx create returns no id, so id-tracked cleanup can
+never reach it — and it need not carry our prefix either, so the sweep could miss it too. A diff sees
+anything that appeared.
+
+**What it had been costing:** probe 33 had to build two releases before it could test multi-value at
+all, because the sandbox had none. The CRUD e2e had to go find a parent. P1 validation could not use
+the sandbox and had to borrow `PROJECT-5`. The sandbox now holds **9 requirements, 8 releases, 3
+release-folders** — targets the next probe can just point at.
+
+`scripts/probe/probe_state.py` is the helper: `snapshot` / `diff` / `print_diff` / `expect`, plus
+`snapshot_bff` / `diff_bff` for probes that go through the BFF. ⚠️ The BFF pair detects **added and
+removed only** — `ver-stamp` is not guaranteed to be among the grid's columns, and inferring
+"unchanged" from a field never fetched is a false all-clear.
+
+⚠️ **`expect()` is the assertion and is not optional.** A printed diff nobody reads has replaced one
+silent failure with another.
+
+**It found something on its first run.** See probe 34: the diff reported the project's *root*
+requirement as modified, which no prefix sweep would ever have looked at. Creating a child moves the
+**parent's** `ver-stamp`; editing the child does not. That gives `AlmVersionGuard` a **false-conflict**
+case — open a parent record, have anyone add a child, and your next save of the parent is refused
+with "Someone else changed this record" when no field on it differs. It fails safe and the recovery
+works, so this is a confidently wrong *message* rather than lost data. The sharper rule — compare the
+values of the fields this write is actually sending, since ALM only replaces those — is written down
+as a finding rather than implemented, because it is the safety-critical path.
+
+**Also narrowed:** two of my own e2e scripts swept `name:ALTALM-*` rather than the skill's
+`ALTALM-PROBE*`. Moot now that nothing sweeps, but it was broad enough to delete anything the prefix
+touched.
+
 ### Multi-value fields are editable (2026-08-20) — after the probe that unblocked them
 
 They had been excluded from the editor with a note saying a multi-select was "a different control".

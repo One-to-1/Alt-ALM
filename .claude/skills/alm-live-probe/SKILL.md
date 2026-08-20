@@ -27,14 +27,28 @@ Load `alm-api` first for API behaviour. This skill covers *how to safely talk to
 - **Never print, log, or commit the contents of `Secrets/`.** Load credentials at runtime; reference the
   file by path in docs/code, never its values.
 - **Every created record carries an `ALTALM-PROBE-<timestamp>` name prefix**, e.g.
-  `'ALTALM-PROBE-' + (Get-Date -Format 'yyyyMMdd-HHmmss')` — makes orphans identifiable and greppable.
-- **Cleanup runs in a `finally` block, in reverse creation order.** Track every created `{rel; id}` pair
-  in a list as you go; delete last-created-first so parent/child dependencies unwind cleanly.
-- **Orphan sweep after cleanup**: query `?query={name[ALTALM-PROBE*]}` across every collection touched
-  in the session (requirements, test-folders, tests, design-steps, test-set-folders, test-sets,
-  runs, milestones, releases, release-cycles, test-executions, defects, …) and delete
-  anything that matches. **Verify the sweep returned zero orphans before declaring the probe done** — a
-  500 that silently committed a row (see `alm-api` §1.2) is exactly the failure mode this catches.
+  `'ALTALM-PROBE-' + (Get-Date -Format 'yyyyMMdd-HHmmss')` — so any row can be attributed to a run.
+- ⚠️ **Records are KEPT, not deleted** (user, 2026-08-20). **This reverses the previous rule**, which
+  deleted everything in a `finally` and then swept by prefix. That rule threw away every reusable
+  target and cost real work: probe 33 had to build two releases before it could test anything,
+  because the sandbox had none, and P1 validation could not use the sandbox at all.
+- **Snapshot before, snapshot after, report the delta.** `scripts/probe/probe_state.py`:
+  `snapshot(call, proj, collections)` → `diff(before, after)` → `print_diff(...)` →
+  `expect(report, {...})`. Take the "before" right after login, the "after" in the `finally`.
+  Talking to the BFF instead of ALM? Use `snapshot_bff` / `diff_bff` — different response shape, and
+  they detect added/removed only, because `ver-stamp` is not guaranteed to be among the grid's
+  columns and inferring "unchanged" from a field never fetched is a false all-clear.
+- **The diff is strictly better at the job the sweep existed for.** A sweep could only find rows
+  whose *name* matched a prefix. A 5xx that silently commits returns no id **and need not carry your
+  prefix at all** — the diff sees it regardless. It also sees rows you never meant to touch: probe 34
+  was found this way on its first run, when the root requirement's `ver-stamp` moved because creating
+  a child moves its parent.
+- **`expect()` is the assertion, and it is not optional.** A printed diff nobody reads has replaced
+  one silent failure with another. Declare what the run intends to change; anything else is reported
+  as a surprise. **Verify the run reported no surprises before declaring the probe done.**
+- **Assert on the delta, never on absolute counts.** "0 releases" was never a fact about ALM, only
+  about a project nobody had used yet — and it stops being true the first time a probe keeps its
+  records.
 - ⚠️ **`test-instances` is deliberately NOT in that list, and a name sweep cannot find one** (probe
   28). A test instance has no `name` field at all — its identity comes from the test it points at —
   so `?query={name[ALTALM-PROBE*]}` against `test-instances` returns **HTTP 404, not an empty list**.
@@ -170,26 +184,37 @@ function New-AlmEntity {
 }
 ```
 
-**Cleanup + orphan sweep** (in `finally`):
-```powershell
-finally {
-    for ($i = $created.Count - 1; $i -ge 0; $i--) {
-        $e = $created[$i]
-        try { $null = Invoke-Alm DELETE "$($e.rel)/$($e.id)" } catch { Write-Host ("  DELETE $($e.rel)/$($e.id) threw: " + (Mask $_.Exception.Message)) }
-    }
-    foreach ($col in @('requirements','test-folders','tests','design-steps','test-set-folders','test-sets','test-instances','runs','milestones','releases','release-cycles','test-executions','defects')) {
-        $r = Invoke-Alm GET "$col`?query={name[ALTALM-PROBE*]}&fields=id,name&page-size=50"
-        if ($r.StatusCode -eq 200) {
-            $j = $r.Content | ConvertFrom-Json
-            foreach ($e2 in @($j.entities)) {
-                $oid = ([string](($e2.Fields | Where-Object Name -eq 'id').values[0].value))
-                $null = Invoke-Alm DELETE "$col/$oid"
-            }
-        }
-    }
-    $null = Invoke-WebRequest @iwr -Uri "$base/authentication-point/logout" -WebSession $session
-}
+**Before/after diff** (in `finally`) — ⚠️ **the delete-and-sweep block that used to be here is gone
+deliberately.** It is the rule that changed, not merely the code; see §1.
+
+In Python, use `scripts/probe/probe_state.py` rather than re-deriving this:
+
+```python
+import probe_state
+WATCHED = ('requirements', 'releases', 'release-folders')       # what this run could touch
+
+before = probe_state.snapshot(call, proj, WATCHED)              # right after login
+try:
+    ...                                                          # the probe
+finally:
+    after = probe_state.snapshot(call, proj, WATCHED)
+    report = probe_state.diff(before, after)
+    probe_state.print_diff(report, before, after, mask)          # masked, always
+    # Declare the intent. Anything else comes back as a surprise and must be read.
+    surprises = probe_state.expect(report, {'requirements': {'added': 1, 'modified': 1}})
+    for line in surprises:
+        print(f'   *** UNEXPECTED: {line}')
+    # Logout is two calls, both need XSRF; the status varies and the outcome does not.
+    call('DELETE', base + '/rest/site-session')
+    call('POST', base + '/authentication-point/logout')
 ```
+
+⚠️ `{'requirements': {'modified': 1}}` above is not a typo: creating a child moves the **parent's**
+`ver-stamp` (probe 34), so a probe that creates one requirement legitimately reports one modified row
+it never wrote to. Declare it rather than widening the check, so that if it ever stops happening —
+or starts happening somewhere new — the run says so.
+
+In PowerShell the shape is the same three steps; there is no shared helper yet.
 Reference implementations: `scripts/probe/probe-write-1.ps1` (round 1), `probe-write-3.ps1` (round 3,
 adds XML entity building and hand-built multipart).
 

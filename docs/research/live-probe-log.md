@@ -2090,6 +2090,46 @@ that is knowable at all. This is a live reproduction of the intermittency behind
 grid's one-off 500, and it is the whole justification for the verify-by-query rule: had that create
 committed, id-tracked cleanup could not have reached it, because a 5xx returns no id.
 
+
+## Probe 34 - creating a child moves the PARENT's ver-stamp (2026-08-20)
+
+Found by the before/after diff that replaced delete-everything cleanup, on its **first run** — and
+found *because* of the replacement. The old prefix sweep could only see rows whose name matched
+`ALTALM-*`; this row is the project's root requirement, named `Requirements`, and no sweep would ever
+have looked at it.
+
+The diff reported `~ requirements/0 'Requirements' ver 410 -> 411` among changes the probe could not
+account for. Confirmed with a three-call read-create-read:
+
+| action | root `ver-stamp` |
+|---|---|
+| before creating a child under the root | 411 |
+| **after** creating a child | **412** |
+| after editing that child | 412 (unchanged) |
+
+So: **a create moves the parent; an edit to the child does not.** This is parent bookkeeping, not a
+cascade — only the immediate parent's stamp was checked, and whether it propagates to grandparents is
+**UNVERIFIED** (the experiment: create under a two-deep child and read all three stamps).
+
+### ⚠️ What it means for conflict detection
+
+`AlmVersionGuard` refuses a write when `ver-stamp` moved since the caller read it. That now has a
+**false-conflict** case with nothing wrong in it: open a folder or a parent requirement in Alt-ALM,
+have anyone add a child under it, and the next save of the *parent* is refused with "Someone else
+changed this record" — when nobody changed a single field on it.
+
+It fails safe (refuse rather than overwrite) and the recovery works (reload, re-apply, save), so this
+is a wrong *message* rather than lost data. But the message is confidently wrong, which is worse than
+vague: the user reloads, sees identical values, and is told to re-apply a change to something that
+never differed.
+
+**The sharper rule, not yet implemented:** ALM's update replaces only the fields present in the body,
+so a concurrent edit is harmful *only when it touched a field this write is also sending*. Comparing
+those fields' values against the pre-write read would refuse strictly less often than `ver-stamp`
+while protecting exactly as much. `ver-stamp` is the cheap proxy, and it is proxying for the wrong
+thing. Deliberately left as a finding rather than a change: it is the safety-critical path and
+deserves its own slice.
+
 ## Open items for the next probe round
 
 1. ~~Map `SiteVersion 20.0 (20.00.0.143)` → marketing version~~ **DONE: ALM 26.1** (probe 3).

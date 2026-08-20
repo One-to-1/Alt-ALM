@@ -62,7 +62,11 @@ scripts.
   teams' live projects.
 - **Write only where the user has said you may.** The project in
   `Secrets/ALM_API_credentials.json` **was designated a disposable sandbox by the user on
-  2026-08-12** — writes allowed there, with `ALTALM-*` name prefixes and mandatory cleanup. Since
+  2026-08-12** — writes allowed there, with `ALTALM-*` name prefixes. ⚠️ **Cleanup-by-deletion was RETIRED on
+  2026-08-20 (user).** Probe records are **kept** and attributed by a before/after snapshot diff
+  (`scripts/probe/probe_state.py`), which catches strictly more than the prefix sweep did — a 5xx
+  that commits returns no id and need not carry the prefix — and stops throwing away reusable
+  targets. Probes assert on the **delta**, never on absolute counts. Since
   2026-08-18 the *code* no longer restricts writes to it alone (above), so this is now a judgement
   the operator makes by enrolling projects rather than one the policy enforces for you. **Probe
   scripts still write to the sandbox and nowhere else.** The record generator is dry-run by default
