@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { WriteResult } from '../api/client.ts'
-import { mayKeepEditing, outcomeMessage } from './writeOutcome.ts'
+import { mayKeepEditing, mayWriteAgain, outcomeMessage } from './writeOutcome.ts'
 
 /**
  * What the user is told, and — the part that matters — what they are offered.
@@ -159,5 +159,36 @@ describe('a committed write', () => {
 
     expect(message.body).toContain('required')
     expect(message.tone).toBe('success')
+  })
+})
+
+describe('mayWriteAgain, and how it differs from mayKeepEditing', () => {
+  it('refuses only the unknown outcome', () => {
+    // The single rule: a write button may be on screen from any KNOWN state — written or not
+    // written — and from an unknown one it is how a duplicate is made.
+    expect(mayWriteAgain(UNRESOLVED)).toBe(false)
+    expect(mayWriteAgain(VERIFIED)).toBe(false)
+
+    expect(mayWriteAgain({ kind: 'committed', id: '1', retried: false })).toBe(true)
+    expect(mayWriteAgain({ kind: 'rejected', errorId: '', detail: '' })).toBe(true)
+    expect(mayWriteAgain({ kind: 'invalid', problems: [] })).toBe(true)
+    expect(mayWriteAgain({ kind: 'conflict', detail: '' })).toBe(true)
+  })
+
+  it('disagrees with mayKeepEditing on exactly the two outcomes where a form must not be reused', () => {
+    // ⚠️ This is the assertion that stops the two being collapsed into one predicate later.
+    //
+    // A COMMITTED write invalidates the draft (it has been saved) but not the form — a comment box
+    // is used again immediately. A CONFLICT invalidates the draft's basis but wrote nothing, so
+    // re-applying over a fresh read is the offered path. Merging the two predicates gives one
+    // caller the wrong behaviour, silently, in whichever direction the merge went.
+    const committed = { kind: 'committed', id: '1', retried: false } as const
+    const conflict = { kind: 'conflict', detail: '' } as const
+
+    expect(mayKeepEditing(committed)).toBe(false)
+    expect(mayWriteAgain(committed)).toBe(true)
+
+    expect(mayKeepEditing(conflict)).toBe(false)
+    expect(mayWriteAgain(conflict)).toBe(true)
   })
 })

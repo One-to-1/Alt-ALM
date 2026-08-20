@@ -121,3 +121,19 @@ export function defaultColumns(available: { name: string }[], limit = 5): string
   // (Author, Direct Cover Status, Modified, Req ID), which is not what anyone reads.
   return chosen.slice(0, limit)
 }
+
+/**
+ * A free-text preference — one the user typed rather than chose.
+ *
+ * Separate from {@link readString}, which validates against an allowed list, because these two
+ * cannot share a reader honestly: an enumerated preference has a knowable set of valid values and a
+ * stale one should fall back, while free text has none and any stored value is as valid as when it
+ * was typed. Trimmed and capped so a corrupted or hand-edited entry cannot put an unbounded string
+ * into a form.
+ */
+export function readFreeText(key: string, fallback: string, maxLength = 120): string {
+  return read(key, fallback, (raw) => {
+    const trimmed = raw.trim()
+    return trimmed === '' ? null : trimmed.slice(0, maxLength)
+  })
+}

@@ -1,0 +1,94 @@
+/* Sits below the comment thread, separated from it rather than continuous with it: the thread is
+   the record's history and this is a form, and a box that flowed straight on from the last comment
+   would read as "edit what is above" — which is exactly the operation this component exists to
+   avoid offering.
+
+   Raised (--surface) against the pane's sunken ground, for the same reason: the form is a distinct
+   object sitting on the record, not more of the record. */
+
+.comment-box {
+  margin: var(--space-4) var(--space-4) var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+}
+
+.comment-box-label {
+  display: block;
+  font-size: var(--text-xs);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin-bottom: var(--space-1);
+}
+
+.comment-box-text {
+  width: 100%;
+  box-sizing: border-box;
+  font: inherit;
+  line-height: 1.5;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: var(--space-1) var(--space-2);
+  /* Vertical only: a horizontally resizable box inside a resizable detail pane fights the pane. */
+  resize: vertical;
+  min-height: 60px;
+}
+
+.comment-box-text:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: -1px;
+}
+
+.comment-box-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+
+.comment-box-author {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  /* Takes the slack so the submit button stays pinned to the right edge. */
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.comment-box-author input {
+  flex: 0 1 160px;
+  min-width: 0;
+  font: inherit;
+  font-size: var(--text-sm);
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 2px var(--space-1);
+}
+
+.comment-box-author input:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: -1px;
+}
+
+.comment-box-note {
+  margin: var(--space-2) 0 0;
+  font-size: var(--text-xs);
+  line-height: 1.45;
+  color: var(--text-muted);
+}
+
+/* The banner reuses .record-editor-banner so an outcome reads identically wherever it is shown —
+   the tones carry safety meaning (see writeOutcome.ts) and a second visual language for the same
+   four states is how "unknown" ends up looking like an error somewhere. */
+.comment-box .record-editor-banner {
+  margin: 0 0 var(--space-2);
+}

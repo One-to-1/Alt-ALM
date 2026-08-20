@@ -142,3 +142,25 @@ export function outcomeMessage(result: WriteResult): OutcomeMessage {
 export function mayKeepEditing(result: WriteResult): boolean {
   return result.kind === 'invalid' || result.kind === 'rejected'
 }
+
+/**
+ * Whether it is safe to offer another write at all.
+ *
+ * ⚠️ **Not the same question as {@link mayKeepEditing}, and the difference is not cosmetic.** That
+ * one asks whether the user's *draft* survives — true only when nothing was written, so a
+ * `committed` outcome answers false and the editor closes. This asks whether a write button may be
+ * on screen, which for a form that is used repeatedly (a comment box, where posting one comment is
+ * naturally followed by posting another) is a different thing entirely.
+ *
+ * False for exactly one outcome: `unknown`. Every other outcome is a known state — written, or not
+ * written — and offering another write from a known state is ordinary. From an unknown one it is
+ * how a duplicate gets created.
+ *
+ * The two predicates exist separately rather than as one because collapsing them means one of the
+ * two callers gets the wrong behaviour, and the failure is silent in both directions: a comment box
+ * that vanishes after every successful comment, or an editor whose Save button outlives the write
+ * it is unsure about.
+ */
+export function mayWriteAgain(result: WriteResult): boolean {
+  return result.kind !== 'unknown'
+}

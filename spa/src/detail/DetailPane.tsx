@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type {
   GridColumn,
   GridResponse,
@@ -7,12 +7,20 @@ import type {
   RelatedTab,
   RelatedTable,
 } from '../api/client.ts'
-import { ApiError, fetchDetail, fetchHistory, fetchTabs, fetchTabsPopulated } from '../api/client.ts'
+import {
+  ApiError,
+  fetchCommentField,
+  fetchDetail,
+  fetchHistory,
+  fetchTabs,
+  fetchTabsPopulated,
+} from '../api/client.ts'
 import { renderCell } from '../grid/renderers.tsx'
 import { memoToPlainText, sanitizeMemo } from './richText.ts'
 import { RelatedRows } from './RelatedRows.tsx'
 import { HistoryPanel } from './HistoryPanel.tsx'
 import { RecordEditor } from './RecordEditor.tsx'
+import { CommentBox } from './CommentBox.tsx'
 import { DetailRail, type RailTab } from './DetailRail.tsx'
 import {
   Beaker,
@@ -158,6 +166,16 @@ export function DetailPane({ project, collection, entityId, onNavigate, onDrillI
   const [historyError, setHistoryError] = useState<string | null>(null)
   const [editing, setEditing] = useState(false)
   /**
+   * Which memo field is this entity's comment field, or null for "none, or not known yet".
+   *
+   * ⚠️ Discovered, never assumed. The name differs per entity and does not track the physical
+   * column — a requirement's is `comments` (`RQ_DEV_COMMENTS`), a defect's is `dev-comments`
+   * (probe 30) — so hardcoding either would silently offer the box on the wrong tab, or on no tab.
+   * Null keeps the memo read-only, which is the safe default: no comment box is a missing feature,
+   * a comment box over the wrong field is a memo overwritten with someone's note.
+   */
+  const [commentField, setCommentField] = useState<string | null>(null)
+  /**
    * Bumped to force a re-read of the record.
    *
    * A counter rather than a boolean because the same reload can be asked for twice in a row — after
@@ -188,25 +206,66 @@ export function DetailPane({ project, collection, entityId, onNavigate, onDrillI
     }
   }, [project, collection])
 
+  // Which field takes comments is metadata, like the tab strip — per project and collection, not
+  // per record. A 404 means this entity has none, which is a legitimate answer and not an error.
+  useEffect(() => {
+    let cancelled = false
+    setCommentField(null)
+    fetchCommentField(project, collection)
+      .then((field) => {
+        if (!cancelled) setCommentField(field)
+      })
+      .catch(() => {
+        // Degrade to a read-only memo. Offering the box on a guess is the failure mode worth
+        // avoiding; not offering it costs a feature, not data.
+        if (!cancelled) setCommentField(null)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [project, collection])
+
   useEffect(() => {
     // Arrowing to another record must not carry an open editor with it: the draft belongs to the
     // record it was typed against, and re-using it would save one record's values onto another.
     setEditing(false)
   }, [entityId, collection, project])
 
+  /**
+   * The record currently on screen, so a re-read of the SAME one can be told from a move to
+   * another. Only ever read inside the effect below, which is why it is a ref and not state.
+   */
+  const shownRecord = useRef<string | null>(null)
+
   useEffect(() => {
     if (!entityId) {
       setStatus('idle')
       setData(null)
+      shownRecord.current = null
       return
     }
     let cancelled = false
-    setStatus('loading')
+    const identity = `${project}/${collection}/${entityId}`
+
+    // ⚠️ `reloadToken` belongs in these deps, and its absence was a real bug: after an unknown
+    // write outcome the ONLY action offered is "Reload the record", and without this the record
+    // was never re-read — the pane went on showing pre-write values while telling the user to go
+    // and look at what ALM actually stored.
+    //
+    // Re-reading the same record keeps its current values on screen rather than flashing the
+    // skeleton. The pane is not empty, it is out of date, and blanking it would throw away the
+    // outcome banner that asked for the reload in the first place. Moving to a DIFFERENT record
+    // still shows the skeleton, because leaving one record's fields under another's header is a
+    // worse lie than a moment of loading.
+    if (shownRecord.current !== identity) {
+      setStatus('loading')
+    }
     setError(null)
 
     fetchDetail(project, collection, entityId)
       .then((result) => {
         if (cancelled) return
+        shownRecord.current = identity
         setData(result)
         setStatus('ready')
       })
@@ -223,7 +282,7 @@ export function DetailPane({ project, collection, entityId, onNavigate, onDrillI
     return () => {
       cancelled = true
     }
-  }, [project, collection, entityId])
+  }, [project, collection, entityId, reloadToken])
 
   // Which related tabs hold rows on this record — the rail's blue marks. One request covering every
   // tab, because the server can issue the per-tab probes far more cheaply than six round trips can.
@@ -277,7 +336,7 @@ export function DetailPane({ project, collection, entityId, onNavigate, onDrillI
     return () => {
       cancelled = true
     }
-  }, [project, collection, entityId])
+  }, [project, collection, entityId, reloadToken])
 
   const parts = useMemo(() => {
     if (!data || data.rows.length === 0) return null
@@ -488,13 +547,32 @@ export function DetailPane({ project, collection, entityId, onNavigate, onDrillI
           ))}
 
         {activeMemo && (
-          <MemoBody
-            // Remount per field so the plain-text toggle does not carry across tabs: it is a
-            // decision about one document, not a preference about memos.
-            key={activeMemo.name}
-            label={activeMemo.label || activeMemo.name}
-            values={row.values[activeMemo.name] ?? []}
-          />
+          <>
+            <MemoBody
+              // Remount per field so the plain-text toggle does not carry across tabs: it is a
+              // decision about one document, not a preference about memos.
+              key={activeMemo.name}
+              label={activeMemo.label || activeMemo.name}
+              values={row.values[activeMemo.name] ?? []}
+            />
+            {/* Only on the comment field, only where writes are permitted, and only ever BELOW the
+                thread. The thread itself stays read-only: a memo PUT replaces the field, so an
+                editable box holding the existing comments is one careless save away from deleting
+                every comment on the record and getting HTTP 200 for it (probe 30). */}
+            {activeMemo.name === commentField && data.writable && entityId && (
+              <CommentBox
+                // Remount per record so a half-typed comment cannot follow the arrow keys onto a
+                // different row and be posted against it.
+                key={`${collection}/${row.id}`}
+                project={project}
+                collection={collection}
+                entityId={entityId}
+                label={activeMemo.label || activeMemo.name}
+                expectedVersion={row.values['ver-stamp']?.[0]}
+                onPosted={() => setReloadToken((n) => n + 1)}
+              />
+            )}
+          </>
         )}
 
         {tab === RISK_TAB && <FieldTable columns={risk} row={row} showEmpty />}
