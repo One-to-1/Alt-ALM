@@ -33,6 +33,8 @@ function column(name: string, over: Partial<GridColumn> = {}): GridColumn {
 const COLUMNS: GridColumn[] = [
   column('name'),
   column('priority'),
+  column('status', { type: 'LOOKUP_LIST', listId: 194 }),
+  column('unbound', { type: 'LOOKUP_LIST', listId: 0 }),
   column('description', { type: 'MEMO' }),
   column('father-name', { writable: false }),
 ]
@@ -43,6 +45,8 @@ const ROW: GridRow = {
     id: ['7001'],
     name: ['Original name'],
     priority: ['2'],
+    status: ['Passed'],
+    unbound: ['free text'],
     description: ['<html><body>a memo</body></html>'],
     'father-name': ['Parent'],
     'ver-stamp': ['3'],
@@ -54,9 +58,20 @@ const ROW: GridRow = {
 function respondWith(status: number, body: unknown) {
   vi.stubGlobal(
     'fetch',
-    vi.fn().mockResolvedValue({ ok: status >= 200 && status < 300, status, json: async () => body }),
+    vi.fn().mockImplementation((url: string) =>
+      // The editor loads lookup lists on mount. Answering that separately keeps every existing
+      // case unchanged while letting the lookup tests supply real choices.
+      Promise.resolve(
+        String(url).includes('/api/lists')
+          ? { ok: true, status: 200, json: async () => LISTS }
+          : { ok: status >= 200 && status < 300, status, json: async () => body },
+      ),
+    ),
   )
 }
+
+/** Empty by default, so the existing cases keep rendering text inputs. */
+let LISTS: Record<string, { name: string; values: string[] }> = {}
 
 function writeBody(over: Record<string, unknown> = {}) {
   return {
@@ -94,7 +109,14 @@ function sentBody(): Record<string, unknown> {
   return JSON.parse(String(init.body)) as Record<string, unknown>
 }
 
+/** The field's control once the lookup lists have loaded and swapped it to a dropdown. */
+async function findSelect(label: string): Promise<HTMLSelectElement> {
+  await waitFor(() => expect(screen.getByLabelText(label).tagName).toBe('SELECT'))
+  return screen.getByLabelText(label) as HTMLSelectElement
+}
+
 afterEach(() => {
+  LISTS = {}
   cleanup()
   vi.unstubAllGlobals()
   vi.restoreAllMocks()
@@ -194,6 +216,72 @@ describe('the fields it offers', () => {
     renderEditor({ row: noStamp })
 
     expect(screen.getByText(/cannot be detected/i)).toBeTruthy()
+  })
+})
+
+describe('lookup fields become dropdowns, and every "cannot tell" stays a text box', () => {
+  it('offers the values this project defines for a bound field', async () => {
+    LISTS = { '194': { name: 'Status', values: ['Not Covered', 'Passed', 'Failed'] } }
+    respondWith(200, writeBody())
+    renderEditor()
+
+    // findByLabelText resolves against the INPUT the field renders before the lists arrive, so
+    // waiting on the label alone would assert against the pre-load element. Wait for the swap.
+    const select = await findSelect('status')
+    expect(Array.from(select.options).map((o) => o.value)).toEqual([
+      // An empty option, because clearing a field is a legitimate edit and a select without one
+      // makes a value impossible to undo once set.
+      '',
+      'Not Covered',
+      'Passed',
+      'Failed',
+    ])
+  })
+
+  it('keeps a stored value the list no longer offers, rather than silently re-pointing', async () => {
+    // A list edited after this record was written. Without this, the select would fall back to its
+    // first option and save THAT on the next Save - a value the user never chose.
+    LISTS = { '194': { name: 'Status', values: ['Not Covered', 'Failed'] } }
+    respondWith(200, writeBody())
+    renderEditor()
+
+    const select = await findSelect('status')
+    expect(select.value).toBe('Passed')
+    expect(Array.from(select.options).map((o) => o.textContent)).toContain('Passed (not in list)')
+  })
+
+  it('falls back to a text box when the lists cannot be read', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockImplementation((url: string) =>
+        String(url).includes('/api/lists')
+          ? Promise.reject(new TypeError('down'))
+          : Promise.resolve({ ok: true, status: 200, json: async () => writeBody() }),
+      ),
+    )
+    renderEditor()
+
+    // "Cannot tell" must not become "no choices": an empty dropdown would make the field
+    // impossible to fill. Same rule the BFF validator follows.
+    await waitFor(() => expect((screen.getByLabelText('status') as HTMLElement).tagName).toBe('INPUT'))
+  })
+
+  it('falls back to a text box for an EMPTY list', async () => {
+    // Three of the sandbox's 39 lists have no items.
+    LISTS = { '194': { name: 'Status', values: [] } }
+    respondWith(200, writeBody())
+    renderEditor()
+
+    await waitFor(() => expect((screen.getByLabelText('status') as HTMLElement).tagName).toBe('INPUT'))
+  })
+
+  it('leaves an UNBOUND list field as a text box', async () => {
+    LISTS = { '194': { name: 'Status', values: ['Passed'] } }
+    respondWith(200, writeBody())
+    renderEditor()
+
+    // listId 0 names no list, so there is nothing to constrain against.
+    await waitFor(() => expect((screen.getByLabelText('unbound') as HTMLElement).tagName).toBe('INPUT'))
   })
 })
 

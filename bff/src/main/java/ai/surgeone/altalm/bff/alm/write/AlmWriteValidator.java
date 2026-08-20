@@ -1,6 +1,7 @@
 package ai.surgeone.altalm.bff.alm.write;
 
 import ai.surgeone.altalm.bff.alm.metadata.AlmFieldType;
+import ai.surgeone.altalm.bff.alm.metadata.AlmList;
 import ai.surgeone.altalm.bff.alm.metadata.AlmMetadataCatalog;
 import ai.surgeone.altalm.bff.alm.metadata.FieldDescriptor;
 import ai.surgeone.altalm.bff.alm.read.AlmProjectRef;
@@ -40,15 +41,32 @@ import java.util.Set;
  *       refuse writes ALM accepts, and accepting one because nothing was flagged would not prevent
  *       the failure. The server's own {@code missing required field} error is the only reliable
  *       signal, and {@link AlmWriteRetry} handles it.
- *   <li><strong>Lookup-list membership.</strong> A {@link AlmFieldType#LOOKUP_LIST} field's legal
- *       values live behind {@code customization/used-lists/{id}/items}, which this build does not
- *       read yet. Guessing would be worse than not checking: there is no Boolean type in ALM, so
- *       every Y/N flag is a list too, and a wrong guess would reject correct writes. Until a list
- *       client exists these values pass through and ALM decides.
  *   <li><strong>Reference and user targets.</strong> Whether an id or a username exists is a query,
  *       not a metadata fact, and one per field per write is a cost this cannot justify against an
  *       error the server already returns clearly.
  * </ul>
+ *
+ * <h2>Lookup lists ARE checked, as of 2026-08-20 — carefully</h2>
+ *
+ * <p>{@link AlmFieldType#LOOKUP_LIST} values are validated against the project's own lists, which
+ * closes the most likely source of ALM rejections: a user typing free text into what is really a
+ * fixed set. Three deliberate softenings, because this is the check most able to do harm by being
+ * wrong:
+ *
+ * <ul>
+ *   <li><strong>An unreadable list set validates nothing.</strong> {@code AlmMetadataCatalog.lists}
+ *       answers empty when it cannot read them, and empty means <em>do not judge</em>. A degraded
+ *       metadata read must not become a refusal of every lookup value.
+ *   <li><strong>A list with no items validates nothing.</strong> Three of the sandbox's 39 have
+ *       none; treating "no items" as "nothing is permitted" would refuse every write to a field
+ *       bound to one.
+ *   <li><strong>{@code listId == 0} validates nothing</strong> — the field is list-typed but
+ *       unbound, so there is no set to check against.
+ * </ul>
+ *
+ * <p>⚠️ Every one of those is the same rule: <strong>when the evidence is absent, let ALM decide.</strong>
+ * The cost of a wrong rejection here is a field the user cannot fill in at all, with an error
+ * blaming their input.
  */
 public final class AlmWriteValidator {
 
@@ -162,6 +180,7 @@ public final class AlmWriteValidator {
             }
 
             problemWithValue(field, value).ifPresent(problems::add);
+            lookupProblem(project, field, value).ifPresent(problems::add);
         }
 
         return problems;
@@ -243,13 +262,39 @@ public final class AlmWriteValidator {
                                     + "live data"));
                 }
             }
-            // LOOKUP_LIST, USERS_LIST and REFERENCE are pass-through by design — see the class
-            // javadoc for why a guess here would be worse than no check.
+            // USERS_LIST and REFERENCE stay pass-through; LOOKUP_LIST is handled separately by
+            // lookupProblem(), which needs the project to resolve the list.
             default -> {
                 return Optional.empty();
             }
         }
         return Optional.empty();
+    }
+
+    /**
+     * Whether a lookup value is one the project's list permits.
+     *
+     * <p>See the class javadoc: every "cannot tell" path returns empty, because a wrong rejection
+     * here makes a field unfillable and blames the user for it.
+     */
+    private Optional<Problem> lookupProblem(AlmProjectRef project, FieldDescriptor field,
+                                            String value) {
+        if (field.type() != AlmFieldType.LOOKUP_LIST || value == null || value.isEmpty()
+                || field.listId() == 0) {
+            return Optional.empty();
+        }
+        Optional<AlmList> list = metadata.list(project, field.listId());
+        if (list.isEmpty() || list.get().items().isEmpty() || list.get().permits(value)) {
+            return Optional.empty();
+        }
+        List<String> permitted = list.get().values();
+        // The permitted values go in the message. This is the one validation failure where the user
+        // cannot work out the answer themselves - a free-text box gives no hint what is legal.
+        String shown = permitted.size() <= 8
+                ? String.join(", ", permitted)
+                : String.join(", ", permitted.subList(0, 8)) + ", … (" + permitted.size() + " total)";
+        return Optional.of(new Problem(field.name(), "not-in-list",
+                "'" + value + "' is not one of the values " + field.name() + " accepts: " + shown));
     }
 
     /**

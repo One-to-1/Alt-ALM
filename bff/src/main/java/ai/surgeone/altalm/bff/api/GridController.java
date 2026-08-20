@@ -233,6 +233,22 @@ public class GridController {
     }
 
     /**
+     * Every lookup list in this project, by id.
+     *
+     * <p>All of them in one response because that is how ALM serves them — the upstream collection
+     * inlines items, so splitting this into a call per list would turn one request into 39 for no
+     * gain. The SPA fetches it once per project and resolves a field's {@code listId} locally.
+     *
+     * <p>⚠️ A list with <strong>no items</strong> is returned as such rather than omitted. Three of
+     * the sandbox's 39 are empty, and omitting them would make a bound field look unbound — the UI
+     * would offer free text where ALM permits nothing.
+     */
+    @GetMapping("/lists")
+    public Map<String, Object> lists(@RequestParam(required = false) String project) {
+        return grids.lists(resolve(project));
+    }
+
+    /**
      * ALM's navigation rail, with a reachability verdict against every entry.
      *
      * <p>Not project-scoped and reads nothing: the rail's shape is ALM's product structure, and the

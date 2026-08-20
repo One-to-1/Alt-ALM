@@ -6,6 +6,7 @@ import ai.surgeone.altalm.bff.alm.read.AlmProjectRef;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -28,6 +29,20 @@ public final class AlmMetadataCatalog {
             org.slf4j.LoggerFactory.getLogger(AlmMetadataCatalog.class);
 
     private final Map<AlmProjectRef, AlmMetadataCache> caches = new ConcurrentHashMap<>();
+
+    /**
+     * Lookup lists, cached per project.
+     *
+     * <p>Held here rather than in {@link AlmMetadataCache} because lists are <strong>project</strong>
+     * scoped, not entity scoped — that cache is keyed by entity and lists do not have one. The whole
+     * set arrives in a single request, so the natural cache unit is all of them together.
+     *
+     * <p>A {@code CompletableFuture} for the same reason the field cache uses one: N concurrent
+     * callers cause one fetch, not N. And a failed load is removed rather than cached, so a
+     * transient error does not pin "this project has no lists" for the life of the process.
+     */
+    private final Map<AlmProjectRef, CompletableFuture<Map<Integer, AlmList>>> lists =
+            new ConcurrentHashMap<>();
     private final AlmMetadataClient client;
     private final AlmAccessPolicy policy;
 
@@ -74,6 +89,41 @@ public final class AlmMetadataCatalog {
     }
 
     /**
+     * Every lookup list in a project, by id.
+     *
+     * <p>⚠️ Returns an <strong>empty map</strong> when the lists cannot be read, rather than
+     * throwing. A validator that cannot see the lists must fall back to letting values through and
+     * letting ALM decide — refusing every lookup value because a metadata read failed would turn a
+     * degraded cache into an outage. The caller cannot distinguish "no lists" from "could not read
+     * them", which is deliberate: both mean the same thing to a validator, namely *do not judge*.
+     */
+    public Map<Integer, AlmList> lists(AlmProjectRef project) {
+        policy.checkRead(project);
+        CompletableFuture<Map<Integer, AlmList>> pending =
+                lists.computeIfAbsent(project, p -> CompletableFuture.supplyAsync(
+                        () -> client.fetchLists(p), Runnable::run));
+        try {
+            return pending.join();
+        } catch (RuntimeException e) {
+            // Not cached: the next caller retries rather than inheriting this failure forever.
+            lists.remove(project, pending);
+            log.debug("could not read lookup lists for {} - values will not be validated",
+                    project.pseudonym(), e);
+            return Map.of();
+        }
+    }
+
+    /**
+     * One list by id, or empty when this project has no such list.
+     *
+     * <p>Empty is a normal answer: a field's {@code listId} is instance-specific, and a project that
+     * does not define it is not an error condition.
+     */
+    public java.util.Optional<AlmList> list(AlmProjectRef project, int listId) {
+        return java.util.Optional.ofNullable(lists(project).get(listId));
+    }
+
+    /**
      * The cache for one project, created on first use.
      *
      * <p>Access-checked here rather than only at the read client, because "which fields exist"
@@ -94,6 +144,10 @@ public final class AlmMetadataCatalog {
         if (cache != null) {
             cache.invalidateAll();
         }
+        // Lists are customization too, and an operator refreshing metadata after editing a
+        // list-of-values expects the new items — leaving them cached would make the lever look
+        // broken for the one change most likely to prompt pulling it.
+        lists.remove(project);
     }
 
     /** Projects with metadata currently cached. */

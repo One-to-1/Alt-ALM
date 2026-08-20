@@ -1,6 +1,7 @@
 package ai.surgeone.altalm.bff.alm.write;
 
 import ai.surgeone.altalm.bff.alm.metadata.AlmFieldType;
+import ai.surgeone.altalm.bff.alm.metadata.AlmList;
 import ai.surgeone.altalm.bff.alm.metadata.AlmMetadataCatalog;
 import ai.surgeone.altalm.bff.alm.metadata.FieldDescriptor;
 import ai.surgeone.altalm.bff.alm.read.AlmProjectRef;
@@ -18,6 +19,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
@@ -46,6 +49,8 @@ class AlmWriteValidatorTest {
                 field("name", AlmFieldType.STRING, 255),
                 field("description", AlmFieldType.MEMO, -1),
                 field("priority", AlmFieldType.LOOKUP_LIST),
+                listBound("status", 194),
+                field("unbound-choice", AlmFieldType.LOOKUP_LIST),
                 field("owner", AlmFieldType.USERS_LIST),
                 field("parent-id", AlmFieldType.REFERENCE),
                 field("target-date", AlmFieldType.DATE),
@@ -76,6 +81,13 @@ class AlmWriteValidatorTest {
     private static FieldDescriptor readOnlyButRequiredOnCreate(String name, AlmFieldType type) {
         return new FieldDescriptor(name, name.toUpperCase().replace('-', '_'), type, name,
                 false, false, true, false, false, true, true, false, 0, 0);
+    }
+
+    /** A LOOKUP_LIST field actually bound to a list, unlike `priority` above. */
+    private static FieldDescriptor listBound(String name, int listId) {
+        return new FieldDescriptor(name, name.toUpperCase().replace('-', '_'),
+                AlmFieldType.LOOKUP_LIST, name,
+                false, true, true, false, false, true, true, false, listId, 0);
     }
 
     private static FieldDescriptor requiredPerMetadata(String name, AlmFieldType type) {
@@ -238,13 +250,79 @@ class AlmWriteValidatorTest {
         }
 
         @Test
-        @DisplayName("a lookup value passes through - there is no list client to check it against")
-        void lookupMembershipIsNotChecked() {
-            // Guessing would be worse than not checking: every Y/N flag is a LookupList too, so a
-            // wrong guess rejects correct writes. ALM decides, and its error is clear.
-            assertThat(validate(body("priority", "Whatever-4"))).isEmpty();
+        @DisplayName("user and reference targets pass through - existence is a query, not metadata")
+        void userAndReferenceAreNotChecked() {
             assertThat(validate(body("owner", "someone"))).isEmpty();
             assertThat(validate(body("parent-id", "999999"))).isEmpty();
+        }
+    }
+
+    @Nested
+    @DisplayName("lookup lists are checked, and every 'cannot tell' lets ALM decide")
+    class LookupLists {
+
+        private void projectHasList(int id, String... values) {
+            when(metadata.list(any(), eq(id))).thenReturn(java.util.Optional.of(new AlmList(id, "L",
+                    java.util.Arrays.stream(values)
+                            .map(v -> new AlmList.AlmListItem(v, "logical." + v))
+                            .toList())));
+        }
+
+        @Test
+        @DisplayName("a value outside the list is refused, and the message names what IS allowed")
+        void valueOutsideTheList() {
+            projectHasList(194, "Not Covered", "Passed", "Failed");
+
+            List<AlmWriteValidator.Problem> problems = validate(body("status", "Porbably Fine"));
+
+            assertThat(codes(problems)).containsExactly("not-in-list");
+            // The one validation failure where the user cannot work the answer out themselves: a
+            // free-text box gives no hint what is legal.
+            assertThat(problems.getFirst().detail()).contains("Passed").contains("Failed");
+        }
+
+        @Test
+        @DisplayName("a value in the list passes")
+        void valueInTheList() {
+            projectHasList(194, "Not Covered", "Passed", "Failed");
+
+            assertThat(validate(body("status", "Passed"))).isEmpty();
+        }
+
+        @Test
+        @DisplayName("an UNREADABLE list set validates nothing - a degraded read is not an outage")
+        void unreadableListsValidateNothing() {
+            // The catalog answers empty when it cannot read the lists. Refusing every lookup value
+            // because metadata was briefly unavailable would make the field unfillable.
+            when(metadata.list(any(), eq(194))).thenReturn(java.util.Optional.empty());
+
+            assertThat(validate(body("status", "anything at all"))).isEmpty();
+        }
+
+        @Test
+        @DisplayName("an EMPTY list validates nothing - three of the sandbox's 39 have no items")
+        void emptyListValidatesNothing() {
+            when(metadata.list(any(), eq(194)))
+                    .thenReturn(java.util.Optional.of(new AlmList(194, "Empty", List.of())));
+
+            // Treating "no items" as "nothing is permitted" would refuse every write to the field.
+            assertThat(validate(body("status", "anything at all"))).isEmpty();
+        }
+
+        @Test
+        @DisplayName("an UNBOUND list field validates nothing - there is no set to check against")
+        void unboundFieldValidatesNothing() {
+            assertThat(validate(body("unbound-choice", "anything at all"))).isEmpty();
+            // ...and no list lookup was even attempted, since listId 0 names nothing.
+            verify(metadata, never()).list(any(), eq(0));
+        }
+
+        @Test
+        @DisplayName("clearing a list field is allowed")
+        void emptyValueIsAllowed() {
+            projectHasList(194, "Passed");
+
+            assertThat(validate(body("status", ""))).isEmpty();
         }
     }
 

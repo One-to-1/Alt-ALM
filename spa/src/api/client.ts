@@ -608,6 +608,27 @@ export function fetchModules(): Promise<ModuleRail> {
   return apiGet<ModuleRail>('/api/modules')
 }
 
+/** One lookup list: a display name and the values ALM permits. */
+export interface LookupList {
+  name: string
+  values: string[]
+}
+
+/**
+ * Every lookup list in a project, keyed by list id as a string.
+ *
+ * ⚠️ **List ids are instance-specific** (ADR 0005) — a list id means nothing outside the project it
+ * came from, so this must be re-fetched on a project switch and never cached across one. Resolve a
+ * column's `listId` against it rather than assuming any id is stable.
+ *
+ * A list with an EMPTY `values` is a real answer, not a missing one: three of the sandbox's 39 have
+ * no items, and a field bound to one permits nothing. Treat empty as "no choices", never as
+ * "unbound, so free text".
+ */
+export function fetchLists(project: string): Promise<Record<string, LookupList>> {
+  return apiGet<Record<string, LookupList>>(`/api/lists?project=${encodeURIComponent(project)}`)
+}
+
 /** Server-side group-by counts for one field. */
 export function fetchGroups(
   project: string,

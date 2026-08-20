@@ -90,10 +90,25 @@ public final class AlmMetadataClient {
         return AlmRelationParser.parseRelations(getCustomization(project, entity, "relations/"));
     }
 
-    private String getCustomization(AlmProjectRef project, String entity, String sub) {
-        String path = project.restBase(credentials.baseUrl()) + "/customization/entities/"
-                + URLEncoder.encode(entity, StandardCharsets.UTF_8) + "/" + sub;
+    /**
+     * Every lookup list in a project, with its items — <strong>one request for all of them</strong>.
+     *
+     * <p>The collection inlines items (39 lists / 125 items on the sandbox), so there is no per-list
+     * fetch to do and no N+1 to avoid. Not under {@code customization/entities/...} like the field
+     * and relation reads, hence its own path rather than a {@code getCustomization} call.
+     */
+    public java.util.Map<Integer, AlmList> fetchLists(AlmProjectRef project) {
+        return AlmListParser.parse(getPath(
+                project.restBase(credentials.baseUrl()) + "/customization/used-lists"));
+    }
 
+    private String getCustomization(AlmProjectRef project, String entity, String sub) {
+        return getPath(project.restBase(credentials.baseUrl()) + "/customization/entities/"
+                + URLEncoder.encode(entity, StandardCharsets.UTF_8) + "/" + sub);
+    }
+
+    /** One authenticated GET, borrowing and releasing a pooled session. */
+    private String getPath(String path) {
         AlmSession session;
         try {
             session = pool.borrow(borrowTimeout);

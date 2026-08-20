@@ -1,6 +1,6 @@
-import { useMemo, useState } from 'react'
-import type { GridColumn, GridRow, WriteResult } from '../api/client.ts'
-import { updateRecord } from '../api/client.ts'
+import { useEffect, useMemo, useState } from 'react'
+import type { GridColumn, GridRow, LookupList, WriteResult } from '../api/client.ts'
+import { fetchLists, updateRecord } from '../api/client.ts'
 import { mayKeepEditing, outcomeMessage } from './writeOutcome.ts'
 import './RecordEditor.css'
 
@@ -61,6 +61,30 @@ export function RecordEditor({ project, collection, columns, row, onReload, onCl
   }, [editable, row])
 
   const [draft, setDraft] = useState<Record<string, string>>(initial)
+  /**
+   * The project's lookup lists, or null while loading / if they could not be read.
+   *
+   * ⚠️ Null must behave as "no information", not "no choices": a field whose list cannot be read
+   * falls back to a text input rather than to an empty dropdown the user cannot satisfy. Same rule
+   * the BFF validator follows — when the evidence is absent, do not constrain.
+   */
+  const [lists, setLists] = useState<Record<string, LookupList> | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    fetchLists(project)
+      .then((loaded) => {
+        if (!cancelled) setLists(loaded)
+      })
+      .catch(() => {
+        // Degrade to text inputs. Blocking the edit because a dropdown could not be populated
+        // would be a worse trade than letting ALM reject an unusual value.
+        if (!cancelled) setLists(null)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [project])
   const [saving, setSaving] = useState(false)
   const [result, setResult] = useState<WriteResult | null>(null)
 
@@ -86,6 +110,20 @@ export function RecordEditor({ project, collection, columns, row, onReload, onCl
    * obeys it.
    */
   const locked = result !== null && !mayKeepEditing(result)
+
+  /**
+   * The values a field permits, or null to fall back to a text input.
+   *
+   * Null in every "cannot tell" case, mirroring the BFF validator exactly: lists not loaded, field
+   * unbound (`listId === 0`), list unknown to this project, or list defined with no items. That
+   * last one matters — three of the sandbox's 39 lists are empty, and rendering an empty dropdown
+   * would make the field impossible to fill rather than merely unconstrained.
+   */
+  function choicesFor(column: GridColumn): string[] | null {
+    if (column.type !== 'LOOKUP_LIST' || column.listId === 0 || lists === null) return null
+    const values = lists[String(column.listId)]?.values
+    return values && values.length > 0 ? values : null
+  }
 
   async function save() {
     if (changed.length === 0) {
@@ -172,17 +210,49 @@ export function RecordEditor({ project, collection, columns, row, onReload, onCl
                 <label htmlFor={`edit-${column.name}`}>{column.label || column.name}</label>
               </dt>
               <dd>
-                <input
-                  id={`edit-${column.name}`}
-                  className={problem ? 'has-problem' : undefined}
-                  value={draft[column.name] ?? ''}
-                  disabled={locked}
-                  aria-invalid={problem ? true : undefined}
-                  aria-describedby={problem ? `problem-${column.name}` : undefined}
-                  onChange={(event) =>
-                    setDraft({ ...draft, [column.name]: event.target.value })
-                  }
-                />
+                {choicesFor(column) ? (
+                  <select
+                    id={`edit-${column.name}`}
+                    className={problem ? 'has-problem' : undefined}
+                    value={draft[column.name] ?? ''}
+                    disabled={locked}
+                    aria-invalid={problem ? true : undefined}
+                    aria-describedby={problem ? `problem-${column.name}` : undefined}
+                    onChange={(event) =>
+                      setDraft({ ...draft, [column.name]: event.target.value })
+                    }
+                  >
+                    {/* Clearing a field is a legitimate edit, and a select with no empty option
+                        makes it impossible to undo a value once set. */}
+                    <option value="">—</option>
+                    {/* The record's CURRENT value, even when the list no longer offers it. A list
+                        edited after this record was written would otherwise silently re-point the
+                        dropdown at the first option and save that on the next Save. */}
+                    {draft[column.name] &&
+                      !choicesFor(column)?.includes(draft[column.name]) && (
+                        <option value={draft[column.name]}>
+                          {draft[column.name]} (not in list)
+                        </option>
+                      )}
+                    {choicesFor(column)?.map((choice) => (
+                      <option key={choice} value={choice}>
+                        {choice}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <input
+                    id={`edit-${column.name}`}
+                    className={problem ? 'has-problem' : undefined}
+                    value={draft[column.name] ?? ''}
+                    disabled={locked}
+                    aria-invalid={problem ? true : undefined}
+                    aria-describedby={problem ? `problem-${column.name}` : undefined}
+                    onChange={(event) =>
+                      setDraft({ ...draft, [column.name]: event.target.value })
+                    }
+                  />
+                )}
                 {problem && (
                   <p className="record-editor-problem" id={`problem-${column.name}`}>
                     {problem}

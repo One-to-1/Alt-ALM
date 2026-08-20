@@ -158,7 +158,7 @@ finding in the project surfaced by product code under test rather than a hand-wr
   **bounded retry on 5xx reads** — separate from the 5xx-on-*write* verify-by-query rule (**Q46**).
 
 🟡 **P2 IN PROGRESS — the write core, the CRUD endpoints and the validation layer are in and
-verified live (2026-08-19). 322 BFF tests (365 with `-Pcontract`) + 68 SPA tests green. Records are editable in the SPA.**
+verified live (2026-08-19). 335 BFF tests (378 with `-Pcontract`) + 73 SPA tests green. Records are editable in the SPA.**
 `AlmWriteClient` is the single write path; `ApiIsReadOnlyTest` asserts writes *route through it*
 rather than that none exist, and now has real endpoints to guard. See `SESSION-STATE.md`.
 
@@ -174,6 +174,12 @@ limitation rather than our own rule.
 ⚠️ **An unresolved `UNKNOWN` write is served as HTTP 502, and that status describes the UPSTREAM, not
 the row.** The write may well have committed. `"outcome": "UNKNOWN"` in the body is the authority; a
 client that treats 502 as "failed, retry" will create duplicates.
+
+⚠️ **Lookup lists: `GET customization/used-lists` returns all 39 WITH items inline** (39 lists / 125
+items / 3 empty, live-verified 2026-08-20) — one request, no per-list fetch. Casing is mixed *within*
+one object (PascalCase list, lowerCamel items). **When the evidence is absent, let ALM decide**: an
+unreadable list, an unknown list, an **empty** list, and `listId == 0` all validate nothing and
+render free text — a wrong rejection makes a field unfillable and blames the user for it.
 
 ⚠️ **In the SPA, an `unknown` write outcome must never offer "Retry"** (`spa/src/detail/
 writeOutcome.ts`). An ALM 5xx may have committed the row, so the obvious red-banner-plus-Retry

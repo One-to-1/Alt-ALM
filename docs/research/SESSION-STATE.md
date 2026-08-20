@@ -575,7 +575,7 @@ to return 1 of the project's 2 instances. Re-seed with
 
 ## P2 status (started 2026-08-18; CRUD endpoints landed 2026-08-19)
 
-**322 BFF tests default, 365 with `-Pcontract`. 68 SPA tests.**
+**335 BFF tests default, 378 with `-Pcontract`. 73 SPA tests.**
 
 ✅ **The write core is in and verified live.** `bff/.../alm/write/`:
 
@@ -738,6 +738,29 @@ once this clears", and nothing will clear it except re-reading the record.
 **The lesson worth keeping:** a pure module can encode a safety rule perfectly and the component can
 still not obey it. Testing only the pure layer proves the rule is *stated*, never that it is
 *followed*.
+
+✅ **Lookup lists are read, cached, validated and rendered as dropdowns** (2026-08-20) — closing
+the validator's largest deliberate omission.
+
+- **`GET customization/used-lists` returns every list WITH its items inline** — one request for all
+  of them. Verified live: **39 lists, 125 items, 3 of them empty**, matching the captured fixture
+  exactly. No per-list fetch, no N+1, and the natural cache unit is the whole set.
+- ⚠️ **Mixed casing inside one object**: the list carries PascalCase `Name`/`Id`/`Items`, each item
+  inside carries lowerCamel `value`/`logicalName`. `AlmListParser` is tested against the real
+  fixture rather than hand-written JSON, because hand-written JSON is exactly what would quietly
+  normalise that and pass while failing on the server.
+- Cached on **`AlmMetadataCatalog`**, not `AlmMetadataCache` — lists are *project* scoped and that
+  cache is keyed by entity. Single-flight, cleared by the same `invalidate` lever.
+
+⚠️ **The rule that governs this whole feature: when the evidence is absent, let ALM decide.** Four
+paths validate nothing and render a text box rather than a dropdown — lists unreadable, list unknown
+to the project, list defined **with no items** (3 of 39 are), and `listId == 0` (bound to nothing).
+A wrong rejection here makes a field *unfillable* while blaming the user's input, so every
+"cannot tell" softens rather than refuses. The BFF validator and the SPA apply the identical rule.
+
+⚠️ **A stored value the list no longer offers is KEPT**, shown as `(not in list)`. Without that, a
+list edited after the record was written would silently re-point the dropdown at its first option
+and save that value on the next Save — a value the user never chose.
 
 **Next in P2:** wiring the SPA to these endpoints (edit forms, the comment box, optimistic-ish
 refresh around the `UNKNOWN` case), a lookup-list client so `LOOKUP_LIST` values can be validated

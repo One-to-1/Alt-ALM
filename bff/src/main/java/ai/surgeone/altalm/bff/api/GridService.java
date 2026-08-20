@@ -210,6 +210,21 @@ public class GridService {
                         grid.page());
     }
 
+    /**
+     * This project's lookup lists, shaped for the SPA.
+     *
+     * <p>Keyed by id as a string because JSON object keys are strings; the SPA joins on a column's
+     * {@code listId}. ⚠️ Instance-specific ids — a list id means nothing outside its project
+     * (ADR 0005), so the SPA must never cache these across a project switch.
+     */
+    public Map<String, Object> lists(AlmProjectRef project) {
+        Map<String, Object> out = new LinkedHashMap<>();
+        metadata.lists(project).forEach((id, list) -> out.put(String.valueOf(id), Map.of(
+                "name", list.name(),
+                "values", list.values())));
+        return out;
+    }
+
     private static String entityOf(String collection) {
         return AlmCollections.entityOf(collection);
     }
