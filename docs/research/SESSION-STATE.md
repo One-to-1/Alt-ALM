@@ -1117,7 +1117,11 @@ what is actually left.
 
 ## P1 status — 2026-08-14 (read this before touching the UI or claiming a feature works)
 
-### ⚠️ NO WRITE PATH EXISTS. Records cannot be created or edited.
+### ~~⚠️ NO WRITE PATH EXISTS. Records cannot be created or edited.~~ **RETIRED 2026-08-19**
+
+Struck through rather than deleted, per this file's own convention: the claim was true when
+written and the reasoning below it still explains why the write path is shaped as it is.
+CRUD is complete and verified live — see the P2 sections above.
 
 User asked directly, 2026-08-14. The answer is no, and it is enforced in four independent places,
 none of which should be relaxed casually:
@@ -1379,6 +1383,33 @@ had simply selected a project with an empty Requirements root. Resolve the index
 `/api/projects` rather than hardcoding it, and **never put a project name in a script**.
 
 ---
+
+## ⚠️ Open decisions — waiting on the user, not on work (as of 2026-08-20)
+
+Recorded here rather than left in a conversation, because neither is blocked on anything but a
+choice, and both are easy to lose.
+
+**1. `AlmVersionGuard`'s false conflict (probe 34).** Creating a child moves the **parent's**
+`ver-stamp`. So: open a parent record, have anyone add a child under it, and the next save of the
+parent is refused with "Someone else changed this record" — when no field on it differs. Fails safe,
+recovery works, so it is a confidently wrong *message* rather than lost data.
+*The fix, if wanted:* compare the values of the fields the write is actually sending, since ALM
+replaces only those. That refuses strictly less often while protecting exactly as much. Deliberately
+not implemented — it is the safety-critical path.
+
+**2. `spa/src/detail/DetailRail.css` L24, `transition: width 130ms`.** Flagged by the design hook as
+layout-thrashing, which is technically right. It is also a deliberate documented choice: the rail's
+40px→190px open animates `width` so labels slide rather than appear, and in **pinned** mode the rail
+must *push* sibling content — which a transform cannot do. Keep as designed, or go transform-based
+and accept that pinned mode stops pushing?
+
+**3. Attachments — the one that needs a decision before it is built.** Probe 35 established the read
+grammar, so the plumbing is cheap. The user asked for "click an attachment, open it in a new tab".
+⚠️ Alt-ALM is one deployable on one origin (ADR 0001), so anything served inline is served from the
+SPA's own origin: fine for an image or a PDF, stored XSS for an uploaded `.html`/`.svg`. Proposed
+shape — allowlist of safe types gets `Content-Disposition: inline` + `nosniff` and opens in a tab,
+everything else force-downloads, and the UI says which it will do before you click.
+
 
 ## ⚠️ Standing lesson — read before writing any "X is impossible"
 
