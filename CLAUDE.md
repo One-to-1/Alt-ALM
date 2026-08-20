@@ -230,6 +230,17 @@ marked; it is an explicit heuristic over prose and returns null rather than gues
 so the BFF's missing-required-field retry does **not** fire and must not: that retry is for probe 9's
 case, where metadata fails to *declare* a field and ALM answers an opaque **500**.
 
+⚠️ **Attachments are READABLE, and the obvious way to read them is wrong** (probe 35). The member
+URL returns **entity metadata** under `Accept: */*` or `application/json` — a 200 carrying a document
+that is not the file, which only a byte comparison catches. **`Accept: application/octet-stream`**
+returns the bytes; ⚠️ asking for the file's *actual* type (`image/png`) is **406**. ALM returns the
+real mime type on the way back, so nothing has to infer it from the extension — but its
+`;charset=utf-8` on binary is meaningless and must not be propagated. Prefer `?by-id=true` over the
+filename. ⚠️ **Serving one inline is a same-origin XSS decision**: Alt-ALM is one origin (ADR 0001),
+so an uploaded `.html`/`.svg` served inline runs with the app's session — allowlist safe types for
+`Content-Disposition: inline` + `nosniff`, force-download the rest, never echo ALM's `Content-Type`
+unfiltered.
+
 ⚠️ **`runs` and `attachments` are not writable through the API, by design** — `POST runs` fails
 definitively (the only route is a status `PUT` on a test-instance that makes ALM synthesize a
 `Fast_Run`), and an attachment needs a hand-built multipart body, not a JSON entity. Both are refused

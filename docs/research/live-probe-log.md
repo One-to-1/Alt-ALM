@@ -2130,6 +2130,54 @@ while protecting exactly as much. `ver-stamp` is the cheap proxy, and it is prox
 thing. Deliberately left as a finding rather than a change: it is the safety-critical path and
 deserves its own slice.
 
+
+## Probe 35 - attachments ARE readable, and the obvious way to read them is wrong (2026-08-20)
+
+`scripts/probe/probe-attachment-read.py`. The write side was settled long ago (multipart, `file` part
+last, `ref-subtype=1`). The read side never was — which is the only reason every image in a memo
+renders "Alt-ALM cannot fetch attachments". It can.
+
+**Upload** (verified again here): `POST .../requirements/{id}/attachments`, hand-built multipart,
+**201**.
+
+**The collection** `GET .../attachments` is an ordinary entity envelope — `{TotalResults, entities}` —
+with these fields per file: `id`, `name`, `file-size`, `ref-subtype`, `description`, `parent-id`,
+`parent-type`, `ref-type`, `last-modified`, `vc-cur-ver`, `vc-user-name`. ⚠️ `description` comes back
+as a **full HTML document** (`<html><body>
+probe 35
+</body></html>`) — it is a memo like any other,
+so it needs the same sanitiser on the way out, not `textContent`.
+
+### ⚠️ The member URL returns METADATA unless you ask correctly
+
+| `Accept` | result |
+|---|---|
+| `*/*` | **entity XML** (866 bytes) — not the file |
+| `application/json` | **entity JSON** (642 bytes) — not the file |
+| **`application/octet-stream`** | **THE BYTES**, byte-identical (sha256 matched the upload) |
+| `image/png` — the file's actual type | **HTTP 406** |
+
+Two traps in one table. A client that fetches an attachment with the default `Accept` gets a
+**200 and a document that is not the file** — success-shaped, wrong content, and only a byte
+comparison notices. And asking for the type you actually want is *refused*: the generic type is the
+one that works, which is the opposite of how content negotiation reads.
+
+**ALM returns the real mime type on the way back** — `Content-Type: image/png;charset=utf-8` — so
+Alt-ALM does **not** have to infer a type from the filename extension. ⚠️ The `;charset=utf-8` is
+present on binary content and is meaningless; do not propagate it.
+
+`?by-id=true` with the numeric id returns identical bytes. **Prefer it over the name**: a filename in
+a path needs escaping, can collide, and is user-controlled.
+
+### ⚠️ Serving these to a browser is a same-origin XSS decision, not a plumbing one
+
+Alt-ALM is deliberately **one deployable on one origin** (ADR 0001) — which means an attachment
+served inline is served *from the SPA's own origin*. An uploaded `.html`, `.svg`, or anything sniffed
+as one then runs with the app's session. "Open the attachment in a new tab" is cheap for an image or
+a PDF and is a stored-XSS hole for markup. The split to implement: inline (`Content-Disposition:
+inline`) for an allowlist of safe types with `X-Content-Type-Options: nosniff`, and forced download
+for everything else. Never echo ALM's `Content-Type` unfiltered into an inline response.
+
 ## Open items for the next probe round
 
 1. ~~Map `SiteVersion 20.0 (20.00.0.143)` → marketing version~~ **DONE: ALM 26.1** (probe 3).
