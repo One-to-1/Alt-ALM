@@ -1457,6 +1457,29 @@ a **negative claim about ALM** produced entirely by our own code. Two response s
 same entity and only one is what every other probe in the log reads.
 
 
+## Loose end: three design-hook findings that need an ignore registered (2026-08-21)
+
+Not bugs, and not fixed — they will keep firing on every edit to these files until somebody runs the
+command. The auto-mode classifier blocked it during the session that triaged them, so this note is
+the only record.
+
+| file | line | rule | verdict |
+|---|---|---|---|
+| `spa/src/detail/DetailRail.css` | 16 | `layout-transition` | **false positive** — the detector matched the words `transition: width` inside the comment *explaining* why the transition is there |
+| `spa/src/detail/DetailRail.css` | 52 | `layout-transition` | **sanctioned exception** — the real `transition: width`, argued at length directly above it. `transform` cannot push a sibling; see the decisions section |
+| `spa/src/detail/DetailPane.css` | 318 | `broken-image` | **false positive** — `.detail-memo-rich img` plus a comment about the browser's broken-image glyph. The rule exists *because* a src-less `<img>` is replaced rather than shipped |
+
+To clear them:
+
+```
+node <impeccable-skill>/scripts/hook-admin.mjs ignore-value layout-transition "width 130ms ease"
+```
+
+⚠️ Re-read the third one before registering it. Memo images now render (probe 37), so the CSS around
+`.memo-image-blocked` may legitimately change — and if the placeholder path ever goes away, the
+finding stops being a false positive and starts being dead code.
+
+
 ## ⚠️ Standing lesson — read before writing any "X is impossible"
 
 **Four confident negative verdicts have been overturned in three days**: OTA unreachable (stale
