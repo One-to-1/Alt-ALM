@@ -11,7 +11,33 @@
    That is the VS Code activity-bar pattern, and it is the only arrangement where hover-to-peek and
    pin-to-keep can coexist without one of them being jarring. */
 
+/* ⚠️ The width animation, and why it is still a width animation.
+
+   The design hook flags `transition: width` as layout-thrashing, and it is right that width is a
+   layout property. The standard fix — animate `transform` instead — does not apply here: a
+   transform moves pixels without moving layout, so in PINNED mode the rail would slide over the
+   top of the record body instead of pushing it aside, and pushing is the entire difference between
+   pinned and unpinned. There is no CSS property that pushes a sibling without layout, because the
+   push IS layout.
+
+   What was actually expensive was not the push. Every frame re-laid-out the rail's own contents:
+   `.rail-tabs` inherited the animating width, so fifteen buttons re-flowed and fifteen
+   `text-overflow: ellipsis` labels were re-measured, 130ms worth of frames, on every open and
+   close. That part is removable and now is — see `.rail-tabs` below, which is pinned at the open
+   width and simply clipped.
+
+   So per frame the browser now resizes one box and reflows the sibling it is pushing, with zero
+   work inside the rail. `contain: layout` states that guarantee rather than leaving it to be
+   inferred. Unpinned mode costs even less: the rail is `position: absolute` there, out of flow, so
+   nothing is pushed at all.
+
+   ⚠️ `contain: paint` is deliberately NOT set. It would be the natural companion, but the open
+   rail's lift comes from its own `box-shadow` and paint containment is the one property in this
+   area whose interaction with that is worth not guessing at. `overflow: hidden` does the clipping
+   and unambiguously leaves an element's own shadow alone. */
 .rail {
+  --rail-open: 190px;
+
   position: relative;
   z-index: 2;
   flex: 0 0 auto;
@@ -21,11 +47,13 @@
   height: 100%;
   border-right: 1px solid var(--border);
   background: var(--surface);
+  overflow: hidden;
+  contain: layout;
   transition: width 130ms ease;
 }
 
 .rail.is-open {
-  width: 190px;
+  width: var(--rail-open);
 }
 
 /* Open but unpinned: lift out of the flow and float over the body. `width` still animates, so the
@@ -41,9 +69,18 @@
   box-shadow: var(--shadow-pop);
 }
 
+/* ⚠️ Fixed at the OPEN width, not the rail's. That is what makes the animation cheap: the buttons
+   inside are laid out once and clipped by the rail, instead of being re-flowed and re-ellipsised on
+   every frame of a 40px→190px transition.
+
+   ⚠️ Known consequence: while collapsed, this element's scrollbar sits outside the 40px clip and is
+   not visible. Wheel and keyboard scrolling still work, and a 40px strip of icons is not a surface
+   anyone drags a scrollbar on — but it is a real difference from a rail that resized its contents,
+   and it is here rather than in a commit message. */
 .rail-tabs {
   flex: 1 1 auto;
   min-height: 0;
+  width: var(--rail-open);
   display: flex;
   flex-direction: column;
   gap: 1px;
@@ -78,8 +115,12 @@
 }
 
 /* Clipped, never removed: a collapsed rail must still give every button an accessible name, and
-   `display:none` would take it away. Opacity carries the fade; width stops it forcing the button
-   wider than the 40px spine. */
+   `display:none` would take it away. Opacity carries the fade.
+
+   ⚠️ There used to be a `width: 0` here for the collapsed state, to stop the label forcing the
+   button wider than the 40px spine. It is gone because the button no longer has the rail's width to
+   force — `.rail-tabs` is fixed at the open width and the rail clips it. Reinstating it would put
+   a second per-state layout change back into the transition for no visual difference. */
 .rail-label {
   flex: 1 1 auto;
   min-width: 0;
@@ -87,10 +128,6 @@
   text-overflow: ellipsis;
   opacity: 0;
   transition: opacity 100ms ease;
-}
-
-.rail:not(.is-open) .rail-label {
-  width: 0;
 }
 
 .rail.is-open .rail-label {
@@ -155,10 +192,27 @@
   outline-offset: -2px;
 }
 
+/* ⚠️ Collapsed, the button is the open width and the rail clips it — so the ring above would run
+   off the right edge and read as unfinished. Move it onto the icon, which is the only part on
+   screen anyway. `outline` never participates in layout, so this costs the animation nothing;
+   sizing the button per state would have. */
+.rail:not(.is-open) .rail-tab:focus-visible,
+.rail:not(.is-open) .rail-pin:focus-visible {
+  outline: none;
+}
+
+.rail:not(.is-open) .rail-tab:focus-visible .rail-icon,
+.rail:not(.is-open) .rail-pin:focus-visible .rail-icon {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 3px;
+  border-radius: var(--radius-sm);
+}
+
 .rail-pin {
   flex: 0 0 auto;
   margin: 0 4px var(--space-2);
-  width: auto;
+  /* Fixed for the same reason as `.rail-tabs`: `auto` here means "the rail's animating width". */
+  width: calc(var(--rail-open) - 8px);
   border-top: 1px solid var(--border);
   border-radius: 0;
   padding-top: 9px;
