@@ -2178,6 +2178,73 @@ a PDF and is a stored-XSS hole for markup. The split to implement: inline (`Cont
 inline`) for an allowlist of safe types with `X-Content-Type-Options: nosniff`, and forced download
 for everything else. Never echo ALM's `Content-Type` unfiltered into an inline response.
 
+## Probe 36 - ALM sends NO filename with attachment bytes (2026-08-21)
+
+`scripts/probe/probe-attachment-serve.py`, run against the BFF's own endpoints rather than against
+ALM. Found by running the new download route live, **not** by a test.
+
+The byte response carries a media type and **no `Content-Disposition` at all**, so a caller that
+takes the filename from the response headers has none. Alt-ALM's synthesised fallback fired on every
+download and files landed as `attachment-8` - no extension, which on Windows means no application
+associated with them either.
+
+⚠️ **A unit test could not have caught this.** `attachment-8` is a perfectly valid filename and
+nothing about the response is malformed. Only comparing it against the name ALM reports in the
+**list** shows the problem, and only a live run has both.
+
+Fix: `AlmAttachmentClient.content` looks the name up from `list()` when the headers are silent -
+which is always - at the cost of one extra GET per download.
+
+Also confirmed live, against the sandbox, through the BFF:
+
+| check | result |
+|---|---|
+| `Content-Type` on the download route | `application/octet-stream`, never ALM's own |
+| `Content-Disposition` | `attachment`, for every file type |
+| `X-Content-Type-Options` | `nosniff` |
+| body | the **file**, not the entity envelope a wrong `Accept` returns with HTTP 200 (probe 35) |
+| `/image` for a real PNG | 200, `image/png`, `inline`, byte-identical to the download |
+| a nonexistent attachment id | 400, not a 200 carrying an error page |
+
+---
+
+## Probe 37 - a memo's image `src` survives verbatim, and the first run was a false negative (2026-08-21)
+
+`scripts/probe/probe-memo-image-src.py`. Alt-ALM's memo-image path rests on one assumption: that the
+`<img src>` ALM stores ends in `/attachments/<filename>`, so the filename can be read off the URL and
+matched against the record's attachment list. Nothing had verified it, and the failure mode is
+silent - every image would stay a placeholder, which looks exactly like a record with no images.
+
+**Verified:**
+
+1. An **absolute REST URL** as `<img src>` survives a memo write **unchanged**.
+2. Its last path segment, percent-decoded, is **exactly** the name the attachments list reports.
+3. A **relative** src has its `<img>` element kept and its `src` **stripped** - confirming
+   `api-ref`. Such an image is unresolvable by anyone, us included.
+4. Six spellings all survive with `src` intact: self-closing and open tag, with and without `alt`,
+   with `width`/`height`, a remote `http://` src, and a `data:` URI.
+
+### ⚠️ The first run said every `<img>` was stripped, and it was wrong
+
+Six variants, all reporting the memo came back **empty**. That reads as "this project's output
+sanitiser removes images" and contradicts probe 27, which is exactly the kind of contradiction worth
+stopping at.
+
+The bug was the **read**. `GET requirements/{id}` returns a **bare Entity object**, not an
+`{entities: [...]}` envelope. A parser written for the envelope finds no `entities` key, falls back
+to an empty dict, and reports every field as absent - so a perfectly successful write looks like a
+memo that stored nothing. **HTTP 200 throughout**, no error anywhere.
+
+The collection form, `GET requirements?query={id[217]}&fields=id,description`, returns the envelope
+and shows all six srcs intact.
+
+⚠️ **This is the standing lesson repeating itself**: not too few attempts, an unexamined assumption
+about the shape of the question - and this time the wrong answer was a *negative* about ALM's
+behaviour, arrived at through our own parser. Two response shapes exist for the same entity and only
+one of them is what every other probe in this log reads.
+
+---
+
 ## Open items for the next probe round
 
 1. ~~Map `SiteVersion 20.0 (20.00.0.143)` → marketing version~~ **DONE: ALM 26.1** (probe 3).

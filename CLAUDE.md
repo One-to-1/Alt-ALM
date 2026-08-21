@@ -162,7 +162,7 @@ finding in the project surfaced by product code under test rather than a hand-wr
   **bounded retry on 5xx reads** — separate from the 5xx-on-*write* verify-by-query rule (**Q46**).
 
 🟡 **P2 IN PROGRESS — the write core, the CRUD endpoints and the validation layer are in and
-verified live (2026-08-19). 358 BFF tests (401 with `-Pcontract`) + 133 SPA tests green. **CRUD is
+verified live (2026-08-19). **376 BFF tests (405 with `-Pcontract`) + 147 SPA tests green** as of 2026-08-21. **CRUD is
 complete in the SPA (2026-08-20)** — read, create, edit, comment, delete — and the whole path is
 verified end to end against the live sandbox (probe 32), in the SPA's own request shapes.**
 `AlmWriteClient` is the single write path; `ApiIsReadOnlyTest` asserts writes *route through it*
@@ -230,16 +230,44 @@ marked; it is an explicit heuristic over prose and returns null rather than gues
 so the BFF's missing-required-field retry does **not** fire and must not: that retry is for probe 9's
 case, where metadata fails to *declare* a field and ALM answers an opaque **500**.
 
-⚠️ **Attachments are READABLE, and the obvious way to read them is wrong** (probe 35). The member
-URL returns **entity metadata** under `Accept: */*` or `application/json` — a 200 carrying a document
-that is not the file, which only a byte comparison catches. **`Accept: application/octet-stream`**
-returns the bytes; ⚠️ asking for the file's *actual* type (`image/png`) is **406**. ALM returns the
-real mime type on the way back, so nothing has to infer it from the extension — but its
-`;charset=utf-8` on binary is meaningless and must not be propagated. Prefer `?by-id=true` over the
-filename. ⚠️ **Serving one inline is a same-origin XSS decision**: Alt-ALM is one origin (ADR 0001),
-so an uploaded `.html`/`.svg` served inline runs with the app's session — allowlist safe types for
-`Content-Disposition: inline` + `nosniff`, force-download the rest, never echo ALM's `Content-Type`
-unfiltered.
+✅ **Attachments are readable and BUILT (2026-08-21), and every one of them downloads.** The user
+chose one rule over an allowlist split on KISS grounds; it is also the only version with no
+allowlist to get wrong. `/api/attachments/{collection}/{id}/{attId}/file` answers
+`Content-Disposition: attachment` + `application/octet-stream` + `nosniff` for **everything**, and
+**never echoes ALM's `Content-Type`** — that is a claim about a file somebody uploaded.
+
+⚠️ **The obvious way to read them is wrong** (probe 35). The member URL returns **entity metadata**
+under `Accept: */*` or `application/json` — a 200 carrying a document that is not the file, which
+only a byte comparison catches. **`Accept: application/octet-stream`** returns the bytes; ⚠️ asking
+for the file's *actual* type (`image/png`) is **406**. Prefer `?by-id=true` over the filename.
+
+⚠️ **ALM sends NO filename with the bytes** (probe 36) — no `Content-Disposition` at all. The name
+is looked up from the **list** instead, at one extra GET per download. Before that, every file landed
+as `attachment-8`: no extension, no application association. **A unit test could not have caught it**
+— that is a valid filename and the response is well-formed; only a live run has both halves.
+
+⚠️ **`ContentDisposition` does not make a filename safe on its own.** Given a charset it emits *both*
+a percent-encoded `filename*` **and** a plain quoted `filename`, escaping only quotes in the plain
+one — so `ev"il\r\n; filename=other.html` came back with its CRLF intact, in a header value.
+`AttachmentController.headerSafe` denies header *structure* (control chars, quote, backslash, `;`
+`,` and both path separators) while keeping non-Latin alphabets, which survive percent-encoded.
+
+⚠️ **`/image` is a SEPARATE endpoint, and the separation is the point** — "this may render in the
+browser" becomes a property of the URL the page asked for rather than of a header somebody has to get
+right. It exists only because a memo's embedded image cannot be a download link. It serves inline
+**only** when the media type is a raster format **and the bytes start the way that format does**: ALM
+derives its type from the file **extension**, so a `.png` full of markup is announced as `image/png`.
+`image/svg+xml` is absent from the allowlist and must stay absent. Anything else is **415 with no
+body**, never a silent fall back to the download route.
+
+⚠️ **Memo images resolve by FILENAME, not by id** (probe 37) — ALM writes an absolute REST URL whose
+last segment decodes to exactly the name the attachments list reports, and it survives a memo write
+verbatim (six spellings checked). A **relative** src keeps its element and loses its `src`, so it is
+unresolvable by anyone. `sanitizeMemo` still strips every `src` unconditionally and parks the original
+on `data-alm-src`; **that ordering is the safety property** — the only thing that can put a `src` back
+is a URL the app built. ⚠️ The host in the memo's src is deliberately **not** checked: the name is only
+a key into *this record's* attachments, so a memo pointing elsewhere either renders our copy from our
+origin or stays a placeholder. Neither sends a request to the host it named.
 
 ⚠️ **`runs` and `attachments` are not writable through the API, by design** — `POST runs` fails
 definitively (the only route is a status `PUT` on a test-instance that makes ALM synthesize a
@@ -347,9 +375,17 @@ every conflict**; probes 1–15), [alm-api-reference.md](docs/research/alm-api-r
   (different IP) behaviour is `UNVERIFIED` — all 50 came from one host.
 - ⚠️ **No optimistic locking: `ver-stamp` is a counter, not a token** (probe 31). It increments on
   every write *including memo writes*, but ALM **accepts a stale one and lets the write land**, so
-  last-writer-wins is the server's behaviour. It is still a reliable change *detector* — re-read it
-  immediately before a PUT and refuse on a change — which narrows the lost-update race without
-  closing it. Never describe that as safe.
+  last-writer-wins is the server's behaviour. Never describe detection as safe.
+- ⚠️ **And do NOT guard writes on `ver-stamp`** — `AlmStaleWriteGuard` compares **field values**
+  instead (2026-08-21, user). Probe 34: creating a child moves the **parent's** stamp, so opening a
+  requirement and having anyone file a sub-requirement under it refused the next save with "someone
+  else changed this record" when not one field differed. ALM replaces only the fields present in the
+  body, so comparing those directly refuses strictly less often while protecting exactly as much —
+  and is immune to A→B→A, since a field back to what the caller read loses nothing when overwritten.
+  The wire field is `expectedValues` (an update) and `expectedThread` (a comment, whose baseline is
+  the thread it displayed — the only thing a comment write can destroy). Baselines for fields the
+  write does not touch are **ignored, not enforced**: a caller may reasonably send back everything
+  its form showed.
 - ⚠️ **A memo PUT REPLACES the field — a comment write destroys every earlier comment** (probe 30).
 The SPA's answer is a **write-only** `CommentBox`: it holds the new comment and never the thread, so
 the shape that would delete the history cannot be typed into. The thread renders above it, read-only.

@@ -1384,41 +1384,77 @@ had simply selected a project with an empty Requirements root. Resolve the index
 
 ---
 
-## ⚠️ Open decisions — waiting on the user, not on work (as of 2026-08-20)
+## ✅ All three open decisions are DECIDED and BUILT (2026-08-21)
 
-Recorded here rather than left in a conversation, because neither is blocked on anything but a
-choice, and both are easy to lose.
+They were recorded here as open on 2026-08-20 and answered by the user the next day. Kept rather
+than deleted, because each one is a "why is it like this" that will be asked again.
 
-**1. `AlmVersionGuard`'s false conflict (probe 34).** Creating a child moves the **parent's**
-`ver-stamp`. So: open a parent record, have anyone add a child under it, and the next save of the
-parent is refused with "Someone else changed this record" — when no field on it differs. Fails safe,
-recovery works, so it is a confidently wrong *message* rather than lost data.
-*The fix, if wanted:* compare the values of the fields the write is actually sending, since ALM
-replaces only those. That refuses strictly less often while protecting exactly as much. Deliberately
-not implemented — it is the safety-critical path.
+**1. `AlmVersionGuard`'s false conflict → fixed, the way the note proposed.** The guard now compares
+the **values of the fields a write actually replaces** and is renamed `AlmStaleWriteGuard`, because
+the old name would be a lie — it does not look at `ver-stamp` at all any more.
 
-**2. `spa/src/detail/DetailRail.css` L24, `transition: width 130ms`.** Flagged by the design hook as
-layout-thrashing, which is technically right. It is also a deliberate documented choice: the rail's
-40px→190px open animates `width` so labels slide rather than appear, and in **pinned** mode the rail
-must *push* sibling content — which a transform cannot do. Keep as designed, or go transform-based
-and accept that pinned mode stops pushing?
+Probe 34: creating a child moves the **parent's** stamp, so opening a requirement, having anyone
+file a sub-requirement under it, and saving was refused with "someone else changed this record" when
+nothing on it differed. ALM replaces only the fields present in the body, so comparing those
+directly refuses strictly less often while protecting exactly as much, and is immune to the A→B→A
+objection: a field back to what the caller read loses nothing when overwritten.
 
-**3. Attachments — ✅ DECIDED 2026-08-20 (user): every attachment downloads. No inline, no
-allowlist, no split.** The proposed shape was an allowlist of safe types served
-`Content-Disposition: inline` in a new tab with everything else force-downloading. The user rejected
-the split on KISS grounds — *"separating their implementation is going to confuse people"* — and it
-is the better call for a second reason: Alt-ALM is one deployable on one origin (ADR 0001), so an
-inline attachment is served **from the SPA's own origin**, and an uploaded `.html`/`.svg` served that
-way is stored XSS running with the app's session. One rule means there is no allowlist to get wrong,
-no `nosniff` to forget, and nothing for a crafted `Content-Type` to slip past.
+Wire shape: `expectedValues` on an update, `expectedThread` on a comment (a comment's baseline is
+the *thread it displayed* — the only thing a comment write can destroy). ⚠️ Baselines for fields the
+write does not touch are **ignored, not refused**: a caller may reasonably send back everything its
+form showed, and enforcing those reintroduces exactly the false conflict. Pinned by a live contract
+test that files a child, asserts the parent's stamp moved, and asserts the parent's save commits.
 
-*What that fixes in the implementation:* `Content-Disposition: attachment` with a sanitized filename
-on every response, `X-Content-Type-Options: nosniff`, and **never echo ALM's `Content-Type`
-unfiltered** — serve `application/octet-stream` regardless (ALM's real mime type is still worth
-returning as *data* for an icon or a label, just not as the response header). The UI is a plain
-download link; no per-type branching anywhere. ⚠️ Read the bytes with
-`Accept: application/octet-stream` — `*/*` and `application/json` both return entity **metadata**
-with HTTP 200, and asking for the file's actual type (`image/png`) is **406** (probe 35).
+**2. `DetailRail.css` `transition: width` → kept, and made cheap.** No CSS property pushes a sibling
+without layout, because the push *is* layout — so the hook's suggested `transform` cannot work for
+pinned mode, which has to shove the record body aside.
+
+But the push was never the expensive part. `.rail-tabs` inherited the animating width, so fifteen
+buttons re-flowed and fifteen `text-overflow: ellipsis` labels were re-measured **on every frame**.
+It is now pinned at the open width and clipped by the rail; `contain: layout` states the guarantee.
+⚠️ `contain: paint` is deliberately absent — the open rail's lift is its own `box-shadow`, and
+`overflow: hidden` clips descendants while unambiguously leaving that alone.
+
+Two consequences, both in the file: collapsed, `.rail-tabs`'s scrollbar sits outside the clip (wheel
+and keyboard still scroll), and the focus ring moves onto the icon, because the button is now wider
+than the visible strip.
+
+**3. Attachments → every one of them downloads; images are handled separately.** The user rejected
+the allowlist split on KISS grounds, and it is also the only version with no allowlist to get wrong.
+See CLAUDE.md for the full rule set. The short version:
+
+- `/file` — `attachment` + `octet-stream` + `nosniff`, for everything, ALM's `Content-Type` never
+  echoed. The SPA side is an `<a href>` and nothing else.
+- `/image` — a **separate** endpoint, so "this may render" is a property of the URL rather than of a
+  header. Raster types only, **and the bytes must start the way that format does**; `image/svg+xml`
+  is absent and must stay absent. Anything else is 415 with no body.
+- memo images resolve by **filename** against this record's attachments (probe 37).
+
+### ⚠️ Two things the tests could not have told us
+
+Both were found by running the code against the live server, and both are worth remembering as a
+*kind* of bug rather than as two incidents.
+
+**`ContentDisposition` does not sanitise a filename.** Given a charset it emits *both* a
+percent-encoded `filename*` and a plain quoted `filename`, escaping only quotes in the plain one. A
+name of `ev"il\r\n; filename=other.html` came back with its CRLF intact, inside a header value. The
+test that caught it asserts on the **whole header**; one written against the encoded half would have
+passed.
+
+**ALM sends no filename with attachment bytes** (probe 36), so every download landed as
+`attachment-8` — valid filename, well-formed response, no error anywhere, and unusable. Only
+comparing it against the name in the *list* shows the problem, and only a live run has both halves.
+
+### ⚠️ And one near-miss worth more than either
+
+Probe 37's first run reported that **every `<img>` was stripped** from a memo — six variants, all
+coming back empty, contradicting probe 27. The bug was our own **read**: `GET requirements/{id}`
+returns a **bare Entity**, not an `{entities: [...]}` envelope, so a parser written for the envelope
+reports every field as absent. HTTP 200 throughout.
+
+That is the standing lesson below, repeating itself, with the added twist that the wrong answer was
+a **negative claim about ALM** produced entirely by our own code. Two response shapes exist for the
+same entity and only one is what every other probe in the log reads.
 
 
 ## ⚠️ Standing lesson — read before writing any "X is impossible"
