@@ -6,7 +6,7 @@ import type {
   RelatedTable,
   RelatedTableRows,
 } from '../api/client.ts'
-import { ApiError, fetchTabRows, isScopable } from '../api/client.ts'
+import { ApiError, attachmentFileUrl, fetchTabRows, isScopable } from '../api/client.ts'
 import { renderCell } from '../grid/renderers.tsx'
 import './RelatedRows.css'
 
@@ -183,6 +183,7 @@ export function RelatedRows({ project, collection, entityId, tab, onNavigate, on
             // do, because "Trace From" and "Trace To" are only distinguishable by theirs.
             showCaption={tables.length > 1}
             onNavigate={onNavigate}
+            owner={{ project, collection, entityId }}
             onDrillIn={
               onDrillIn && meta && isScopable(meta) ? () => onDrillIn(meta) : undefined
             }
@@ -200,10 +201,26 @@ interface LinkTableProps {
   onNavigate: (target: LinkTarget) => void
   /** Present only when these rows can actually be opened as a grid — see {@link isScopable}. */
   onDrillIn?: () => void
+  /**
+   * The record these rows hang off, for building attachment download links.
+   *
+   * Passed for every table and used only by the attachments one, because the URL needs the OWNING
+   * record — an attachment is a sub-resource of the record it is filed against, not a collection
+   * with ids of its own to look up.
+   */
+  owner: { project: string; collection: string; entityId: string }
 }
 
-function LinkTable({ table, showCaption, onNavigate, onDrillIn }: LinkTableProps) {
+function LinkTable({ table, showCaption, onNavigate, onDrillIn, owner }: LinkTableProps) {
   const canDrillIn = onDrillIn !== undefined
+  /**
+   * Whether this table's name column should be a download link.
+   *
+   * ⚠️ Keyed on the COLLECTION, not on the tab's label or key. A project can rename the tab;
+   * it cannot rename the collection, and a link built for the wrong table would point at an
+   * endpoint that answers 400 for every row.
+   */
+  const isAttachments = table.grid.collection === 'attachments'
   const columns = chooseColumns(table.grid.columns, table.grid.collection)
   const targets = Object.values(table.targets)
   const hasTargets = targets.length > 0
@@ -280,9 +297,36 @@ function LinkTable({ table, showCaption, onNavigate, onDrillIn }: LinkTableProps
                           {target?.name || <span className="related-idmissing">—</span>}
                         </td>
                       )}
-                      {columns.map((col) => (
-                        <td key={col.name}>{renderCell(col, row.values[col.name] ?? [])}</td>
-                      ))}
+                      {columns.map((col) => {
+                        if (isAttachments && col.name === 'name') {
+                          const fileName = row.values.name?.[0] ?? ''
+                          return (
+                            <td key={col.name}>
+                              {/* A plain link: the BFF answers with
+                                  `Content-Disposition: attachment`, so the browser saves the file
+                                  and streams it without the SPA touching the bytes.
+
+                                  ⚠️ No `target="_blank"` and no `download` attribute. A new tab
+                                  for a download flashes an empty tab and closes it, and `download`
+                                  would let the page propose a filename for a file it never read —
+                                  the server names it, from the name ALM holds. */}
+                              <a
+                                className="related-download"
+                                href={attachmentFileUrl(
+                                  owner.project,
+                                  owner.collection,
+                                  owner.entityId,
+                                  row.id,
+                                )}
+                                title={`Download ${fileName || `attachment ${row.id}`}`}
+                              >
+                                {fileName || `attachment ${row.id}`}
+                              </a>
+                            </td>
+                          )
+                        }
+                        return <td key={col.name}>{renderCell(col, row.values[col.name] ?? [])}</td>
+                      })}
                     </tr>
                   )
                 })}

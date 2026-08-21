@@ -4,6 +4,7 @@ import ai.surgeone.altalm.bff.alm.metadata.AlmMetadataCache;
 import ai.surgeone.altalm.bff.alm.metadata.AlmMetadataCatalog;
 import ai.surgeone.altalm.bff.alm.metadata.AlmMetadataClient;
 import ai.surgeone.altalm.bff.alm.read.AlmAccessPolicy;
+import ai.surgeone.altalm.bff.alm.read.AlmAttachmentClient;
 import ai.surgeone.altalm.bff.alm.read.AlmEntityClient;
 import ai.surgeone.altalm.bff.alm.write.AlmCommentWriter;
 import ai.surgeone.altalm.bff.alm.write.AlmFieldResolver;
@@ -189,6 +190,22 @@ public class AlmConfiguration {
                                            AlmSessionPool pool, AlmAccessPolicy policy,
                                            AlmReadRetry retry, AlmProperties props) {
         return new AlmEntityClient(almRestClient, creds, pool, policy, retry,
+                props.getPool().getBorrowTimeout());
+    }
+
+    /**
+     * Reads attachment lists and attachment bytes.
+     *
+     * <p>Separate from {@link AlmEntityClient} because the Accept discipline is different and
+     * getting it wrong is silent: an attachment member returns entity metadata under
+     * {@code application/json} with HTTP 200 (probe 35). Two clients with two Accept headers cannot
+     * drift into each other; one client with a flag eventually would.
+     */
+    @Bean
+    public AlmAttachmentClient almAttachmentClient(RestClient almRestClient, AlmCredentials creds,
+                                                   AlmSessionPool pool, AlmAccessPolicy policy,
+                                                   AlmReadRetry retry, AlmProperties props) {
+        return new AlmAttachmentClient(almRestClient, creds, pool, policy, retry,
                 props.getPool().getBorrowTimeout());
     }
 

@@ -197,3 +197,22 @@
   outline: 2px solid var(--focus-ring);
   outline-offset: 1px;
 }
+
+/* An attachment's name is a download, so it looks like a link and is one — an <a href>, not a
+   button that fetches. ⚠️ Every attachment downloads, whatever its type: Alt-ALM is one origin
+   (ADR 0001), so anything rendered inline would run with the app's session. There is deliberately
+   no second affordance for "open" — one behaviour, no guessing which link does what. */
+.related-download {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.related-download:hover {
+  text-decoration: underline;
+}
+
+.related-download:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+  border-radius: 2px;
+}

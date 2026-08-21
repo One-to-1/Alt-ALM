@@ -878,6 +878,53 @@ function projectQuery(project: string): string {
 }
 
 /**
+ * Where to point a link so an attachment downloads.
+ *
+ * ⚠️ **A plain URL, not a fetch.** The BFF answers with `Content-Disposition: attachment`, so an
+ * ordinary `<a href>` is the whole implementation — the browser saves the file, shows its own
+ * progress, and streams it without Alt-ALM ever holding the bytes in memory. Fetching into a blob
+ * and synthesising a click would buy nothing and would break on anything large.
+ *
+ * ⚠️ **Every attachment downloads; there is no preview route and no `download` attribute here.**
+ * Alt-ALM is one deployable on one origin (ADR 0001), so an attachment rendered inline runs with
+ * the app's own session — an uploaded `.html` or `.svg` would be stored XSS rather than a preview.
+ * The single rule lives in the BFF's response headers, where a caller cannot opt out of it; this
+ * function only decides where to point.
+ */
+export function attachmentFileUrl(
+  project: string,
+  collection: string,
+  entityId: string,
+  attachmentId: string,
+): string {
+  return (
+    `/api/attachments/${encodeURIComponent(collection)}/${encodeURIComponent(entityId)}` +
+    `/${encodeURIComponent(attachmentId)}/file${projectQuery(project)}`
+  )
+}
+
+/**
+ * Where to point an `<img src>` for an image whose bytes live in ALM.
+ *
+ * A separate route from {@link attachmentFileUrl}, deliberately: "this may render in the browser"
+ * is then a property of the URL the page asked for rather than of a header somebody has to get
+ * right. The BFF serves it inline only when the media type is a raster image **and** the bytes
+ * start the way that format does — ALM derives its type from the file extension, so the claim on
+ * its own is not evidence. Anything else answers 415 and the image does not appear.
+ */
+export function attachmentImageUrl(
+  project: string,
+  collection: string,
+  entityId: string,
+  attachmentId: string,
+): string {
+  return (
+    `/api/attachments/${encodeURIComponent(collection)}/${encodeURIComponent(entityId)}` +
+    `/${encodeURIComponent(attachmentId)}/image${projectQuery(project)}`
+  )
+}
+
+/**
  * A field's value on the wire: a string, or an array of strings for a multi-value field.
  *
  * ⚠️ The model has exactly two multi-value fields, `target-rel` and `target-rcyc`, both References.
