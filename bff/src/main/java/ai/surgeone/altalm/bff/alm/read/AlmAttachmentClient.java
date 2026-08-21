@@ -102,9 +102,32 @@ public final class AlmAttachmentClient {
      *
      * <p>⚠️ {@code Accept: application/octet-stream}, always. See the class javadoc: the obvious
      * headers return a 200 carrying metadata instead of the file, and the specific one returns 406.
+     *
+     * <p>⚠️ <strong>ALM sends no filename with the bytes.</strong> Verified live: the byte response
+     * carries a media type and no {@code Content-Disposition} at all, so a caller that trusts the
+     * response headers for a name has none — and the download lands as {@code attachment-8}, with no
+     * extension, which on Windows means no application association either. The name is therefore
+     * looked up from the list, at the cost of one extra GET, and only when the headers really are
+     * silent. Guessing a name from the id would produce exactly the unusable file this avoids.
      */
     public AlmAttachmentBytes content(AlmProjectRef project, String collection, String id,
                                       String attachmentId) {
+        AlmAttachmentBytes fetched = fetchContent(project, collection, id, attachmentId);
+        if (!fetched.fileName().isBlank()) {
+            return fetched;
+        }
+        String name = list(project, collection, id).stream()
+                .filter(a -> a.id().equals(attachmentId))
+                .map(AlmAttachment::name)
+                .findFirst()
+                .orElse("");
+        return name.isBlank()
+                ? fetched
+                : new AlmAttachmentBytes(fetched.bytes(), fetched.mediaType(), name);
+    }
+
+    private AlmAttachmentBytes fetchContent(AlmProjectRef project, String collection, String id,
+                                            String attachmentId) {
         policy.checkMethod("GET", project);
 
         String url = memberBase(project, collection, id)
