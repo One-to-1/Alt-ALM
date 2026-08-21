@@ -903,6 +903,33 @@ export function attachmentFileUrl(
   )
 }
 
+/** One attachment filed against a record. No media type — see the BFF's `AttachmentDto`. */
+export interface Attachment {
+  id: string
+  name: string
+  description: string
+  size: number
+}
+
+/**
+ * The attachments filed against one record. Metadata only; no bytes are fetched.
+ *
+ * Used for two different things, and it is worth knowing both: the Attachments tab lists them, and
+ * a memo needs the name→id map to point an embedded `<img>` at {@link attachmentImageUrl} — ALM
+ * writes the image's *filename* into the memo's `src`, never its id.
+ */
+export async function fetchAttachments(
+  project: string,
+  collection: string,
+  id: string,
+): Promise<Attachment[]> {
+  const body = await apiGet<{ items: Attachment[] }>(
+    `/api/attachments/${encodeURIComponent(collection)}/${encodeURIComponent(id)}` +
+      projectQuery(project),
+  )
+  return body.items ?? []
+}
+
 /**
  * Where to point an `<img src>` for an image whose bytes live in ALM.
  *

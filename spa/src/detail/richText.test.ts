@@ -196,6 +196,111 @@ describe('sanitizeMemo — images', () => {
   })
 })
 
+describe('sanitizeMemo — images stored in ALM', () => {
+  /**
+   * The name a memo's <img src> ends in, mapped to the URL Alt-ALM would serve it from.
+   *
+   * Keyed by FILENAME because that is what ALM writes into the document — an attachment's id never
+   * appears in a memo. The value is always a URL this app built; nothing from the memo becomes a
+   * src.
+   */
+  const IMAGES = {
+    'diagram.png': '/api/attachments/requirements/7001/8/image?project=DOM%2FPROJ',
+  }
+
+  const ALM_SRC =
+    'https://alm.example.invalid/qcbin/rest/domains/DOM/projects/PROJ' +
+    '/requirements/7001/attachments/diagram.png'
+
+  it('renders an image that IS filed against this record', () => {
+    const { html, blockedImages } = sanitizeMemo(`<img src="${ALM_SRC}" alt="diagram">`, IMAGES)
+
+    expect(html).toContain(IMAGES['diagram.png'])
+    expect(html).toContain('<img')
+    // Not a placeholder any more, and not counted as one — the notice would otherwise claim an
+    // image is missing while the reader is looking at it.
+    expect(html).not.toContain('memo-image-blocked')
+    expect(blockedImages).toBe(0)
+  })
+
+  it('leaves an image that is NOT filed against this record as a placeholder', () => {
+    const other = ALM_SRC.replace('diagram.png', 'somebody-elses.png')
+    const { html, blockedImages } = sanitizeMemo(`<img src="${other}" alt="chart">`, IMAGES)
+
+    expect(html).not.toContain('<img')
+    expect(html).toContain('memo-image-blocked')
+    expect(blockedImages).toBe(1)
+  })
+
+  it('shows placeholders while the attachment list is still loading', () => {
+    // ⚠️ Undefined is "not known yet", and it must render the same as unresolvable rather than
+    // guessing a URL. A src invented before the list arrives is a request to a host we have not
+    // checked.
+    const { html, blockedImages } = sanitizeMemo(`<img src="${ALM_SRC}" alt="diagram">`)
+
+    expect(html).not.toContain('<img')
+    expect(blockedImages).toBe(1)
+  })
+
+  it("⚠️ never emits the memo's own URL, even when the filename matches", () => {
+    // The deliberate design point. A memo pointing at somebody else's host, with a filename that
+    // happens to match one of this record's attachments, renders OUR copy from OUR origin. The
+    // host is not consulted, so no request is made to it either way.
+    const hostile = 'https://evil.example.invalid/attachments/diagram.png'
+    const { html } = sanitizeMemo(`<img src="${hostile}" alt="diagram">`, IMAGES)
+
+    expect(html).not.toContain('evil.example.invalid')
+    expect(html).toContain(IMAGES['diagram.png'])
+  })
+
+  it('never leaks the parked src into the output', () => {
+    // `data-alm-src` is scaffolding between the sanitise hook and the resolve pass. Leaving it in
+    // would put an attacker-chosen URL back into the DOM, which is exactly what stripping the src
+    // was for — inert as an attribute today, one careless CSS or script change from not being.
+    const resolved = sanitizeMemo(`<img src="${ALM_SRC}">`, IMAGES).html
+    const unresolved = sanitizeMemo('<img src="https://elsewhere.invalid/x.png">', IMAGES).html
+
+    expect(resolved).not.toContain('data-alm-src')
+    expect(resolved).not.toContain('alm.example.invalid')
+    expect(unresolved).not.toContain('data-alm-src')
+    expect(unresolved).not.toContain('elsewhere.invalid')
+  })
+
+  it('resolves a percent-encoded filename against the name ALM reports raw', () => {
+    // ALM encodes the name into the URL; the list reports it decoded. Comparing the two without
+    // decoding would leave every image with a space or an accent in its name unshowable.
+    const images = { 'my diagram.png': '/api/attachments/requirements/7001/9/image' }
+    const src = ALM_SRC.replace('diagram.png', 'my%20diagram.png')
+    const { html } = sanitizeMemo(`<img src="${src}">`, images)
+
+    expect(html).toContain('/api/attachments/requirements/7001/9/image')
+  })
+
+  it('does not resolve a src that names no attachment at all', () => {
+    const { html, blockedImages } = sanitizeMemo('<img src="/not-an-attachment-url.png">', IMAGES)
+
+    expect(html).toContain('memo-image-blocked')
+    expect(blockedImages).toBe(1)
+  })
+
+  it('⚠️ a javascript: src is refused before resolution is even considered', () => {
+    const { html } = sanitizeMemo('<img src="javascript:alert(1)">', IMAGES)
+
+    assertInert(html)
+    expect(html).not.toContain('alert(1)')
+  })
+
+  it('counts a mix correctly, so the notice states a true number', () => {
+    const other = ALM_SRC.replace('diagram.png', 'missing.png')
+    const { blockedImages } = sanitizeMemo(
+      `<img src="${ALM_SRC}"><img src="${other}"><img src="/x.png">`,
+      IMAGES,
+    )
+
+    expect(blockedImages).toBe(2)
+  })
+})
+
 describe('sanitizeMemo — degenerate input', () => {
   it('treats empty, blank and undefined-ish input as empty', () => {
     expect(sanitizeMemo('').html).toBe('')

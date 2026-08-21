@@ -9,6 +9,8 @@ import type {
 } from '../api/client.ts'
 import {
   ApiError,
+  attachmentImageUrl,
+  fetchAttachments,
   fetchCommentField,
   fetchDetail,
   fetchHistory,
@@ -16,7 +18,7 @@ import {
   fetchTabsPopulated,
 } from '../api/client.ts'
 import { renderCell } from '../grid/renderers.tsx'
-import { memoToPlainText, sanitizeMemo } from './richText.ts'
+import { memoToPlainText, sanitizeMemo, type MemoImages } from './richText.ts'
 import { RelatedRows } from './RelatedRows.tsx'
 import { HistoryPanel } from './HistoryPanel.tsx'
 import { RecordEditor } from './RecordEditor.tsx'
@@ -200,6 +202,44 @@ export function DetailPane({
    * the second request a no-op precisely when the screen is least trustworthy.
    */
   const [reloadToken, setReloadToken] = useState(0)
+  /**
+   * This record's attachments as filename -> image URL, for memo images.
+   *
+   * ⚠️ Undefined until the list has actually been read. Distinct from an empty object, which is
+   * the answer for a record that genuinely has none: both render placeholders, but only one is a
+   * fact. Set to {} rather than left undefined on failure would claim the second when we know the
+   * first, so a failed read stays undefined.
+   */
+  const [memoImages, setMemoImages] = useState<MemoImages | undefined>(undefined)
+
+  // Attachments are per RECORD, so this re-runs per record, unlike the tab strip above.
+  // ⚠️ Reads metadata only; no image bytes are fetched until an <img> actually points at one.
+  useEffect(() => {
+    let cancelled = false
+    setMemoImages(undefined)
+    if (!entityId) return
+
+    fetchAttachments(project, collection, entityId)
+      .then((items) => {
+        if (cancelled) return
+        const map: MemoImages = {}
+        for (const item of items) {
+          if (item.name) {
+            map[item.name] = attachmentImageUrl(project, collection, entityId, item.id)
+          }
+        }
+        setMemoImages(map)
+      })
+      .catch(() => {
+        // Undefined, not {}. A record whose attachments could not be read is not a record with
+        // none, and the memo's notice says different things about the two.
+        if (!cancelled) setMemoImages(undefined)
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [project, collection, entityId, reloadToken])
 
   // The related-entity tab set is metadata, not record data: it depends on project + collection and
   // not on which record is open. Fetching it here rather than with the record means arrowing through
@@ -602,6 +642,7 @@ export function DetailPane({
               // decision about one document, not a preference about memos.
               key={activeMemo.name}
               label={activeMemo.label || activeMemo.name}
+              images={memoImages}
               values={row.values[activeMemo.name] ?? []}
             />
             {/* Only on the comment field, only where writes are permitted, and only ever BELOW the
@@ -682,6 +723,14 @@ export function DetailPane({
 interface MemoBodyProps {
   label: string
   values: string[]
+  /**
+   * This record's attachments, keyed by filename, so an image stored in ALM can be rendered.
+   *
+   * ⚠️ Undefined while the list is still loading, and that is not the same as empty. Empty means
+   * "this record has no attachments, so nothing can resolve"; undefined means "not known yet", and
+   * both render the placeholder — but only the first is a fact worth telling the reader.
+   */
+  images?: MemoImages
 }
 
 /**
@@ -707,15 +756,17 @@ interface MemoBodyProps {
  * Word arrive with fixed pixel widths and colours that fight the pane's own theme, and the escape
  * hatch is cheaper than trying to normalise every one of them.
  */
-function MemoBody({ label, values }: MemoBodyProps) {
+function MemoBody({ label, values, images }: MemoBodyProps) {
   const [plain, setPlain] = useState(false)
 
   const docs = useMemo(
     () =>
       values
         .filter((v) => v && v.trim() !== '')
-        .map((raw) => ({ ...sanitizeMemo(raw), text: memoToPlainText(raw) })),
-    [values],
+        .map((raw) => ({ ...sanitizeMemo(raw, images), text: memoToPlainText(raw) })),
+    // `images` in the deps on purpose: the list arrives after the first render, and a memo that
+    // kept its placeholders because the map was not loaded yet would never re-run without it.
+    [values, images],
   )
 
   // A document that sanitises to nothing but held an image is not empty — it is unshowable, which
@@ -728,11 +779,16 @@ function MemoBody({ label, values }: MemoBodyProps) {
 
   const notes = []
   if (blocked > 0) {
+    // ⚠️ The wording no longer claims Alt-ALM "cannot fetch attachments" — it can, and does, for
+    // anything filed against this record. What is left here is the case that stays unshowable: an
+    // image the memo points at that is not one of this record's attachments, which means a host
+    // Alt-ALM will not send a request to.
     notes.push(
       blocked === 1
-        ? 'One image is stored in ALM and is not shown here — Alt-ALM cannot fetch attachments yet.'
-        : `${blocked} images are stored in ALM and are not shown here — Alt-ALM cannot fetch `
-          + 'attachments yet.',
+        ? 'One image is not shown: it is not filed against this record, and Alt-ALM does not '
+          + 'fetch images from elsewhere.'
+        : `${blocked} images are not shown: they are not filed against this record, and Alt-ALM `
+          + 'does not fetch images from elsewhere.',
     )
   }
   if (hostile) {

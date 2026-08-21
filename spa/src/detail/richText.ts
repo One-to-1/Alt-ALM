@@ -110,12 +110,16 @@ let blockedImages = 0
 /**
  * Two fixes DOMPurify cannot make for us, because both are policy rather than safety.
  *
- * **Images.** A memo's `<img>` points at an absolute `/qcbin` REST URL, and the browser cannot
- * fetch it: it is a different origin, it needs an ALM session cookie the browser does not hold, and
- * Alt-ALM has no attachment proxy yet. Leaving the `src` in place would therefore buy a broken-image
- * icon *and* an outbound request to a host named by the memo's author. Dropping the `src` while
- * keeping the element leaves the alt text and a marker we can style — the reader learns an image is
- * there and that we did not show it, which is the true statement.
+ * **Images.** A memo's `<img>` points at an absolute `/qcbin` REST URL, which the browser cannot
+ * fetch: different origin, and it needs an ALM session cookie the browser does not hold. Leaving the
+ * `src` alone would buy a broken-image icon *and* an outbound request to a host named by the memo's
+ * author.
+ *
+ * <p>So the `src` always comes off here, unconditionally, and the original is parked on a
+ * `data-alm-src` attribute for the pass below to consider. ⚠️ That ordering is the safety
+ * property: no attacker-supplied URL survives sanitisation, and the only thing that can put one back
+ * is a URL <em>this app builds</em> from an attachment id it looked up. An `<img src>` restored from
+ * the memo's own text would be the beacon this exists to prevent.
  *
  * **Links.** A memo link opening in this tab would navigate away from Alt-ALM and take the SPA's
  * state with it, and `rel` keeps the opened page away from `window.opener`.
@@ -135,6 +139,9 @@ DOMPurify.addHook('afterSanitizeAttributes', (node) => {
       // Marked, not relabelled: the placeholder built below owns the wording, and an alt forced
       // in here would come back as "image: image".
       node.setAttribute('data-blocked', '')
+      // Parked for the resolve pass. Never restored as a src — only used to work out WHICH
+      // attachment the memo meant, so a URL of ours can be built for it.
+      if (src) node.setAttribute('data-alm-src', src)
       blockedImages += 1
     }
   }
@@ -168,8 +175,56 @@ function looksHostile(html: string): boolean {
     || /javascript\s*:/i.test(html)
 }
 
-/** Sanitises one memo document. Returns empty html for empty, blank, or text-free input. */
-export function sanitizeMemo(html: string): SanitizedMemo {
+/**
+ * The attachments Alt-ALM is willing to render for the record a memo belongs to.
+ *
+ * Keyed by **filename**, because that is what ALM writes into a memo's `src` — the id never appears
+ * in the document. Values are URLs this app built (see `attachmentImageUrl`).
+ *
+ * ⚠️ Absent, or missing an entry, means the image is not shown. That is the safe direction: an
+ * unresolved image becomes a labelled placeholder, never a request to whatever host the memo named.
+ */
+export type MemoImages = Record<string, string>
+
+/**
+ * Turns a memo's `<img src>` into the name of the attachment it refers to.
+ *
+ * ALM writes an absolute REST URL ending in `/attachments/<filename>`, so the filename is the last
+ * path segment. Query and fragment are dropped and percent-escapes are decoded, because ALM encodes
+ * the name into the URL and the list reports it raw.
+ *
+ * ⚠️ <strong>The host is deliberately not checked.</strong> That looks like a gap and is not: the
+ * name is only ever used as a key into {@link MemoImages}, which holds this record's own
+ * attachments and URLs this app built. So a memo pointing at
+ * `https://somewhere-else/attachments/spec.png` either matches an attachment of this record — and
+ * renders *ours*, from our origin — or matches nothing and stays a placeholder. Neither outcome
+ * sends a request to the host the memo named, which is the property worth having. Checking for
+ * `/qcbin/` instead would buy nothing and would silently stop working on a deployment that uses a
+ * different context path.
+ */
+function attachmentNameOf(src: string): string {
+  const path = src.split('?')[0].split('#')[0]
+  const marker = path.lastIndexOf('/attachments/')
+  if (marker < 0) return ''
+  const name = path.slice(marker + '/attachments/'.length)
+  if (!name || name.includes('/')) return ''
+  try {
+    return decodeURIComponent(name)
+  } catch {
+    // A malformed escape is not a name. Falling back to the raw text would key the map on
+    // something the list can never have reported.
+    return ''
+  }
+}
+
+/**
+ * Sanitises one memo document. Returns empty html for empty, blank, or text-free input.
+ *
+ * @param images this record's attachments by filename, so images stored in ALM can be rendered
+ *   through Alt-ALM's own image route. Omit it and every image stays a placeholder — which is what
+ *   a caller that has not loaded the list yet should do, rather than showing a broken one.
+ */
+export function sanitizeMemo(html: string, images?: MemoImages): SanitizedMemo {
   if (!html || !html.trim()) return { html: '', blockedImages: 0, hostile: false }
 
   blockedImages = 0
@@ -192,11 +247,27 @@ export function sanitizeMemo(html: string): SanitizedMemo {
     RETURN_DOM_FRAGMENT: true,
   })
 
+  // Two outcomes for a blocked image, and the order matters: try to point it at one of THIS
+  // record's attachments first, and fall back to the placeholder only when that fails.
+  //
   // An `<img>` with no `src` is not neutral: the browser draws its own broken-image glyph next to
   // the alt text, which reads as a bug in Alt-ALM rather than as a fact about the record. Swapping
   // in a span lets the placeholder be styled and say what it means. `textContent` is an assignment,
   // not a parse, so the alt text cannot reintroduce markup here.
   fragment.querySelectorAll('img[data-blocked]').forEach((img) => {
+    const resolved = images ? images[attachmentNameOf(img.getAttribute('data-alm-src') ?? '')] : undefined
+    img.removeAttribute('data-alm-src')
+    if (resolved) {
+      // ⚠️ `resolved` is a URL from {@link MemoImages} — built by this app around an attachment
+      // id, never taken from the document. The BFF's image route additionally refuses to serve
+      // anything whose bytes are not really a raster image, so this cannot become a script tag's
+      // slower cousin.
+      img.removeAttribute('data-blocked')
+      img.setAttribute('src', resolved)
+      img.setAttribute('loading', 'lazy')
+      blockedImages -= 1
+      return
+    }
     const chip = document.createElement('span')
     chip.className = 'memo-image-blocked'
     // The whole label is built here rather than half here and half in CSS, so an image with no
